@@ -36,7 +36,7 @@ outputs:
     description: 'Previous version tag reported by compute-next.'
     value: ${{ steps.vdisp.outputs.last }}
 name: 'Uncover Actions'
-description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@'
+description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@master'
 
 inputs:
   subaction:
@@ -54,89 +54,41 @@ runs:
   using: 'composite'
   steps:
     - name: Help (list available actions)
-      run: |
-        set -euo pipefail
-        SA='${{ inputs.subaction }}'
-        if [ -z "${SA}" ] || [ "${SA}" = "help" ]; then
-          ROOT="${GITHUB_ACTION_PATH}"
-          BASE="${ROOT}/.github/actions"
-          echo "\nUncover Actions — available subactions:" 
-          for CAT in build podman infra app version; do
-            DIR="${BASE}/${CAT}"
-            [ -d "$DIR" ] || continue
-            MAP=""
-            while IFS= read -r SUB; do
-              NAME=$(basename "$SUB")
-              [ "$NAME" = "dispatch" ] && continue
-              [ -f "$SUB/action.yml" ] || continue
-              MAP="${MAP}${MAP:+, }${NAME}"
-            done < <(find "$DIR" -mindepth 1 -maxdepth 1 -type d | sort)
-            if [ -n "$MAP" ]; then
-              echo "- ${CAT}: ${MAP}"
-            fi
-          done
-          echo "\nUsage:"
-          echo "- uses: uncoverthefuture-org/actions@"
-          echo "  with:"
-          echo "    subaction: <one-of-the-above>"
-          echo "    # optional: category: build|podman|infra|app\n"
-          echo "Docs per category:" 
-          BASE_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-uncoverthefuture-org/actions}/tree/${GITHUB_REF_NAME:-main}/.github/actions"
-          echo "- build:  ${BASE_URL}/build"
-          echo "- podman: ${BASE_URL}/podman"
-          echo "- infra:  ${BASE_URL}/infra"
-          echo "- app:    ${BASE_URL}/app"
-          echo "- version: ${BASE_URL}/version"
-          echo "Tip: pass 'subaction: help' to print this list."
-          exit 1
-        fi
-      shell: bash
+      if: ${{ !inputs.subaction || inputs.subaction == 'help' }}
+      uses: uncoverthefuture-org/actions/.github/actions/common/print-help@master
 
     - name: Determine category
       id: route
-      run: |
-        set -euo pipefail
-        SA='${{ inputs.subaction }}'
-        CAT='${{ inputs.category }}'
-        if [ -z "$CAT" ]; then
-          case "$SA" in
-            build-and-push) CAT='build' ;;
-            remote-podman-exec|podman-login-pull|podman-stop-rm-container|podman-run-service|podman-run-db) CAT='podman' ;;
-            prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|configure-ufw|setup-podman-user|determine-domain|compute-host-port|check-dns-match|ensure-apache-installed|enable-apache-modules|manage-vhost-config|enable-site-reload) CAT='infra' ;;
-            ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file) CAT='app' ;;
-            compute-next|update-tags|update-refs) CAT='version' ;;
-            *) echo "Error: unsupported subaction '$SA'" >&2; exit 1 ;;
-          esac
-        fi
-        case "$CAT" in build|podman|infra|app|version) :;; *) echo "Error: unsupported category '$CAT'" >&2; exit 1;; esac
-        echo "category=$CAT" >> "$GITHUB_OUTPUT"
-      shell: bash
+      uses: uncoverthefuture-org/actions/.github/actions/common/route-category@master
+      with:
+        subaction: ${{ inputs.subaction }}
+        category: ${{ inputs.category }}
 
     - name: Build dispatch
       id: bdisp
       if: ${{ steps.route.outputs.category == 'build' }}
-      uses: ./.github/actions/build/dispatch
+      uses: uncoverthefuture-org/actions/.github/actions/build/dispatch@master
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: Podman dispatch
       if: ${{ steps.route.outputs.category == 'podman' }}
-      uses: ./.github/actions/podman/dispatch
+      uses: uncoverthefuture-org/actions/.github/actions/podman/dispatch@master
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: Infra dispatch
       if: ${{ steps.route.outputs.category == 'infra' }}
-      uses: ./.github/actions/infra/dispatch
+      uses: uncoverthefuture-org/actions/.github/actions/infra/dispatch@master
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: App dispatch
       if: ${{ steps.route.outputs.category == 'app' }}
-      uses: ./.github/actions/app/dispatch
+      uses: uncoverthefuture-org/actions/.github/actions/app/dispatch@master
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
@@ -144,7 +96,7 @@ runs:
     - name: Version dispatch
       id: vdisp
       if: ${{ steps.route.outputs.category == 'version' }}
-      uses: ./.github/actions/version/dispatch
+      uses: uncoverthefuture-org/actions/.github/actions/version/dispatch@master
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}

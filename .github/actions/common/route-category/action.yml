@@ -1,0 +1,41 @@
+name: 'common: route category'
+description: 'Determines the dispatcher category for a given subaction.'
+
+inputs:
+  subaction:
+    description: 'Subaction to route'
+    required: false
+  category:
+    description: 'Optional explicit category override'
+    required: false
+
+outputs:
+  category:
+    description: 'Resolved category (build|podman|infra|app|version)'
+    value: ${{ steps.route.outputs.category }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Route
+      id: route
+      shell: bash
+      env:
+        SA: ${{ inputs.subaction }}
+        CAT: ${{ inputs.category }}
+      run: |
+        set -euo pipefail
+        SA="${SA}"
+        CAT="${CAT}"
+        if [ -z "$CAT" ]; then
+          case "$SA" in
+            build-and-push) CAT='build' ;;
+            remote-podman-exec|podman-login-pull|podman-stop-rm-container|podman-run-service|podman-run-db) CAT='podman' ;;
+            prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|configure-ufw|setup-podman-user|determine-domain|compute-host-port|check-dns-match|ensure-apache-installed|enable-apache-modules|manage-vhost-config|enable-site-reload) CAT='infra' ;;
+            ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file) CAT='app' ;;
+            compute-next|update-tags|update-refs) CAT='version' ;;
+            *) echo "Error: unsupported subaction '$SA'" >&2; exit 1 ;;
+          esac
+        fi
+        case "$CAT" in build|podman|infra|app|version) :;; *) echo "Error: unsupported category '$CAT'" >&2; exit 1;; esac
+        echo "category=$CAT" >> "$GITHUB_OUTPUT"

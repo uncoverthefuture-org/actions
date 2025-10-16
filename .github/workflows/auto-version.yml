@@ -40,6 +40,7 @@ jobs:
           # Check for deep repo uses
           DEEP_FILES=$(find . -name "*.yml" -o -name "*.yaml" \
             | grep -v README.md \
+            | grep -v "^\./action\.yml$" \
             | grep -v "\.github/actions/version/dispatch/action.yml" \
             | xargs grep -lE "^[[:space:]]*uses:[[:space:]]+uncoverthefuture-org/actions/\.github/actions/" || true)
           if [ -n "$DEEP_FILES" ]; then

@@ -1,0 +1,41 @@
+name: 'common: print help'
+description: 'Prints available subactions and usage with default @master ref.'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Print help
+      shell: bash
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        BASE="${ROOT}/.github/actions"
+        echo "\nUncover Actions — available subactions:"
+        for CAT in build podman infra app version; do
+          DIR="${BASE}/${CAT}"
+          [ -d "$DIR" ] || continue
+          MAP=""
+          while IFS= read -r SUB; do
+            NAME=$(basename "$SUB")
+            [ "$NAME" = "dispatch" ] && continue
+            [ -f "$SUB/action.yml" ] || continue
+            MAP="${MAP}${MAP:+, }${NAME}"
+          done < <(find "$DIR" -mindepth 1 -maxdepth 1 -type d | sort)
+          if [ -n "$MAP" ]; then
+            echo "- ${CAT}: ${MAP}"
+          fi
+        done
+        echo "\nUsage:"
+        echo "- uses: uncoverthefuture-org/actions@master"
+        echo "  with:"
+        echo "    subaction: <one-of-the-above>"
+        echo "    # optional: category: build|podman|infra|app\n"
+        echo "Docs per category:"
+        BASE_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-uncoverthefuture-org/actions}/tree/${GITHUB_REF_NAME:-master}/.github/actions"
+        echo "- build:  ${BASE_URL}/build"
+        echo "- podman: ${BASE_URL}/podman"
+        echo "- infra:  ${BASE_URL}/infra"
+        echo "- app:    ${BASE_URL}/app"
+        echo "- version: ${BASE_URL}/version"
+        echo "Tip: pass 'subaction: help' to print this list."
+        exit 1
