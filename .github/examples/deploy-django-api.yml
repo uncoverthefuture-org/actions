@@ -27,11 +27,13 @@ jobs:
               "ssh_host": "${{ secrets.SSH_HOST }}",
               "ssh_key":  "${{ secrets.SSH_KEY }}",
               "base_domain": "example.com",
-              "domain_prefix_prod": "app"
+              "domain_prefix_prod": "app",
+              "run_db": "false"
             }
         # ssh_user defaults to "root". Provide "ssh_user" in params_json if you need a non-root user.
         # Note: domain config is optional. If neither base_domain nor domain is provided,
         # the Apache vhost step is skipped automatically.
+        # Set "run_db": "false" (default) to skip provisioning a local database when you already have a managed DB.
 
       # Optional: write env file from a secret (env_name defaults from branch; can omit)
       # - uses: uncoverthefuture-org/actions@master
