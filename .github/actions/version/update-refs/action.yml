@@ -1,5 +1,5 @@
 name: 'version: update-refs'
-description: 'Update @master references to the new version tag in YAML files and commit the changes.'
+description: 'Update @ references to the new version tag in YAML files and commit the changes.'
 
 inputs:
   new_tag:
@@ -12,7 +12,7 @@ runs:
     - name: Update action refs to new version
       uses: ./.github/actions/common/replace-ref
       with:
-        old_ref: '@master'
+        old_ref: '@'
         new_ref: '@${{ inputs.new_tag }}'
         patterns: |
           *.yml

@@ -82,7 +82,7 @@ runs:
 
     - name: Install Podman
       if: ${{ inputs.install_podman == 'true' }}
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: install-podman
         params_json: |
@@ -100,7 +100,7 @@ runs:
 
     - name: Install Apache
       if: ${{ inputs.install_apache == 'true' }}
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: install-apache
         params_json: |
@@ -117,7 +117,7 @@ runs:
 
     - name: Install Webmin/Usermin
       if: ${{ inputs.install_webmin == 'true' || inputs.install_usermin == 'true' }}
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: install-webmin
         params_json: |
@@ -136,7 +136,7 @@ runs:
 
     - name: Configure UFW
       if: ${{ inputs.configure_ufw == 'true' }}
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: configure-ufw
         params_json: |
@@ -153,7 +153,7 @@ runs:
           }
 
     - name: Setup Podman User
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: setup-podman-user
         params_json: |

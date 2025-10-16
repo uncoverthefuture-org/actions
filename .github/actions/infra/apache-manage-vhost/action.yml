@@ -94,7 +94,7 @@ runs:
       shell: bash
 
     - name: Determine Domain
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: determine-domain
         params_json: |
@@ -108,7 +108,7 @@ runs:
           }
 
     - name: Compute Host Port
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: compute-host-port
         params_json: |
@@ -128,7 +128,7 @@ runs:
           }
 
     - name: Check DNS Match
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: check-dns-match
         params_json: |
@@ -138,12 +138,12 @@ runs:
           }
 
     - name: Ensure Apache Installed
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: ensure-apache-installed
 
     - name: Enable Apache Modules
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: enable-apache-modules
         params_json: |
@@ -152,7 +152,7 @@ runs:
           }
 
     - name: Manage VHost Config
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: manage-vhost-config
         params_json: |
@@ -165,7 +165,7 @@ runs:
           }
 
     - name: Enable Site and Reload
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: enable-site-reload
         params_json: |

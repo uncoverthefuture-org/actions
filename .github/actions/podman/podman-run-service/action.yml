@@ -78,7 +78,7 @@ runs:
       shell: bash
 
     - name: Run service
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: remote-podman-exec
         params_json: |

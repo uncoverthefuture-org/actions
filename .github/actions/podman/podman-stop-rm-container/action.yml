@@ -54,7 +54,7 @@ runs:
       shell: bash
 
     - name: Stop and remove container
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: remote-podman-exec
         params_json: |
