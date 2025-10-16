@@ -91,35 +91,35 @@ runs:
     - name: Build dispatch
       id: bdisp
       if: ${{ steps.route.outputs.category == 'build' }}
-      uses: uncoverthefuture-org/actions/.github/actions/build/dispatch@v1
+      uses: ./.github/actions/build/dispatch
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: Podman dispatch
       if: ${{ steps.route.outputs.category == 'podman' }}
-      uses: uncoverthefuture-org/actions/.github/actions/podman/dispatch@v1
+      uses: ./.github/actions/podman/dispatch
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: Infra dispatch
       if: ${{ steps.route.outputs.category == 'infra' }}
-      uses: uncoverthefuture-org/actions/.github/actions/infra/dispatch@v1
+      uses: ./.github/actions/infra/dispatch
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: App dispatch
       if: ${{ steps.route.outputs.category == 'app' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/dispatch@v1
+      uses: ./.github/actions/app/dispatch
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: Version dispatch
       if: ${{ steps.route.outputs.category == 'version' }}
-      uses: uncoverthefuture-org/actions/.github/actions/version/dispatch@v1
+      uses: ./.github/actions/version/dispatch
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
