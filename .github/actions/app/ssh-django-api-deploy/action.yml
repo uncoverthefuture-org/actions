@@ -8,7 +8,8 @@ inputs:
     required: true
   ssh_user:
     description: 'SSH username (non-root)'
-    required: true
+    required: false
+    default: 'root'
   ssh_key:
     description: 'SSH private key for non-root user'
     required: true
@@ -290,7 +291,6 @@ runs:
       run: |
         set -euo pipefail
         if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
-        if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
         if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
         if [ -z "${J_IMAGE_NAME}" ]; then echo 'Error: image_name is required' ; exit 1 ; fi
         # registry creds only required for non-GHCR when registry_login=true
@@ -312,7 +312,7 @@ runs:
       uses: ./.github/actions/infra/prepare-ubuntu-host
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
@@ -329,7 +329,7 @@ runs:
       uses: ./.github/actions/app/write-remote-env-file
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
@@ -345,7 +345,7 @@ runs:
       uses: ./.github/actions/podman/podman-login-pull
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
@@ -363,7 +363,7 @@ runs:
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
@@ -423,7 +423,7 @@ runs:
       uses: ./.github/actions/podman/podman-run-service
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
@@ -443,7 +443,7 @@ runs:
       uses: ./.github/actions/podman/podman-run-service
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
