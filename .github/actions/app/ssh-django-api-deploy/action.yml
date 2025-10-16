@@ -309,159 +309,168 @@ runs:
 
     - name: Prepare host (optional)
       if: ${{ inputs.prepare_host == 'true' }}
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/prepare-ubuntu-host@master
       with:
-        subaction: prepare-ubuntu-host
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "install_podman": "${{ inputs.install_podman }}",
-            "create_podman_user": "${{ inputs.create_podman_user }}",
-            "env_dir_path": "${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}",
-            "additional_packages": "${{ inputs.additional_packages }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        install_podman: ${{ inputs.install_podman }}
+        create_podman_user: ${{ inputs.create_podman_user }}
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}
+        additional_packages: ${{ inputs.additional_packages }}
 
     - name: Write env file (optional)
       if: ${{ inputs.write_env_file == 'true' }}
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/app/write-remote-env-file@master
       with:
-        subaction: write-remote-env-file
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "env_name": "${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}",
-            "env_file_path": "${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}",
-            "env_b64": "${{ inputs.env_b64 }}",
-            "env_content": "${{ inputs.env_content }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
+        env_b64: ${{ inputs.env_b64 }}
+        env_content: ${{ inputs.env_content }}
 
     - name: Login and pull image
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-login-pull@master
       with:
-        subaction: podman-login-pull
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "registry": "${{ inputs.registry }}",
-            "registry_username": "${{ inputs.registry_username }}",
-            "registry_token": "${{ inputs.registry_token }}",
-            "registry_login": "${{ inputs.registry_login }}",
-            "image_name": "${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}",
-            "image_tag": "${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        registry: ${{ inputs.registry }}
+        registry_username: ${{ inputs.registry_username }}
+        registry_token: ${{ inputs.registry_token }}
+        registry_login: ${{ inputs.registry_login }}
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}
 
     - name: Deploy Django API
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@master
       with:
-        subaction: remote-podman-exec
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "env_name": "${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}",
-            "env_file_path": "${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}",
-            "source_env": "${{ inputs.source_env }}",
-            "fail_if_env_missing": "${{ inputs.fail_if_env_missing }}",
-            "command": "set -euo pipefail\n\nENV_FILE=\"${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}\"\nIMAGE=\"${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}\"\n\n# container name\nCN_IN=\"${{ inputs.container_name }}\"\nAPP_SLUG=\"${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}\"\nCONTAINER_NAME=\"${CN_IN:-${APP_SLUG}-${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}}\"\n\n# ports (allow overrides)\nHP_IN=\"${{ inputs.host_port }}\"\nCP_IN=\"${{ inputs.container_port }}\"\nif [ -n \"$HP_IN\" ]; then\n  HOST_PORT=\"$HP_IN\"\nelse\n  HOST_PORT=\"${API_HOST_PORT:-${PORT:-8000}}\"\nfi\nif [ -n \"$CP_IN\" ]; then\n  CONTAINER_PORT=\"$CP_IN\"\nelse\n  CONTAINER_PORT=\"${API_CONTAINER_PORT:-${TARGET_PORT:-8000}}\"\nfi\n\n# stop old container if exists\nrun_podman stop \"$CONTAINER_NAME\" >/dev/null 2>&1 || true\nrun_podman rm \"$CONTAINER_NAME\" >/dev/null 2>&1 || true\n\n# migrate (optional)\nif [ \"${{ inputs.migrate }}\" = \"true\" ]; then\n  run_podman run --rm --env-file \"$ENV_FILE\" \\\n    \"$IMAGE\" \\\n    ${{ inputs.migrate_cmd }}\nfi\n\n# run new container\nEXTRA_ARGS=\"${{ inputs.extra_run_args }}\"\nrun_podman run -d --name \"$CONTAINER_NAME\" --env-file \"$ENV_FILE\" \\\n  -p \"$HOST_PORT:$CONTAINER_PORT\" --restart=${{ inputs.restart_policy }} \\\n  --memory='${{ inputs.memory_limit }}' --memory-swap='${{ inputs.memory_limit }}' \\\n  ${EXTRA_ARGS:+$EXTRA_ARGS} \\\n  \"$IMAGE\""
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
+        source_env: ${{ inputs.source_env }}
+        fail_if_env_missing: ${{ inputs.fail_if_env_missing }}
+        inline_script: |
+          set -euo pipefail
+
+          ENV_FILE="${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}"
+          IMAGE="${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}"
+
+          CN_IN="${{ inputs.container_name }}"
+          APP_SLUG="${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}"
+          CONTAINER_NAME="${CN_IN:-${APP_SLUG}-${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}}"
+
+          HP_IN="${{ inputs.host_port }}"
+          CP_IN="${{ inputs.container_port }}"
+          if [ -n "$HP_IN" ]; then
+            HOST_PORT="$HP_IN"
+          else
+            HOST_PORT="${API_HOST_PORT:-${PORT:-8000}}"
+          fi
+          if [ -n "$CP_IN" ]; then
+            CONTAINER_PORT="$CP_IN"
+          else
+            CONTAINER_PORT="${API_CONTAINER_PORT:-${TARGET_PORT:-8000}}"
+          fi
+
+          run_podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+          run_podman rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+
+          if [ "${{ inputs.migrate }}" = "true" ]; then
+            run_podman run --rm --env-file "$ENV_FILE" \
+              "$IMAGE" \
+              ${{ inputs.migrate_cmd }}
+          fi
+
+          EXTRA_ARGS="${{ inputs.extra_run_args }}"
+          run_podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
+            -p "$HOST_PORT:$CONTAINER_PORT" --restart=${{ inputs.restart_policy }} \
+            --memory='${{ inputs.memory_limit }}' --memory-swap='${{ inputs.memory_limit }}' \
+            ${EXTRA_ARGS:+$EXTRA_ARGS} \
+            "$IMAGE"
 
     - name: Run worker (optional)
       if: ${{ inputs.run_worker == 'true' }}
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-run-service@master
       with:
-        subaction: podman-run-service
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "service_name": "${{ inputs.worker_service_name }}",
-            "image": "${{ inputs.worker_image != '' && inputs.worker_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), inputs.image_tag) }}",
-            "env_file": "${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}",
-            "command": "${{ inputs.worker_command }}",
-            "restart_policy": "unless-stopped",
-            "memory_limit": "${{ inputs.worker_memory_limit }}",
-            "volumes": "${{ inputs.worker_volumes }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        service_name: ${{ inputs.worker_service_name }}
+        image: ${{ inputs.worker_image != '' && inputs.worker_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), inputs.image_tag) }}
+        env_file: ${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        command: ${{ inputs.worker_command }}
+        restart_policy: unless-stopped
+        memory_limit: ${{ inputs.worker_memory_limit }}
+        volumes: ${{ inputs.worker_volumes }}
 
     - name: Run scheduler (optional)
       if: ${{ inputs.run_scheduler == 'true' }}
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-run-service@master
       with:
-        subaction: podman-run-service
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "service_name": "${{ inputs.scheduler_service_name }}",
-            "image": "${{ inputs.scheduler_image != '' && inputs.scheduler_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default)) }}",
-            "env_file": "${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}",
-            "command": "${{ inputs.scheduler_command }}",
-            "restart_policy": "unless-stopped",
-            "memory_limit": "${{ inputs.scheduler_memory_limit }}",
-            "volumes": "${{ inputs.scheduler_volumes }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        service_name: ${{ inputs.scheduler_service_name }}
+        image: ${{ inputs.scheduler_image != '' && inputs.scheduler_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default)) }}
+        env_file: ${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        command: ${{ inputs.scheduler_command }}
+        restart_policy: unless-stopped
+        memory_limit: ${{ inputs.scheduler_memory_limit }}
+        volumes: ${{ inputs.scheduler_volumes }}
 
     - name: Manage Apache vhost (optional)
       if: ${{ inputs.manage_vhost == 'true' || (inputs.manage_vhost == '' && (inputs.base_domain != '' || inputs.domain != '')) }}
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/apache-manage-vhost@master
       with:
-        subaction: apache-manage-vhost
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "connect_mode": "root",
-            "env_name": "${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}",
-            "env_file_path": "${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}",
-            "domain": "${{ inputs.domain }}",
-            "base_domain": "${{ inputs.base_domain }}",
-            "domain_prefix_prod": "${{ inputs.domain_prefix_prod }}",
-            "domain_prefix_staging": "${{ inputs.domain_prefix_staging }}",
-            "domain_prefix_dev": "${{ inputs.domain_prefix_dev }}",
-            "require_dns_match": "${{ inputs.require_dns_match }}",
-            "mode": "${{ inputs.vhost_mode }}",
-            "wsgi_script_path": "${{ inputs.wsgi_script_path }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: 'root'
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
+        domain: ${{ inputs.domain }}
+        base_domain: ${{ inputs.base_domain }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
+        require_dns_match: ${{ inputs.require_dns_match }}
+        mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || 'reverse_proxy' }}
+        wsgi_script_path: ${{ inputs.wsgi_script_path }}
