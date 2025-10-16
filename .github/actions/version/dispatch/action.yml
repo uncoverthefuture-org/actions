@@ -31,13 +31,13 @@ runs:
 
     - name: compute-next
       if: ${{ inputs.subaction == 'compute-next' }}
-      uses: ../compute-next
+      uses: uncoverthefuture-org/actions/.github/actions/version/compute-next@master
       with:
         level: ${{ fromJSON(steps.pjson.outputs.json).level }}
 
     - name: update-tags
       if: ${{ inputs.subaction == 'update-tags' }}
-      uses: ../update-tags
+      uses: uncoverthefuture-org/actions/.github/actions/version/update-tags@master
       with:
         new: ${{ fromJSON(steps.pjson.outputs.json).new }}
         major: ${{ fromJSON(steps.pjson.outputs.json).major }}
@@ -46,6 +46,6 @@ runs:
 
     - name: update-refs
       if: ${{ inputs.subaction == 'update-refs' }}
-      uses: ../update-refs
+      uses: uncoverthefuture-org/actions/.github/actions/version/update-refs@master
       with:
         new_tag: ${{ fromJSON(steps.pjson.outputs.json).new_tag }}
