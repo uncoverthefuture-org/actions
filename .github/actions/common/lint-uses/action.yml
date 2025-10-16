@@ -1,0 +1,43 @@
+name: 'common: lint-uses'
+description: 'Reusable lint to ensure allowed action reference patterns (relative vs deep repo)'
+
+inputs:
+  allow_deep_repo:
+    description: 'If true, deep repo uses are allowed'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Lint action uses
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "Checking for forbidden uses..."
+        # Check for relative uses outside version actions
+        REL_FILES=$(find . -name "*.yml" -o -name "*.yaml" \
+          | grep -v action.yml \
+          | xargs grep -lE "^[[:space:]]*uses:[[:space:]]+\./\\.github/actions/" \
+          | grep -v "/auto-version.yml$" \
+          | grep -v "version/compute-next" \
+          | grep -v "version/update-tags" || true)
+        if [ -n "$REL_FILES" ]; then
+          echo "Error: Found relative uses in: $REL_FILES" >&2
+          exit 1
+        fi
+
+        if [ "${{ inputs.allow_deep_repo }}" = "false" ]; then
+          # Check for deep repo uses (disabled by default)
+          DEEP_FILES=$(find . -name "*.yml" -o -name "*.yaml" \
+            | grep -v README.md \
+            | grep -v "^\./action\.yml$" \
+            | grep -v "\.github/actions/version/dispatch/action.yml" \
+            | xargs grep -lE "^[[:space:]]*uses:[[:space:]]+uncoverthefuture-org/actions/\\.github/actions/" || true)
+          if [ -n "$DEEP_FILES" ]; then
+            echo "Error: Found deep repo uses in: $DEEP_FILES" >&2
+            exit 1
+          fi
+        fi
+
+        echo "Lint passed."

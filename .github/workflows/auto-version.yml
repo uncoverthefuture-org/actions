@@ -29,29 +29,13 @@ jobs:
           fetch-depth: 0
 
       - name: Lint action uses
-        run: |
-          echo "Checking for forbidden uses..."
-          # Check for relative uses outside version actions
-          REL_FILES=$(find . -name "*.yml" -o -name "*.yaml" | grep -v action.yml | xargs grep -lE "^[[:space:]]*uses:[[:space:]]+\./\.github/actions/" | grep -v auto-version.yml | grep -v version/compute-next | grep -v version/update-tags || true)
-          if [ -n "$REL_FILES" ]; then
-            echo "Error: Found relative uses in: $REL_FILES" >&2
-            exit 1
-          fi
-          # Check for deep repo uses
-          DEEP_FILES=$(find . -name "*.yml" -o -name "*.yaml" \
-            | grep -v README.md \
-            | grep -v "^\./action\.yml$" \
-            | grep -v "\.github/actions/version/dispatch/action.yml" \
-            | xargs grep -lE "^[[:space:]]*uses:[[:space:]]+uncoverthefuture-org/actions/\.github/actions/" || true)
-          if [ -n "$DEEP_FILES" ]; then
-            echo "Error: Found deep repo uses in: $DEEP_FILES" >&2
-            exit 1
-          fi
-          echo "Lint passed."
+        uses: uncoverthefuture-org/actions/.github/actions/common/lint-uses@master
+        with:
+          allow_deep_repo: 'true'
 
       - name: Compute next version
         id: ver
-        uses: uncoverthefuture-org/actions@master
+        uses: uncoverthefuture-org/actions/.github/actions/version/dispatch@master
         with:
           subaction: compute-next
           params_json: |
@@ -60,7 +44,7 @@ jobs:
             }
 
       - name: Update action refs to new version
-        uses: uncoverthefuture-org/actions@master
+        uses: uncoverthefuture-org/actions/.github/actions/version/dispatch@master
         with:
           subaction: update-refs
           params_json: |
@@ -69,7 +53,7 @@ jobs:
             }
 
       - name: Create version tag and update aliases
-        uses: uncoverthefuture-org/actions@master
+        uses: uncoverthefuture-org/actions/.github/actions/version/dispatch@master
         with:
           subaction: update-tags
           params_json: |

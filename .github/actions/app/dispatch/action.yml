@@ -405,8 +405,8 @@ runs:
         host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
         container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.params.outputs.json).container_port }}
         restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.params.outputs.json).restart_policy }}
-        migrate: ${{ inputs.migrate != '' && inputs.migrate || fromJSON(steps.pjson.outputs.json).migrate }}
-        migrate_cmd: ${{ inputs.migrate_cmd != '' && inputs.migrate_cmd || fromJSON(steps.pjson.outputs.json).migrate_cmd }}
+        migrate: ${{ inputs.migrate != '' && inputs.migrate || fromJSON(steps.params.outputs.json).migrate }}
+        migrate_cmd: ${{ inputs.migrate_cmd != '' && inputs.migrate_cmd || fromJSON(steps.params.outputs.json).migrate_cmd }}
         extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
         memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit || steps.defaults.outputs.memory_limit }}
         manage_vhost: ${{ inputs.manage_vhost != '' && inputs.manage_vhost || fromJSON(steps.params.outputs.json).manage_vhost }}
