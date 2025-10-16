@@ -17,6 +17,9 @@ runs:
         patterns: |
           *.yml
           *.yaml
+        exclude: |
+          .github/workflows/*.yml
+          .github/workflows/*.yaml
 
     - name: Commit version updates
       shell: bash
