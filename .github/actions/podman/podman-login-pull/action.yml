@@ -73,7 +73,7 @@ runs:
       shell: bash
 
     - name: Login and pull remotely
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions@master
       with:
         subaction: remote-podman-exec
         params_json: |
