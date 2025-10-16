@@ -1,0 +1,181 @@
+name: 'Remote Podman Exec'
+description: 'Run remote commands over SSH with a run_podman helper, supporting root or user.'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username (non-root)'
+    required: true
+  ssh_key:
+    description: 'SSH private key for non-root user'
+    required: true
+  root_ssh_key:
+    description: 'SSH private key for root (optional)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    required: false
+  podman_user:
+    description: 'User on remote host to execute podman commands as'
+    required: false
+    default: 'deployer'
+  connect_mode:
+    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    required: false
+    default: 'auto'
+  env_file_path:
+    description: 'Base path to env files on server (prefix); final path is ${env_file_path}${env_name}'
+    required: false
+    default: '/opt/ekaban/api/.env.'
+  env_name:
+    description: 'Environment name (used to build ENV_FILE path)'
+    required: false
+  source_env:
+    description: 'Source ENV_FILE before running inline script'
+    required: false
+    default: 'false'
+  fail_if_env_missing:
+    description: 'Fail if source_env is true and env file is missing'
+    required: false
+    default: 'true'
+  inline_script:
+    description: 'Inline script to run on the remote host; run_podman helper is available'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      run: |
+        if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.inline_script }}" ]; then echo 'Error: inline_script is required' ; exit 1 ; fi
+        case "${{ inputs.connect_mode }}" in
+          auto|root|user) :;;
+          *) echo 'Error: connect_mode must be auto|root|user' ; exit 1 ;;
+        esac
+      shell: bash
+
+    - name: Execute as root (with root_ssh_key)
+      if: ${{ (inputs.connect_mode == 'root' || (inputs.connect_mode == 'auto' && inputs.podman_user == 'root')) && inputs.root_ssh_key != '' }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: 'root'
+        key: ${{ inputs.root_ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          set -euo pipefail
+
+          PODMAN_USER="${{ inputs.podman_user }}"
+          ENV_FILE="${{ inputs.env_file_path }}${{ inputs.env_name }}"
+
+          if [ "${{ inputs.source_env }}" = "true" ]; then
+            if [ -f "${ENV_FILE}" ]; then
+              set -a
+              . "${ENV_FILE}"
+              set +a
+            else
+              if [ "${{ inputs.fail_if_env_missing }}" = "true" ]; then
+                echo "Environment file ${ENV_FILE} not found" >&2
+                exit 1
+              fi
+            fi
+          fi
+
+          run_podman() {
+            if [ "$(id -un)" = "$PODMAN_USER" ]; then
+              podman "$@"
+            else
+              sudo -H -u "$PODMAN_USER" podman "$@"
+            fi
+          }
+
+          # Begin inline script
+          ${{ inputs.inline_script }}
+
+    - name: Execute as root (fallback to user key)
+      if: ${{ (inputs.connect_mode == 'root' || (inputs.connect_mode == 'auto' && inputs.podman_user == 'root')) && inputs.root_ssh_key == '' }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: 'root'
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          set -euo pipefail
+
+          PODMAN_USER="${{ inputs.podman_user }}"
+          ENV_FILE="${{ inputs.env_file_path }}${{ inputs.env_name }}"
+
+          if [ "${{ inputs.source_env }}" = "true" ]; then
+            if [ -f "${ENV_FILE}" ]; then
+              set -a
+              . "${ENV_FILE}"
+              set +a
+            else
+              if [ "${{ inputs.fail_if_env_missing }}" = "true" ]; then
+                echo "Environment file ${ENV_FILE} not found" >&2
+                exit 1
+              fi
+            fi
+          fi
+
+          run_podman() {
+            if [ "$(id -un)" = "$PODMAN_USER" ]; then
+              podman "$@"
+            else
+              sudo -H -u "$PODMAN_USER" podman "$@"
+            fi
+          }
+
+          # Begin inline script
+          ${{ inputs.inline_script }}
+
+    - name: Execute as user
+      if: ${{ inputs.connect_mode == 'user' || (inputs.connect_mode == 'auto' && inputs.podman_user != 'root') }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          set -euo pipefail
+
+          PODMAN_USER="${{ inputs.podman_user }}"
+          ENV_FILE="${{ inputs.env_file_path }}${{ inputs.env_name }}"
+
+          if [ "${{ inputs.source_env }}" = "true" ]; then
+            if [ -f "${ENV_FILE}" ]; then
+              set -a
+              . "${ENV_FILE}"
+              set +a
+            else
+              if [ "${{ inputs.fail_if_env_missing }}" = "true" ]; then
+                echo "Environment file ${ENV_FILE} not found" >&2
+                exit 1
+              fi
+            fi
+          fi
+
+          run_podman() {
+            if [ "$(id -un)" = "$PODMAN_USER" ]; then
+              podman "$@"
+            else
+              sudo -H -u "$PODMAN_USER" podman "$@"
+            fi
+          }
+
+          # Begin inline script
+          ${{ inputs.inline_script }}

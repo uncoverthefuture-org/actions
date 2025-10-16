@@ -1,0 +1,507 @@
+name: 'Uncover Actions'
+description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@v1'
+
+inputs:
+  subaction:
+    description: "Which sub-action to run: build-and-push | remote-podman-exec | prepare-ubuntu-host | write-remote-env-file | podman-login-pull | podman-stop-rm-container | ssh-django-api-deploy | podman-run-service | podman-run-db | apache-manage-vhost"
+    required: true
+
+  # Common SSH / remote
+  ssh_host:
+    required: false
+    description: 'SSH host'
+  ssh_user:
+    required: false
+    description: 'SSH username'
+  ssh_key:
+    required: false
+    description: 'SSH private key'
+  root_ssh_key:
+    required: false
+    description: 'SSH private key for root'
+  ssh_port:
+    required: false
+    default: '22'
+    description: 'SSH port'
+  ssh_fingerprint:
+    required: false
+    description: 'SSH host key fingerprint (optional)'
+  podman_user:
+    required: false
+    default: 'deployer'
+    description: 'Remote user for podman'
+  connect_mode:
+    required: false
+    default: 'auto'
+    description: "Connect mode: auto|root|user"
+
+  # Env
+  env_name:
+    required: false
+  env_file_path:
+    required: false
+    default: '/opt/ekaban/api/.env.'
+  env_b64:
+    required: false
+  env_content:
+    required: false
+
+  # Build & image
+  github_token:
+    required: false
+    description: 'GitHub token for GHCR build/push'
+  registry:
+    required: false
+    default: 'ghcr.io'
+  image_name:
+    required: false
+  image_tag:
+    required: false
+  registry_username:
+    required: false
+  registry_token:
+    required: false
+  registry_login:
+    required: false
+    default: 'true'
+
+  # Runtime
+  app_slug:
+    required: false
+    default: 'ekaban-api'
+  container_name:
+    required: false
+  host_port:
+    required: false
+  container_port:
+    required: false
+  restart_policy:
+    required: false
+    default: 'unless-stopped'
+  migrate:
+    required: false
+    default: 'true'
+  migrate_cmd:
+    required: false
+    default: 'python manage.py migrate --noinput'
+  extra_run_args:
+    required: false
+  memory_limit:
+    required: false
+    default: '512m'
+
+  # Orchestration flags
+  prepare_host:
+    required: false
+    default: 'false'
+  source_env:
+    required: false
+    default: 'false'
+  fail_if_env_missing:
+    required: false
+    default: 'true'
+
+  # Host preparation
+  env_dir_path:
+    required: false
+    default: '/opt/ekaban/api'
+  install_podman:
+    required: false
+    default: 'true'
+  additional_packages:
+    required: false
+    default: 'jq curl ca-certificates'
+  create_podman_user:
+    required: false
+    default: 'false'
+  install_apache:
+    required: false
+    default: 'false'
+  install_webmin:
+    required: false
+    default: 'true'
+  install_usermin:
+    required: false
+    default: 'true'
+  configure_ufw:
+    required: false
+    default: 'true'
+  ufw_allow_ports:
+    required: false
+    default: '22 80 443 10000 20000'
+
+  # VHost
+  manage_vhost:
+    required: false
+    default: 'false'
+  domain:
+    required: false
+  base_domain:
+    required: false
+  domain_prefix_prod:
+    required: false
+    default: 'api'
+  domain_prefix_staging:
+    required: false
+    default: 'api-staging'
+  domain_prefix_dev:
+    required: false
+    default: 'api-dev'
+  vhost_mode:
+    required: false
+    default: 'mod_wsgi'
+  wsgi_script_path:
+    required: false
+  server_admin:
+    required: false
+    default: 'webmaster@localhost'
+  require_dns_match:
+    required: false
+    default: 'true'
+
+  # Generic service runner
+  service_name:
+    required: false
+  image:
+    required: false
+  env_file:
+    required: false
+  command:
+    required: false
+  volumes:
+    required: false
+
+  # DB
+  db_type:
+    required: false
+    default: 'mysql'
+  db_service_name:
+    required: false
+  db_name:
+    required: false
+  db_user:
+    required: false
+  db_password:
+    required: false
+  db_root_password:
+    required: false
+  db_host_port:
+    required: false
+  db_data_volume:
+    required: false
+  db_image_tag:
+    required: false
+  db_memory_limit:
+    required: false
+    default: '512m'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate subaction
+      run: |
+        set -euo pipefail
+        SA='${{ inputs.subaction }}'
+        case "$SA" in
+          build-and-push|remote-podman-exec|prepare-ubuntu-host|write-remote-env-file|podman-login-pull|podman-stop-rm-container|ssh-django-api-deploy|podman-run-service|podman-run-db|apache-manage-vhost) : ;;
+          *) echo "Error: unsupported subaction '$SA'" >&2 ; exit 1 ;;
+        esac
+      shell: bash
+
+    - name: Validate required inputs for subaction
+      run: |
+        set -euo pipefail
+        SA='${{ inputs.subaction }}'
+        req() { v="$1"; n="$2"; if [ -z "$v" ]; then echo "Error: $n is required for $SA" >&2; exit 1; fi }
+        case "$SA" in
+          build-and-push)
+            req "${{ inputs.image_name }}" image_name
+            req "${{ inputs.github_token }}" github_token
+            ;;
+          remote-podman-exec)
+            req "${{ inputs.ssh_host }}" ssh_host
+            req "${{ inputs.ssh_user }}" ssh_user
+            req "${{ inputs.ssh_key }}" ssh_key
+            req "${{ inputs.command }}" command
+            ;;
+          prepare-ubuntu-host|podman-stop-rm-container|podman-run-service|podman-run-db|apache-manage-vhost|write-remote-env-file|podman-login-pull|ssh-django-api-deploy)
+            req "${{ inputs.ssh_host }}" ssh_host
+            req "${{ inputs.ssh_user }}" ssh_user
+            req "${{ inputs.ssh_key }}" ssh_key
+            ;;
+        esac
+        case "$SA" in
+          write-remote-env-file)
+            req "${{ inputs.env_name }}" env_name
+            if [ -z "${{ inputs.env_b64 }}" ] && [ -z "${{ inputs.env_content }}" ]; then
+              echo 'Error: env_b64 or env_content required for write-remote-env-file' >&2; exit 1;
+            fi
+            ;;
+          podman-login-pull)
+            req "${{ inputs.registry }}" registry
+            req "${{ inputs.image_name }}" image_name
+            req "${{ inputs.image_tag }}" image_tag
+            if [ "${{ inputs.registry_login }}" = "true" ]; then
+              req "${{ inputs.registry_username }}" registry_username
+              req "${{ inputs.registry_token }}" registry_token
+            fi
+            ;;
+          podman-stop-rm-container)
+            if [ -z "${{ inputs.container_name }}" ] && { [ -z "${{ inputs.app_slug }}" ] || [ -z "${{ inputs.env_name }}" ]; }; then
+              echo 'Error: provide container_name or (app_slug and env_name) for podman-stop-rm-container' >&2; exit 1;
+            fi
+            ;;
+          podman-run-service)
+            req "${{ inputs.service_name }}" service_name
+            req "${{ inputs.image }}" image
+            ;;
+          podman-run-db)
+            req "${{ inputs.db_service_name }}" db_service_name
+            req "${{ inputs.db_name }}" db_name
+            req "${{ inputs.db_user }}" db_user
+            req "${{ inputs.db_password }}" db_password
+            ;;
+          apache-manage-vhost)
+            if [ -z "${{ inputs.domain }}" ] && { [ -z "${{ inputs.base_domain }}" ] || [ -z "${{ inputs.env_name }}" ]; }; then
+              echo 'Error: provide domain or (base_domain and env_name) for apache-manage-vhost' >&2; exit 1;
+            fi
+            ;;
+          ssh-django-api-deploy)
+            req "${{ inputs.env_name }}" env_name
+            req "${{ inputs.image_name }}" image_name
+            req "${{ inputs.image_tag }}" image_tag
+            if [ "${{ inputs.registry_login }}" = "true" ]; then
+              req "${{ inputs.registry_username }}" registry_username
+              req "${{ inputs.registry_token }}" registry_token
+            fi
+            ;;
+        esac
+      shell: bash
+
+    # build-and-push
+    - name: build-and-push
+      if: ${{ inputs.subaction == 'build-and-push' }}
+      uses: uncoverthefuture-org/actions/.github/actions/build/build-and-push@v1
+      with:
+        image_name: ${{ inputs.image_name }}
+        github_token: ${{ inputs.github_token }}
+
+    # remote-podman-exec
+    - name: remote-podman-exec
+      if: ${{ inputs.subaction == 'remote-podman-exec' }}
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name }}
+        env_file_path: ${{ inputs.env_file_path }}
+        source_env: ${{ inputs.source_env }}
+        fail_if_env_missing: ${{ inputs.fail_if_env_missing }}
+        inline_script: ${{ inputs.command }}
+
+    # prepare-ubuntu-host
+    - name: prepare-ubuntu-host
+      if: ${{ inputs.subaction == 'prepare-ubuntu-host' }}
+      uses: uncoverthefuture-org/actions/.github/actions/infra/prepare-ubuntu-host@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_dir_path: ${{ inputs.env_dir_path }}
+        install_podman: ${{ inputs.install_podman }}
+        additional_packages: ${{ inputs.additional_packages }}
+        create_podman_user: ${{ inputs.create_podman_user }}
+        install_apache: ${{ inputs.install_apache }}
+        install_webmin: ${{ inputs.install_webmin }}
+        install_usermin: ${{ inputs.install_usermin }}
+        configure_ufw: ${{ inputs.configure_ufw }}
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports }}
+
+    # write-remote-env-file
+    - name: write-remote-env-file
+      if: ${{ inputs.subaction == 'write-remote-env-file' }}
+      uses: uncoverthefuture-org/actions/.github/actions/app/write-remote-env-file@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name }}
+        env_file_path: ${{ inputs.env_file_path }}
+        env_b64: ${{ inputs.env_b64 }}
+        env_content: ${{ inputs.env_content }}
+
+    # podman-login-pull
+    - name: podman-login-pull
+      if: ${{ inputs.subaction == 'podman-login-pull' }}
+      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-login-pull@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        registry: ${{ inputs.registry }}
+        image_name: ${{ inputs.image_name }}
+        image_tag: ${{ inputs.image_tag }}
+        registry_login: ${{ inputs.registry_login }}
+        registry_username: ${{ inputs.registry_username }}
+        registry_token: ${{ inputs.registry_token }}
+
+    # podman-stop-rm-container
+    - name: podman-stop-rm-container
+      if: ${{ inputs.subaction == 'podman-stop-rm-container' }}
+      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-stop-rm-container@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        container_name: ${{ inputs.container_name }}
+        app_slug: ${{ inputs.app_slug }}
+        env_name: ${{ inputs.env_name }}
+
+    # ssh-django-api-deploy
+    - name: ssh-django-api-deploy
+      if: ${{ inputs.subaction == 'ssh-django-api-deploy' }}
+      uses: uncoverthefuture-org/actions/.github/actions/app/ssh-django-api-deploy@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        prepare_host: ${{ inputs.prepare_host }}
+        install_podman: ${{ inputs.install_podman }}
+        create_podman_user: ${{ inputs.create_podman_user }}
+        env_dir_path: ${{ inputs.env_dir_path }}
+        additional_packages: ${{ inputs.additional_packages }}
+        env_name: ${{ inputs.env_name }}
+        env_file_path: ${{ inputs.env_file_path }}
+        write_env_file: ${{ inputs.env_b64 != '' || inputs.env_content != '' }}
+        env_b64: ${{ inputs.env_b64 }}
+        env_content: ${{ inputs.env_content }}
+        registry: ${{ inputs.registry }}
+        registry_username: ${{ inputs.registry_username }}
+        registry_token: ${{ inputs.registry_token }}
+        registry_login: ${{ inputs.registry_login }}
+        image_name: ${{ inputs.image_name }}
+        image_tag: ${{ inputs.image_tag }}
+        app_slug: ${{ inputs.app_slug }}
+        container_name: ${{ inputs.container_name }}
+        host_port: ${{ inputs.host_port }}
+        container_port: ${{ inputs.container_port }}
+        restart_policy: ${{ inputs.restart_policy }}
+        migrate: ${{ inputs.migrate }}
+        migrate_cmd: ${{ inputs.migrate_cmd }}
+        extra_run_args: ${{ inputs.extra_run_args }}
+        memory_limit: ${{ inputs.memory_limit }}
+        manage_vhost: ${{ inputs.manage_vhost }}
+        domain: ${{ inputs.domain }}
+        base_domain: ${{ inputs.base_domain }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
+        vhost_mode: ${{ inputs.vhost_mode }}
+        wsgi_script_path: ${{ inputs.wsgi_script_path }}
+        require_dns_match: ${{ inputs.require_dns_match }}
+
+    # podman-run-service
+    - name: podman-run-service
+      if: ${{ inputs.subaction == 'podman-run-service' }}
+      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-run-service@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        service_name: ${{ inputs.service_name }}
+        image: ${{ inputs.image }}
+        env_file: ${{ inputs.env_file }}
+        command: ${{ inputs.command }}
+        restart_policy: ${{ inputs.restart_policy }}
+        memory_limit: ${{ inputs.memory_limit }}
+        volumes: ${{ inputs.volumes }}
+        host_port: ${{ inputs.host_port }}
+        container_port: ${{ inputs.container_port }}
+        extra_run_args: ${{ inputs.extra_run_args }}
+
+    # podman-run-db
+    - name: podman-run-db
+      if: ${{ inputs.subaction == 'podman-run-db' }}
+      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-run-db@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        db_type: ${{ inputs.db_type }}
+        service_name: ${{ inputs.db_service_name }}
+        db_name: ${{ inputs.db_name }}
+        db_user: ${{ inputs.db_user }}
+        db_password: ${{ inputs.db_password }}
+        db_root_password: ${{ inputs.db_root_password }}
+        host_port: ${{ inputs.db_host_port }}
+        data_volume: ${{ inputs.db_data_volume }}
+        image_tag: ${{ inputs.db_image_tag }}
+        memory_limit: ${{ inputs.db_memory_limit }}
+
+    # apache-manage-vhost
+    - name: apache-manage-vhost
+      if: ${{ inputs.subaction == 'apache-manage-vhost' }}
+      uses: uncoverthefuture-org/actions/.github/actions/infra/apache-manage-vhost@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: 'root'
+        domain: ${{ inputs.domain }}
+        base_domain: ${{ inputs.base_domain }}
+        env_name: ${{ inputs.env_name }}
+        env_file_path: ${{ inputs.env_file_path }}
+        source_env: 'true'
+        host_port: ${{ inputs.host_port }}
+        mode: ${{ inputs.vhost_mode }}
+        wsgi_script_path: ${{ inputs.wsgi_script_path }}
+        server_admin: ${{ inputs.server_admin }}
+        require_dns_match: ${{ inputs.require_dns_match }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev }}

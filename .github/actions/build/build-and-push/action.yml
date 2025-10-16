@@ -1,0 +1,77 @@
+name: 'Build and Push Docker Image'
+description: 'Builds and pushes a Docker image for a Django API, determining environment context.'
+
+inputs:
+  registry:
+    description: 'Docker registry to use'
+    required: false
+    default: 'ghcr.io'
+  image_name:
+    description: 'Name of the Docker image'
+    required: true
+  github_token:
+    description: 'GitHub token for authentication'
+    required: true
+  environment_script:
+    description: 'Path to the script that sets environment context'
+    required: false
+    default: '.github/scripts/set-environment-context.sh'
+
+outputs:
+  env_name:
+    description: 'Environment name'
+    value: ${{ steps.environment.outputs.env_name }}
+  env_key:
+    description: 'Environment key'
+    value: ${{ steps.environment.outputs.env_key }}
+  image_tag:
+    description: 'Image tag'
+    value: ${{ steps.environment.outputs.image_tag }}
+  deploy_enabled:
+    description: 'Whether deployment is enabled'
+    value: ${{ steps.environment.outputs.deploy_enabled }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      run: |
+        if [ -z "${{ inputs.image_name }}" ]; then
+          echo "Error: image_name is required"
+          exit 1
+        fi
+        if [ -z "${{ inputs.github_token }}" ]; then
+          echo "Error: github_token is required"
+          exit 1
+        fi
+      shell: bash
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Determine environment context
+      id: environment
+      run: bash ${{ inputs.environment_script }}
+      shell: bash
+
+    - name: Log in to registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ inputs.registry }}/${{ inputs.image_name }}
+        tags: |
+          type=raw,value=${{ steps.environment.outputs.image_tag }}
+
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}

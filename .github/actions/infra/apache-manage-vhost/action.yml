@@ -1,0 +1,243 @@
+name: 'Apache Manage VHost'
+description: 'Creates or updates an Apache vhost to point a domain to the Django API container. Supports reverse_proxy (default) or mod_wsgi.'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username (non-root)'
+    required: true
+  ssh_key:
+    description: 'SSH private key for non-root user'
+    required: true
+  root_ssh_key:
+    description: 'SSH private key for root (optional)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    required: false
+  podman_user:
+    description: 'User on remote host (for env sourcing only)'
+    required: false
+    default: 'deployer'
+  connect_mode:
+    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    required: false
+    default: 'root'
+
+  # Domain selection
+  domain:
+    description: 'Full domain to configure. If empty, computed from base_domain + env_name + prefixes.'
+    required: false
+  base_domain:
+    description: 'Base domain used to compute domain when domain is not provided'
+    required: false
+  env_name:
+    description: 'Environment name for domain computation and env sourcing'
+    required: false
+  domain_prefix_prod:
+    description: 'Prefix for production/main env'
+    required: false
+    default: 'api'
+  domain_prefix_staging:
+    description: 'Prefix for staging env'
+    required: false
+    default: 'api-staging'
+  domain_prefix_dev:
+    description: 'Prefix for dev env'
+    required: false
+    default: 'api-dev'
+  require_dns_match:
+    description: 'Require the domain A record to match the server public IP before applying changes'
+    required: false
+    default: 'true'
+
+  # Env sourcing / port selection
+  env_file_path:
+    description: 'Base path to the environment file on the server (prefix); final path is ${env_file_path}${env_name}'
+    required: false
+    default: '/opt/ekaban/api/.env.'
+  source_env:
+    description: 'Source env file to derive HOST_PORT if host_port not provided'
+    required: false
+    default: 'true'
+  host_port:
+    description: 'Explicit host port to proxy to (overrides env)'
+    required: false
+
+  # VHost mode
+  mode:
+    description: "VHost mode: 'reverse_proxy' (default) or 'mod_wsgi'"
+    required: false
+    default: 'mod_wsgi'
+  wsgi_script_path:
+    description: 'Path to wsgi.py on server when using mod_wsgi (only for mode=mod_wsgi)'
+    required: false
+  server_admin:
+    description: 'ServerAdmin email for Apache vhost'
+    required: false
+    default: 'webmaster@localhost'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      run: |
+        set -euo pipefail
+        if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
+        case "${{ inputs.mode }}" in reverse_proxy|mod_wsgi) :;; *) echo 'Error: mode must be reverse_proxy|mod_wsgi' ; exit 1 ;;
+        esac
+      shell: bash
+
+    - name: Configure Apache vhost
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name }}
+        env_file_path: ${{ inputs.env_file_path }}
+        source_env: ${{ inputs.source_env }}
+        inline_script: |
+          set -euo pipefail
+
+          # Determine domain
+          DOMAIN_IN='${{ inputs.domain }}'
+          BASE_DOMAIN='${{ inputs.base_domain }}'
+          ENV_NAME='${{ inputs.env_name }}'
+          DP_PROD='${{ inputs.domain_prefix_prod }}'
+          DP_STG='${{ inputs.domain_prefix_staging }}'
+          DP_DEV='${{ inputs.domain_prefix_dev }}'
+          if [ -n "$DOMAIN_IN" ]; then
+            DOMAIN="$DOMAIN_IN"
+          else
+            if [ -z "$BASE_DOMAIN" ] || [ -z "$ENV_NAME" ]; then
+              echo 'Error: Provide either domain or (base_domain and env_name)' >&2
+              exit 1
+            fi
+            case "$ENV_NAME" in
+              prod|production|main|master)
+                DOMAIN="$DP_PROD.$BASE_DOMAIN" ;;
+              stage|staging)
+                DOMAIN="$DP_STG.$BASE_DOMAIN" ;;
+              dev|develop|development)
+                DOMAIN="$DP_DEV.$BASE_DOMAIN" ;;
+              *)
+                DOMAIN="$ENV_NAME.$BASE_DOMAIN" ;;
+            esac
+          fi
+
+          # Compute host port
+          HP_IN='${{ inputs.host_port }}'
+          if [ -n "$HP_IN" ]; then
+            HOST_PORT="$HP_IN"
+          else
+            HOST_PORT="${API_HOST_PORT:-${PORT:-8000}}"
+          fi
+
+          # DNS requirement check (optional)
+          if [ '${{ inputs.require_dns_match }}' = 'true' ]; then
+            PUB_IP=$(curl -fsS https://api64.ipify.org || curl -fsS https://api.ipify.org || true)
+            if [ -z "$PUB_IP" ]; then
+              echo 'Warning: Could not determine public IP, skipping DNS check' >&2
+            else
+              DOMAIN_IP=$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk '{print $1; exit}' || true)
+              if [ -z "$DOMAIN_IP" ]; then
+                DOMAIN_IP=$(dig +short A "$DOMAIN" 2>/dev/null | head -n1 || true)
+              fi
+              if [ -z "$DOMAIN_IP" ]; then
+                echo "Error: Could not resolve A record for $DOMAIN" >&2
+                exit 1
+              fi
+              if [ "$DOMAIN_IP" != "$PUB_IP" ]; then
+                echo "Error: Domain $DOMAIN resolves to $DOMAIN_IP but server public IP is $PUB_IP" >&2
+                exit 1
+              fi
+            fi
+          fi
+
+          # Ensure Apache installed
+          if ! command -v apache2ctl >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              apt-get update -y
+              apt-get install -y apache2 libapache2-mod-proxy-uwsgi libapache2-mod-wsgi-py3
+            else
+              echo 'Error: Apache2 not found and not an apt-based system' >&2
+              exit 1
+            fi
+          fi
+
+          # Enable required modules
+          a2enmod headers rewrite proxy proxy_http >/dev/null 2>&1 || true
+          if [ '${{ inputs.mode }}' = 'mod_wsgi' ]; then
+            a2enmod wsgi >/dev/null 2>&1 || true
+          fi
+
+          mkdir -p /etc/apache2/sites-available /etc/apache2/sites-enabled
+          CONF_PATH="/etc/apache2/sites-available/${DOMAIN}.conf"
+
+          # Backup existing config if present
+          PREV_CONTENT=""
+          if [ -f "$CONF_PATH" ]; then
+            cp -f "$CONF_PATH" "$CONF_PATH.bak.$(date +%s)" || true
+            PREV_CONTENT=$(sed 's/^/# /' "$CONF_PATH" || true)
+          fi
+
+          SERVER_ADMIN='${{ inputs.server_admin }}'
+
+          if [ '${{ inputs.mode }}' = 'mod_wsgi' ]; then
+            WSGI_PATH='${{ inputs.wsgi_script_path }}'
+            if [ -z "$WSGI_PATH" ]; then
+              echo 'Error: wsgi_script_path is required for mode=mod_wsgi' >&2
+              exit 1
+            fi
+            cat > "$CONF_PATH" <<EOF
+# --- Managed by apache-manage-vhost (mod_wsgi) ---
+# Previous config (commented):
+${PREV_CONTENT}
+
+<VirtualHost *:80>
+  ServerName ${DOMAIN}
+  ServerAdmin ${SERVER_ADMIN}
+  WSGIDaemonProcess ${DOMAIN} python-path=/var/www/${DOMAIN}
+  WSGIProcessGroup ${DOMAIN}
+  WSGIScriptAlias / ${WSGI_PATH}
+  <Directory /var/www/${DOMAIN}>
+    Require all granted
+  </Directory>
+  ErrorLog ${APACHE_LOG_DIR}/${DOMAIN}-error.log
+  CustomLog ${APACHE_LOG_DIR}/${DOMAIN}-access.log combined
+</VirtualHost>
+EOF
+          else
+            cat > "$CONF_PATH" <<EOF
+# --- Managed by apache-manage-vhost (reverse_proxy) ---
+# Previous config (commented):
+${PREV_CONTENT}
+
+<VirtualHost *:80>
+  ServerName ${DOMAIN}
+  ServerAdmin ${SERVER_ADMIN}
+  ProxyPreserveHost On
+  ProxyPass / http://127.0.0.1:${HOST_PORT}/
+  ProxyPassReverse / http://127.0.0.1:${HOST_PORT}/
+  ErrorLog ${APACHE_LOG_DIR}/${DOMAIN}-error.log
+  CustomLog ${APACHE_LOG_DIR}/${DOMAIN}-access.log combined
+</VirtualHost>
+EOF
+          fi
+
+          a2ensite "${DOMAIN}.conf" >/dev/null 2>&1 || true
+          systemctl reload apache2 || systemctl restart apache2 || true

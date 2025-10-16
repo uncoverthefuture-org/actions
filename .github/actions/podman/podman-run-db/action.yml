@@ -1,0 +1,154 @@
+name: 'Podman Run DB'
+description: 'Runs a database container (PostgreSQL or MySQL) on a remote host via Podman with defaults and memory limit.'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username (non-root)'
+    required: true
+  ssh_key:
+    description: 'SSH private key for non-root user'
+    required: true
+  root_ssh_key:
+    description: 'SSH private key for root (optional)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    required: false
+  podman_user:
+    description: 'User on remote host to execute podman commands as'
+    required: false
+    default: 'deployer'
+  connect_mode:
+    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    required: false
+    default: 'auto'
+
+  db_type:
+    description: "Database type: 'postgres' or 'mysql'"
+    required: false
+    default: 'mysql'
+  service_name:
+    description: 'Container name for DB service'
+    required: true
+  db_name:
+    description: 'Database name'
+    required: true
+  db_user:
+    description: 'Database user'
+    required: true
+  db_password:
+    description: 'Database user password'
+    required: true
+  db_root_password:
+    description: 'Root password (MySQL only)'
+    required: false
+  host_port:
+    description: 'Host port to publish (optional)'
+    required: false
+  data_volume:
+    description: 'Podman volume name or host path for data persistence'
+    required: false
+  memory_limit:
+    description: 'Memory limit, e.g., 512m'
+    required: false
+    default: '512m'
+  image_tag:
+    description: 'Image tag to use for DB (postgres default: 16, mysql default: 8)'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      run: |
+        set -euo pipefail
+        if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
+        case "${{ inputs.db_type }}" in postgres|mysql) :;; *) echo 'Error: db_type must be postgres|mysql' ; exit 1 ;;
+        esac
+        if [ -z "${{ inputs.service_name }}" ]; then echo 'Error: service_name is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.db_name }}" ]; then echo 'Error: db_name is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.db_user }}" ]; then echo 'Error: db_user is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.db_password }}" ]; then echo 'Error: db_password is required' ; exit 1 ; fi
+      shell: bash
+
+    - name: Run DB container
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        source_env: 'false'
+        inline_script: |
+          set -euo pipefail
+
+          TYPE='${{ inputs.db_type }}'
+          NAME='${{ inputs.service_name }}'
+          DB='${{ inputs.db_name }}'
+          USER='${{ inputs.db_user }}'
+          PASS='${{ inputs.db_password }}'
+          ROOT='${{ inputs.db_root_password }}'
+          HOST_PORT='${{ inputs.host_port }}'
+          VOL='${{ inputs.data_volume }}'
+          MEM='${{ inputs.memory_limit }}'
+          TAG='${{ inputs.image_tag }}'
+
+          case "$TYPE" in
+            postgres)
+              IMG="postgres:${TAG:-16}"
+              PORT="5432"
+              ENV_ARGS="-e POSTGRES_DB=\"$DB\" -e POSTGRES_USER=\"$USER\" -e POSTGRES_PASSWORD=\"$PASS\""
+              DATA_PATH='/var/lib/postgresql/data'
+              ;;
+            mysql)
+              IMG="mysql:${TAG:-8}"
+              PORT="3306"
+              if [ -z "$ROOT" ]; then
+                ROOT="$PASS"
+              fi
+              ENV_ARGS="-e MYSQL_DATABASE=\"$DB\" -e MYSQL_USER=\"$USER\" -e MYSQL_PASSWORD=\"$PASS\" -e MYSQL_ROOT_PASSWORD=\"$ROOT\""
+              DATA_PATH='/var/lib/mysql'
+              ;;
+          esac
+
+          run_podman stop "$NAME" >/dev/null 2>&1 || true
+          run_podman rm "$NAME" >/dev/null 2>&1 || true
+
+          PORT_ARGS=""
+          if [ -n "$HOST_PORT" ]; then
+            PORT_ARGS="-p ${HOST_PORT}:${PORT}"
+          fi
+
+          VOL_ARGS=""
+          if [ -n "$VOL" ]; then
+            case "$VOL" in
+              /*)
+                VOL_ARGS="-v ${VOL}:${DATA_PATH}"
+                ;;
+              *)
+                run_podman volume inspect "$VOL" >/dev/null 2>&1 || run_podman volume create "$VOL" >/dev/null
+                VOL_ARGS="-v ${VOL}:${DATA_PATH}"
+                ;;
+            esac
+          fi
+
+          run_podman run -d --name "$NAME" \
+            ${PORT_ARGS} \
+            --restart=unless-stopped \
+            --memory="$MEM" --memory-swap="$MEM" \
+            ${VOL_ARGS} \
+            ${ENV_ARGS} \
+            "${IMG}"

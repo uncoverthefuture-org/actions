@@ -1,0 +1,87 @@
+name: 'Write Remote Env File'
+description: 'Securely writes a .env file to the remote host via SSH.'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username (non-root)'
+    required: true
+  ssh_key:
+    description: 'SSH private key for non-root user'
+    required: true
+  root_ssh_key:
+    description: 'SSH private key for root (optional)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    required: false
+  podman_user:
+    description: 'User on remote host related to file ownership'
+    required: false
+    default: 'deployer'
+  connect_mode:
+    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    required: false
+    default: 'auto'
+  env_name:
+    description: 'Environment name (suffix for env file path)'
+    required: true
+  env_file_path:
+    description: 'Base path to the environment file on the server (prefix); final path is ${env_file_path}${env_name}'
+    required: false
+    default: '/opt/ekaban/api/.env.'
+  env_b64:
+    description: 'Base64-encoded contents of the .env file'
+    required: false
+  env_content:
+    description: 'Raw contents of the .env file (prefer env_b64)'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      run: |
+        set -euo pipefail
+        if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.env_name }}" ]; then echo 'Error: env_name is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.env_b64 }}" ] && [ -z "${{ inputs.env_content }}" ]; then
+          echo 'Error: Either env_b64 or env_content must be provided' ; exit 1
+        fi
+      shell: bash
+
+    - name: Write env file
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name }}
+        env_file_path: ${{ inputs.env_file_path }}
+        source_env: 'false'
+        inline_script: |
+          set -euo pipefail
+          ENV_FILE="${{ inputs.env_file_path }}${{ inputs.env_name }}"
+          mkdir -p "$(dirname "${ENV_FILE}")"
+          if [ -n "${{ inputs.env_b64 }}" ]; then
+            printf '%s' "${{ inputs.env_b64 }}" | base64 -d > "${ENV_FILE}"
+          else
+            cat > "${ENV_FILE}" <<'EOF_ENV'
+${{ inputs.env_content }}
+EOF_ENV
+          fi
+          chmod 600 "${ENV_FILE}" || true
+          chown "${{ inputs.podman_user }}":"${{ inputs.podman_user }}" "${ENV_FILE}" || true

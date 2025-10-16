@@ -1,0 +1,92 @@
+name: 'Podman Login and Pull'
+description: 'Securely logs in to a registry (optional) and pulls a container image on a remote host via Podman.'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username (non-root)'
+    required: true
+  ssh_key:
+    description: 'SSH private key for non-root user'
+    required: true
+  root_ssh_key:
+    description: 'SSH private key for root (optional)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    required: false
+  podman_user:
+    description: 'User on remote host to execute podman commands as'
+    required: false
+    default: 'deployer'
+  connect_mode:
+    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    required: false
+    default: 'auto'
+
+  registry:
+    description: 'Container registry hostname'
+    required: true
+  registry_username:
+    description: 'Registry username'
+    required: false
+  registry_token:
+    description: 'Registry token/password'
+    required: false
+  registry_login:
+    description: 'Perform registry login before pulling image'
+    required: false
+    default: 'true'
+
+  image_name:
+    description: 'Image name (e.g., org/app)'
+    required: true
+  image_tag:
+    description: 'Tag to pull'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      run: |
+        set -euo pipefail
+        if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.registry }}" ]; then echo 'Error: registry is required' ; exit 1 ; fi
+        if [ "${{ inputs.registry_login }}" = "true" ]; then
+          if [ -z "${{ inputs.registry_username }}" ]; then echo 'Error: registry_username is required when registry_login=true' ; exit 1 ; fi
+          if [ -z "${{ inputs.registry_token }}" ]; then echo 'Error: registry_token is required when registry_login=true' ; exit 1 ; fi
+        fi
+        if [ -z "${{ inputs.image_name }}" ]; then echo 'Error: image_name is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.image_tag }}" ]; then echo 'Error: image_tag is required' ; exit 1 ; fi
+      shell: bash
+
+    - name: Login and pull remotely
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        source_env: 'false'
+        inline_script: |
+          set -euo pipefail
+          IMAGE="${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.image_tag }}"
+
+          if [ "${{ inputs.registry_login }}" = "true" ]; then
+            # Use password-stdin to avoid exposing token in process args
+            printf '%s' '${{ inputs.registry_token }}' | run_podman login '${{ inputs.registry }}' -u '${{ inputs.registry_username }}' --password-stdin
+          fi
+          run_podman pull "$IMAGE"

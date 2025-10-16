@@ -1,0 +1,171 @@
+name: 'Prepare Ubuntu Host'
+description: 'Bootstraps a fresh Ubuntu server for containerized deployments (Podman, directories, optional user).'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username (non-root)'
+    required: true
+  ssh_key:
+    description: 'SSH private key for non-root user'
+    required: true
+  root_ssh_key:
+    description: 'SSH private key for root (optional)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    required: false
+  connect_mode:
+    description: "How to connect: 'auto' (default), 'root', or 'user'. For package install, root is recommended."
+    required: false
+    default: 'root'
+  podman_user:
+    description: 'User on remote host that will run containers (rootless)'
+    required: false
+    default: 'deployer'
+  create_podman_user:
+    description: 'Create podman_user if it does not exist'
+    required: false
+    default: 'false'
+  env_dir_path:
+    description: 'Directory to hold env files and app data'
+    required: false
+    default: '/opt/ekaban/api'
+  install_podman:
+    description: 'Install Podman and dependencies'
+    required: false
+    default: 'true'
+  additional_packages:
+    description: 'Space-separated additional apt packages to install'
+    required: false
+    default: 'jq curl ca-certificates'
+
+  # Optional platform services
+  install_apache:
+    description: 'Install and configure Apache2 with common modules'
+    required: false
+    default: 'false'
+  install_webmin:
+    description: 'Install Webmin (default true)'
+    required: false
+    default: 'true'
+  install_usermin:
+    description: 'Install Usermin (default true)'
+    required: false
+    default: 'true'
+  configure_ufw:
+    description: 'Configure UFW firewall (default true)'
+    required: false
+    default: 'true'
+  ufw_allow_ports:
+    description: 'Space-separated list of TCP ports to allow (applied if configure_ufw=true)'
+    required: false
+    default: '22 80 443 10000 20000'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      run: |
+        if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
+        case "${{ inputs.connect_mode }}" in auto|root|user) :;; *) echo 'Error: connect_mode must be auto|root|user' ; exit 1 ;;
+        esac
+      shell: bash
+
+    - name: Prepare host (install and configure)
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        inline_script: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
+          if [ "${{ inputs.install_podman }}" = "true" ]; then
+            if command -v apt-get >/dev/null 2>&1; then
+              apt-get update -y
+              apt-get install -y podman uidmap slirp4netns fuse-overlayfs ${{ inputs.additional_packages }}
+            else
+              echo "Error: Only Debian/Ubuntu apt-based systems are supported by this action right now" >&2
+              exit 1
+            fi
+          fi
+
+          # Apache2 installation and modules
+          if [ "${{ inputs.install_apache }}" = "true" ]; then
+            apt-get update -y
+            apt-get install -y apache2 libapache2-mod-wsgi-py3
+            a2enmod headers proxy proxy_http proxy_uwsgi wsgi || true
+            systemctl enable apache2 || true
+            systemctl restart apache2 || true
+          fi
+
+          # Webmin/Usermin installation
+          if [ "${{ inputs.install_webmin }}" = "true" ] || [ "${{ inputs.install_usermin }}" = "true" ]; then
+            apt-get update -y
+            apt-get install -y gnupg wget apt-transport-https software-properties-common
+            if [ ! -f /usr/share/keyrings/webmin.gpg ]; then
+              wget -qO- https://download.webmin.com/jcameron-key.asc | gpg --dearmor -o /usr/share/keyrings/webmin.gpg
+              echo "deb [signed-by=/usr/share/keyrings/webmin.gpg] https://download.webmin.com/download/repository sarge contrib" > /etc/apt/sources.list.d/webmin.list
+              apt-get update -y
+            fi
+            if [ "${{ inputs.install_webmin }}" = "true" ]; then
+              apt-get install -y webmin
+              systemctl enable webmin || true
+              systemctl restart webmin || true
+            fi
+            if [ "${{ inputs.install_usermin }}" = "true" ]; then
+              apt-get install -y usermin
+              systemctl enable usermin || true
+              systemctl restart usermin || true
+            fi
+          fi
+
+          # Configure UFW
+          if [ "${{ inputs.configure_ufw }}" = "true" ]; then
+            apt-get install -y ufw || true
+            ufw --force enable || true
+            for p in ${{ inputs.ufw_allow_ports }}; do
+              ufw allow "$p"/tcp || true
+            done
+            ufw status || true
+          fi
+
+          if id -u "${{ inputs.podman_user }}" >/dev/null 2>&1; then
+            echo "User ${{ inputs.podman_user }} exists"
+          else
+            if [ "${{ inputs.create_podman_user }}" = "true" ]; then
+              useradd -m -s /usr/sbin/nologin "${{ inputs.podman_user }}" || adduser --disabled-password --gecos "" "${{ inputs.podman_user }}"
+            else
+              echo "Warning: podman_user ${{ inputs.podman_user }} does not exist and create_podman_user=false" >&2
+            fi
+          fi
+
+          # Ensure subuid/subgid ranges for rootless podman
+          if ! grep -q "^${{ inputs.podman_user }}:" /etc/subuid 2>/dev/null; then
+            echo "${{ inputs.podman_user }}:100000:65536" >> /etc/subuid || true
+          fi
+          if ! grep -q "^${{ inputs.podman_user }}:" /etc/subgid 2>/dev/null; then
+            echo "${{ inputs.podman_user }}:100000:65536" >> /etc/subgid || true
+          fi
+
+          # Create env directory and set permissions
+          mkdir -p "${{ inputs.env_dir_path }}"
+          chown -R "${{ inputs.podman_user }}":"${{ inputs.podman_user }}" "${{ inputs.env_dir_path }}" || true
+
+          # Show podman version
+          podman --version || true
