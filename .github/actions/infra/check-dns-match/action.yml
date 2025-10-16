@@ -1,0 +1,37 @@
+name: 'infra: check-dns-match'
+description: 'Check if domain DNS A record matches server public IP'
+
+inputs:
+  domain:
+    description: 'Domain to check'
+    required: true
+  require_dns_match:
+    description: 'Whether to perform the check'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check DNS match
+      if: ${{ inputs.require_dns_match == 'true' }}
+      run: |
+        set -euo pipefail
+        PUB_IP=$(curl -fsS https://api64.ipify.org || curl -fsS https://api.ipify.org || true)
+        if [ -z "$PUB_IP" ]; then
+          echo 'Warning: Could not determine public IP, skipping DNS check' >&2
+        else
+          DOMAIN_IP=$(getent ahostsv4 "${{ inputs.domain }}" 2>/dev/null | awk '{print $1; exit}' || true)
+          if [ -z "$DOMAIN_IP" ]; then
+            DOMAIN_IP=$(dig +short A "${{ inputs.domain }}" 2>/dev/null | head -n1 || true)
+          fi
+          if [ -z "$DOMAIN_IP" ]; then
+            echo "Error: Could not resolve A record for ${{ inputs.domain }}" >&2
+            exit 1
+          fi
+          if [ "$DOMAIN_IP" != "$PUB_IP" ]; then
+            echo "Error: Domain ${{ inputs.domain }} resolves to $DOMAIN_IP but server public IP is $PUB_IP" >&2
+            exit 1
+          fi
+        fi
+      shell: bash

@@ -93,151 +93,82 @@ runs:
         esac
       shell: bash
 
-    - name: Configure Apache vhost
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+    - name: Determine Domain
+      uses: uncoverthefuture-org/actions@master
       with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
-        env_name: ${{ inputs.env_name }}
-        env_file_path: ${{ inputs.env_file_path }}
-        source_env: ${{ inputs.source_env }}
-        inline_script: |
-          set -euo pipefail
+        subaction: determine-domain
+        params_json: |
+          {
+            "domain": "${{ inputs.domain }}",
+            "base_domain": "${{ inputs.base_domain }}",
+            "env_name": "${{ inputs.env_name }}",
+            "domain_prefix_prod": "${{ inputs.domain_prefix_prod }}",
+            "domain_prefix_staging": "${{ inputs.domain_prefix_staging }}",
+            "domain_prefix_dev": "${{ inputs.domain_prefix_dev }}"
+          }
 
-          # Determine domain
-          DOMAIN_IN='${{ inputs.domain }}'
-          BASE_DOMAIN='${{ inputs.base_domain }}'
-          ENV_NAME='${{ inputs.env_name }}'
-          DP_PROD='${{ inputs.domain_prefix_prod }}'
-          if [ -z "$DP_PROD" ]; then DP_PROD='app'; fi
-          DP_STG='${{ inputs.domain_prefix_staging }}'
-          if [ -z "$DP_STG" ]; then DP_STG="${DP_PROD}-staging"; fi
-          DP_DEV='${{ inputs.domain_prefix_dev }}'
-          if [ -z "$DP_DEV" ]; then DP_DEV="${DP_PROD}-dev"; fi
-          if [ -n "$DOMAIN_IN" ]; then
-            DOMAIN="$DOMAIN_IN"
-          else
-            if [ -z "$BASE_DOMAIN" ] || [ -z "$ENV_NAME" ]; then
-              echo 'Error: Provide either domain or (base_domain and env_name)' >&2
-              exit 1
-            fi
-            case "$ENV_NAME" in
-              prod|production|main|master)
-                DOMAIN="$DP_PROD.$BASE_DOMAIN" ;;
-              stage|staging)
-                DOMAIN="$DP_STG.$BASE_DOMAIN" ;;
-              dev|develop|development)
-                DOMAIN="$DP_DEV.$BASE_DOMAIN" ;;
-              *)
-                DOMAIN="$ENV_NAME.$BASE_DOMAIN" ;;
-            esac
-          fi
+    - name: Compute Host Port
+      uses: uncoverthefuture-org/actions@master
+      with:
+        subaction: compute-host-port
+        params_json: |
+          {
+            "ssh_host": "${{ inputs.ssh_host }}",
+            "ssh_user": "${{ inputs.ssh_user }}",
+            "ssh_key": "${{ inputs.ssh_key }}",
+            "root_ssh_key": "${{ inputs.root_ssh_key }}",
+            "ssh_port": "${{ inputs.ssh_port }}",
+            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
+            "podman_user": "${{ inputs.podman_user }}",
+            "connect_mode": "${{ inputs.connect_mode }}",
+            "env_name": "${{ inputs.env_name }}",
+            "env_file_path": "${{ inputs.env_file_path }}",
+            "source_env": "${{ inputs.source_env }}",
+            "host_port": "${{ inputs.host_port }}"
+          }
 
-          # Compute host port
-          HP_IN='${{ inputs.host_port }}'
-          if [ -n "$HP_IN" ]; then
-            HOST_PORT="$HP_IN"
-          else
-            HOST_PORT="${API_HOST_PORT:-${PORT:-8000}}"
-          fi
+    - name: Check DNS Match
+      uses: uncoverthefuture-org/actions@master
+      with:
+        subaction: check-dns-match
+        params_json: |
+          {
+            "domain": "${{ inputs.domain }}",
+            "require_dns_match": "${{ inputs.require_dns_match }}"
+          }
 
-          # DNS requirement check (optional)
-          if [ '${{ inputs.require_dns_match }}' = 'true' ]; then
-            PUB_IP=$(curl -fsS https://api64.ipify.org || curl -fsS https://api.ipify.org || true)
-            if [ -z "$PUB_IP" ]; then
-              echo 'Warning: Could not determine public IP, skipping DNS check' >&2
-            else
-              DOMAIN_IP=$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk '{print $1; exit}' || true)
-              if [ -z "$DOMAIN_IP" ]; then
-                DOMAIN_IP=$(dig +short A "$DOMAIN" 2>/dev/null | head -n1 || true)
-              fi
-              if [ -z "$DOMAIN_IP" ]; then
-                echo "Error: Could not resolve A record for $DOMAIN" >&2
-                exit 1
-              fi
-              if [ "$DOMAIN_IP" != "$PUB_IP" ]; then
-                echo "Error: Domain $DOMAIN resolves to $DOMAIN_IP but server public IP is $PUB_IP" >&2
-                exit 1
-              fi
-            fi
-          fi
+    - name: Ensure Apache Installed
+      uses: uncoverthefuture-org/actions@master
+      with:
+        subaction: ensure-apache-installed
 
-          # Ensure Apache installed
-          if ! command -v apache2ctl >/dev/null 2>&1; then
-            if command -v apt-get >/dev/null 2>&1; then
-              apt-get update -y
-              apt-get install -y apache2 libapache2-mod-proxy-uwsgi libapache2-mod-wsgi-py3
-            else
-              echo 'Error: Apache2 not found and not an apt-based system' >&2
-              exit 1
-            fi
-          fi
+    - name: Enable Apache Modules
+      uses: uncoverthefuture-org/actions@master
+      with:
+        subaction: enable-apache-modules
+        params_json: |
+          {
+            "mode": "${{ inputs.mode }}"
+          }
 
-          # Enable required modules
-          a2enmod headers rewrite proxy proxy_http >/dev/null 2>&1 || true
-          if [ '${{ inputs.mode }}' = 'mod_wsgi' ]; then
-            a2enmod wsgi >/dev/null 2>&1 || true
-          fi
+    - name: Manage VHost Config
+      uses: uncoverthefuture-org/actions@master
+      with:
+        subaction: manage-vhost-config
+        params_json: |
+          {
+            "domain": "${{ inputs.domain }}",
+            "host_port": "${{ inputs.host_port }}",
+            "mode": "${{ inputs.mode }}",
+            "wsgi_script_path": "${{ inputs.wsgi_script_path }}",
+            "server_admin": "${{ inputs.server_admin }}"
+          }
 
-          mkdir -p /etc/apache2/sites-available /etc/apache2/sites-enabled
-          CONF_PATH="/etc/apache2/sites-available/${DOMAIN}.conf"
-
-          # Backup existing config if present
-          PREV_CONTENT=""
-          if [ -f "$CONF_PATH" ]; then
-            cp -f "$CONF_PATH" "$CONF_PATH.bak.$(date +%s)" || true
-            PREV_CONTENT=$(sed 's/^/# /' "$CONF_PATH" || true)
-          fi
-
-          SERVER_ADMIN='${{ inputs.server_admin }}'
-
-          if [ '${{ inputs.mode }}' = 'mod_wsgi' ]; then
-            WSGI_PATH='${{ inputs.wsgi_script_path }}'
-            if [ -z "$WSGI_PATH" ]; then
-              echo 'Error: wsgi_script_path is required for mode=mod_wsgi' >&2
-              exit 1
-            fi
-            cat > "$CONF_PATH" <<EOF
-# --- Managed by apache-manage-vhost (mod_wsgi) ---
-# Previous config (commented):
-${PREV_CONTENT}
-
-<VirtualHost *:80>
-  ServerName ${DOMAIN}
-  ServerAdmin ${SERVER_ADMIN}
-  WSGIDaemonProcess ${DOMAIN} python-path=/var/www/${DOMAIN}
-  WSGIProcessGroup ${DOMAIN}
-  WSGIScriptAlias / ${WSGI_PATH}
-  <Directory /var/www/${DOMAIN}>
-    Require all granted
-  </Directory>
-  ErrorLog ${APACHE_LOG_DIR}/${DOMAIN}-error.log
-  CustomLog ${APACHE_LOG_DIR}/${DOMAIN}-access.log combined
-</VirtualHost>
-EOF
-          else
-            cat > "$CONF_PATH" <<EOF
-# --- Managed by apache-manage-vhost (reverse_proxy) ---
-# Previous config (commented):
-${PREV_CONTENT}
-
-<VirtualHost *:80>
-  ServerName ${DOMAIN}
-  ServerAdmin ${SERVER_ADMIN}
-  ProxyPreserveHost On
-  ProxyPass / http://127.0.0.1:${HOST_PORT}/
-  ProxyPassReverse / http://127.0.0.1:${HOST_PORT}/
-  ErrorLog ${APACHE_LOG_DIR}/${DOMAIN}-error.log
-  CustomLog ${APACHE_LOG_DIR}/${DOMAIN}-access.log combined
-</VirtualHost>
-EOF
-          fi
-
-          a2ensite "${DOMAIN}.conf" >/dev/null 2>&1 || true
-          systemctl reload apache2 || systemctl restart apache2 || true
+    - name: Enable Site and Reload
+      uses: uncoverthefuture-org/actions@master
+      with:
+        subaction: enable-site-reload
+        params_json: |
+          {
+            "domain": "${{ inputs.domain }}"
+          }

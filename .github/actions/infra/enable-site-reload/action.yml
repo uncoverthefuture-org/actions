@@ -1,0 +1,17 @@
+name: 'infra: enable-site-reload'
+description: 'Enable Apache site and reload Apache configuration'
+
+inputs:
+  domain:
+    description: 'Domain for the site to enable'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Enable site and reload
+      run: |
+        set -euo pipefail
+        a2ensite "${{ inputs.domain }}.conf" >/dev/null 2>&1 || true
+        systemctl reload apache2 || systemctl restart apache2 || true
+      shell: bash

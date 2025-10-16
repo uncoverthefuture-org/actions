@@ -1,0 +1,59 @@
+name: 'infra: install-webmin'
+description: 'Install Webmin and/or Usermin on Ubuntu/Debian host'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username (non-root)'
+    required: true
+  ssh_key:
+    description: 'SSH private key for non-root user'
+    required: true
+  root_ssh_key:
+    description: 'SSH private key for root (optional)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Server SSH host key fingerprint'
+    required: false
+  podman_user:
+    description: 'User on remote host'
+    required: false
+    default: 'deployer'
+  connect_mode:
+    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    required: false
+    default: 'auto'
+  install_webmin:
+    description: 'Whether to install Webmin'
+    required: false
+    default: 'false'
+  install_usermin:
+    description: 'Whether to install Usermin'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Webmin/Usermin
+      uses: uncoverthefuture-org/actions@master
+      with:
+        subaction: remote-podman-exec
+        params_json: |
+          {
+            "ssh_host": "${{ inputs.ssh_host }}",
+            "ssh_user": "${{ inputs.ssh_user }}",
+            "ssh_key": "${{ inputs.ssh_key }}",
+            "root_ssh_key": "${{ inputs.root_ssh_key }}",
+            "ssh_port": "${{ inputs.ssh_port }}",
+            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
+            "podman_user": "${{ inputs.podman_user }}",
+            "connect_mode": "${{ inputs.connect_mode }}",
+            "command": "set -euo pipefail\napt-get update -y\napt-get install -y gnupg wget apt-transport-https software-properties-common\nif [ ! -f /usr/share/keyrings/webmin.gpg ]; then\n  wget -qO- https://download.webmin.com/jcameron-key.asc | gpg --dearmor -o /usr/share/keyrings/webmin.gpg\n  echo 'deb [signed-by=/usr/share/keyrings/webmin.gpg] https://download.webmin.com/download/repository sarge contrib' > /etc/apt/sources.list.d/webmin.list\n  apt-get update -y\nfi\nif [ '${{ inputs.install_webmin }}' = 'true' ]; then\n  apt-get install -y webmin\n  systemctl enable webmin || true\n  systemctl restart webmin || true\nfi\nif [ '${{ inputs.install_usermin }}' = 'true' ]; then\n  apt-get install -y usermin\n  systemctl enable usermin || true\n  systemctl restart usermin || true\nfi"
+          }

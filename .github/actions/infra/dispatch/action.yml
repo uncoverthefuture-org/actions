@@ -3,7 +3,7 @@ description: 'Infra dispatch: route short calls to infra actions'
 
 inputs:
   subaction:
-    description: "prepare-ubuntu-host | apache-manage-vhost"
+    description: "prepare-ubuntu-host | apache-manage-vhost | install-podman | install-apache | install-webmin | configure-ufw | setup-podman-user | determine-domain | compute-host-port | check-dns-match | ensure-apache-installed | enable-apache-modules | manage-vhost-config | enable-site-reload"
     required: true
   params_json:
     description: "JSON blob of parameters to pass to the selected subaction"
@@ -109,7 +109,7 @@ runs:
       run: |
         set -euo pipefail
         SA='${{ inputs.subaction }}'
-        case "$SA" in prepare-ubuntu-host|apache-manage-vhost) :;; *) echo "Error: unsupported infra subaction '$SA'" >&2; exit 1;; esac
+        case "$SA" in prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|configure-ufw|setup-podman-user|determine-domain|compute-host-port|check-dns-match|ensure-apache-installed|enable-apache-modules|manage-vhost-config|enable-site-reload) :;; *) echo "Error: unsupported infra subaction '$SA'" >&2; exit 1;; esac
       shell: bash
 
     - name: Validate base SSH for infra subactions
@@ -120,7 +120,7 @@ runs:
       run: |
         set -euo pipefail
         case "${{ inputs.subaction }}" in
-          prepare-ubuntu-host|apache-manage-vhost)
+          prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|configure-ufw|setup-podman-user|compute-host-port)
             for n in J_SSH_HOST J_SSH_USER J_SSH_KEY; do v="${!n}"; if [ -z "$v" ]; then echo "Error: ${n#J_} is required" >&2; exit 1; fi; done
             ;;
         esac
@@ -141,7 +141,7 @@ runs:
 
     - name: prepare-ubuntu-host
       if: ${{ inputs.subaction == 'prepare-ubuntu-host' }}
-      uses: ../prepare-ubuntu-host@v1
+      uses: ../prepare-ubuntu-host
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -163,7 +163,7 @@ runs:
 
     - name: apache-manage-vhost
       if: ${{ inputs.subaction == 'apache-manage-vhost' }}
-      uses: ../apache-manage-vhost@v1
+      uses: ../apache-manage-vhost
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -186,3 +186,135 @@ runs:
         domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.pjson.outputs.json).domain_prefix_prod }}
         domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.pjson.outputs.json).domain_prefix_staging }}
         domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.pjson.outputs.json).domain_prefix_dev }}
+
+    - name: install-podman
+      if: ${{ inputs.subaction == 'install-podman' }}
+      uses: ../install-podman
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.pjson.outputs.json).additional_packages }}
+
+    - name: install-apache
+      if: ${{ inputs.subaction == 'install-apache' }}
+      uses: ../install-apache
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+
+    - name: install-webmin
+      if: ${{ inputs.subaction == 'install-webmin' }}
+      uses: ../install-webmin
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        install_webmin: ${{ inputs.install_webmin != '' && inputs.install_webmin || fromJSON(steps.pjson.outputs.json).install_webmin }}
+        install_usermin: ${{ inputs.install_usermin != '' && inputs.install_usermin || fromJSON(steps.pjson.outputs.json).install_usermin }}
+
+    - name: configure-ufw
+      if: ${{ inputs.subaction == 'configure-ufw' }}
+      uses: ../configure-ufw
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.pjson.outputs.json).ufw_allow_ports }}
+
+    - name: setup-podman-user
+      if: ${{ inputs.subaction == 'setup-podman-user' }}
+      uses: ../setup-podman-user
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.pjson.outputs.json).create_podman_user }}
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.pjson.outputs.json).env_dir_path }}
+
+    - name: determine-domain
+      if: ${{ inputs.subaction == 'determine-domain' }}
+      uses: ../determine-domain
+      with:
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
+        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.pjson.outputs.json).base_domain }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.pjson.outputs.json).domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.pjson.outputs.json).domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.pjson.outputs.json).domain_prefix_dev }}
+
+    - name: compute-host-port
+      if: ${{ inputs.subaction == 'compute-host-port' }}
+      uses: ../compute-host-port
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.pjson.outputs.json).env_file_path }}
+        source_env: ${{ inputs.source_env != '' && inputs.source_env || fromJSON(steps.pjson.outputs.json).source_env }}
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.pjson.outputs.json).host_port }}
+
+    - name: check-dns-match
+      if: ${{ inputs.subaction == 'check-dns-match' }}
+      uses: ../check-dns-match
+      with:
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
+        require_dns_match: ${{ inputs.require_dns_match != '' && inputs.require_dns_match || fromJSON(steps.pjson.outputs.json).require_dns_match }}
+
+    - name: ensure-apache-installed
+      if: ${{ inputs.subaction == 'ensure-apache-installed' }}
+      uses: ../ensure-apache-installed
+
+    - name: enable-apache-modules
+      if: ${{ inputs.subaction == 'enable-apache-modules' }}
+      uses: ../enable-apache-modules
+      with:
+        mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.pjson.outputs.json).vhost_mode }}
+
+    - name: manage-vhost-config
+      if: ${{ inputs.subaction == 'manage-vhost-config' }}
+      uses: ../manage-vhost-config
+      with:
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.pjson.outputs.json).host_port }}
+        mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.pjson.outputs.json).vhost_mode }}
+        wsgi_script_path: ${{ inputs.wsgi_script_path != '' && inputs.wsgi_script_path || fromJSON(steps.pjson.outputs.json).wsgi_script_path }}
+        server_admin: ${{ inputs.server_admin != '' && inputs.server_admin || fromJSON(steps.pjson.outputs.json).server_admin }}
+
+    - name: enable-site-reload
+      if: ${{ inputs.subaction == 'enable-site-reload' }}
+      uses: ../enable-site-reload
+      with:
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}

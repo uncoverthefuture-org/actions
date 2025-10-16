@@ -1,0 +1,65 @@
+name: 'infra: determine-domain'
+description: 'Determine the domain to use for Apache vhost configuration'
+
+inputs:
+  domain:
+    description: 'Full domain to configure. If empty, computed from base_domain + env_name + prefixes.'
+    required: false
+  base_domain:
+    description: 'Base domain used to compute domain when domain is not provided'
+    required: false
+  env_name:
+    description: 'Environment name for domain computation'
+    required: false
+  domain_prefix_prod:
+    description: 'Prefix for production/main env'
+    required: false
+    default: 'app'
+  domain_prefix_staging:
+    description: 'Prefix for staging env'
+    required: false
+  domain_prefix_dev:
+    description: 'Prefix for dev env'
+    required: false
+
+outputs:
+  domain:
+    description: 'The determined domain'
+    value: ${{ steps.determine.outputs.domain }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Determine domain
+      id: determine
+      run: |
+        set -euo pipefail
+        DOMAIN_IN='${{ inputs.domain }}'
+        BASE_DOMAIN='${{ inputs.base_domain }}'
+        ENV_NAME='${{ inputs.env_name }}'
+        DP_PROD='${{ inputs.domain_prefix_prod }}'
+        if [ -z "$DP_PROD" ]; then DP_PROD='app'; fi
+        DP_STG='${{ inputs.domain_prefix_staging }}'
+        if [ -z "$DP_STG" ]; then DP_STG="${DP_PROD}-staging"; fi
+        DP_DEV='${{ inputs.domain_prefix_dev }}'
+        if [ -z "$DP_DEV" ]; then DP_DEV="${DP_PROD}-dev"; fi
+        if [ -n "$DOMAIN_IN" ]; then
+          DOMAIN="$DOMAIN_IN"
+        else
+          if [ -z "$BASE_DOMAIN" ] || [ -z "$ENV_NAME" ]; then
+            echo 'Error: Provide either domain or (base_domain and env_name)' >&2
+            exit 1
+          fi
+          case "$ENV_NAME" in
+            prod|production|main|master)
+              DOMAIN="$DP_PROD.$BASE_DOMAIN" ;;
+            stage|staging)
+              DOMAIN="$DP_STG.$BASE_DOMAIN" ;;
+            dev|develop|development)
+              DOMAIN="$DP_DEV.$BASE_DOMAIN" ;;
+            *)
+              DOMAIN="$ENV_NAME.$BASE_DOMAIN" ;;
+          esac
+        fi
+        echo "domain=$DOMAIN" >> "$GITHUB_OUTPUT"
+      shell: bash

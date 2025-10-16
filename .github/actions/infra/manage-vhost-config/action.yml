@@ -1,0 +1,82 @@
+name: 'infra: manage-vhost-config'
+description: 'Create or update Apache vhost configuration file'
+
+inputs:
+  domain:
+    description: 'Domain for the vhost'
+    required: true
+  host_port:
+    description: 'Host port to proxy to'
+    required: true
+  mode:
+    description: "VHost mode: 'reverse_proxy' or 'mod_wsgi'"
+    required: false
+    default: 'mod_wsgi'
+  wsgi_script_path:
+    description: 'Path to wsgi.py for mod_wsgi mode'
+    required: false
+  server_admin:
+    description: 'ServerAdmin email'
+    required: false
+    default: 'webmaster@localhost'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Manage vhost config
+      run: |
+        set -euo pipefail
+        mkdir -p /etc/apache2/sites-available /etc/apache2/sites-enabled
+        CONF_PATH="/etc/apache2/sites-available/${{ inputs.domain }}.conf"
+        
+        # Backup existing config if present
+        PREV_CONTENT=""
+        if [ -f "$CONF_PATH" ]; then
+          cp -f "$CONF_PATH" "$CONF_PATH.bak.$(date +%s)" || true
+          PREV_CONTENT=$(sed 's/^/# /' "$CONF_PATH" || true)
+        fi
+        
+        SERVER_ADMIN='${{ inputs.server_admin }}'
+        
+        if [ '${{ inputs.mode }}' = 'mod_wsgi' ]; then
+          WSGI_PATH='${{ inputs.wsgi_script_path }}'
+          if [ -z "$WSGI_PATH" ]; then
+            echo 'Error: wsgi_script_path is required for mode=mod_wsgi' >&2
+            exit 1
+          fi
+          cat > "$CONF_PATH" <<EOF
+          # --- Managed by apache-manage-vhost (mod_wsgi) ---
+          # Previous config (commented):
+          ${PREV_CONTENT}
+
+          <VirtualHost *:80>
+            ServerName ${{ inputs.domain }}
+            ServerAdmin ${SERVER_ADMIN}
+            WSGIDaemonProcess ${{ inputs.domain }} python-path=/var/www/${{ inputs.domain }}
+            WSGIProcessGroup ${{ inputs.domain }}
+            WSGIScriptAlias / ${WSGI_PATH}
+            <Directory /var/www/${{ inputs.domain }}>
+              Require all granted
+            </Directory>
+            ErrorLog ${APACHE_LOG_DIR}/${{ inputs.domain }}-error.log
+            CustomLog ${APACHE_LOG_DIR}/${{ inputs.domain }}-access.log combined
+          </VirtualHost>
+          EOF
+                  else
+                    cat > "$CONF_PATH" <<EOF
+          # --- Managed by apache-manage-vhost (reverse_proxy) ---
+          # Previous config (commented):
+          ${PREV_CONTENT}
+
+          <VirtualHost *:80>
+            ServerName ${{ inputs.domain }}
+            ServerAdmin ${SERVER_ADMIN}
+            ProxyPreserveHost On
+            ProxyPass / http://127.0.0.1:${{ inputs.host_port }}/
+            ProxyPassReverse / http://127.0.0.1:${{ inputs.host_port }}/
+            ErrorLog ${APACHE_LOG_DIR}/${{ inputs.domain }}-error.log
+            CustomLog ${APACHE_LOG_DIR}/${{ inputs.domain }}-access.log combined
+          </VirtualHost>
+          EOF
+        fi
+      shell: bash

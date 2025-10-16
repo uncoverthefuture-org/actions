@@ -1,0 +1,54 @@
+name: 'infra: install-podman'
+description: 'Install Podman and dependencies on Ubuntu/Debian host'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username (non-root)'
+    required: true
+  ssh_key:
+    description: 'SSH private key for non-root user'
+    required: true
+  root_ssh_key:
+    description: 'SSH private key for root (optional)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Server SSH host key fingerprint'
+    required: false
+  podman_user:
+    description: 'User on remote host'
+    required: false
+    default: 'deployer'
+  connect_mode:
+    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    required: false
+    default: 'auto'
+  additional_packages:
+    description: 'Additional packages to install with podman'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Podman
+      uses: uncoverthefuture-org/actions@master
+      with:
+        subaction: remote-podman-exec
+        params_json: |
+          {
+            "ssh_host": "${{ inputs.ssh_host }}",
+            "ssh_user": "${{ inputs.ssh_user }}",
+            "ssh_key": "${{ inputs.ssh_key }}",
+            "root_ssh_key": "${{ inputs.root_ssh_key }}",
+            "ssh_port": "${{ inputs.ssh_port }}",
+            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
+            "podman_user": "${{ inputs.podman_user }}",
+            "connect_mode": "${{ inputs.connect_mode }}",
+            "command": "set -euo pipefail\nif command -v apt-get >/dev/null 2>&1; then\n  apt-get update -y\n  apt-get install -y podman uidmap slirp4netns fuse-overlayfs ${{ inputs.additional_packages }}\nelse\n  echo 'Error: Only Debian/Ubuntu apt-based systems are supported' >&2\n  exit 1\nfi"
+          }

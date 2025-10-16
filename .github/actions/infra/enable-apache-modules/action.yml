@@ -1,0 +1,20 @@
+name: 'infra: enable-apache-modules'
+description: 'Enable required Apache modules'
+
+inputs:
+  mode:
+    description: "VHost mode: 'reverse_proxy' or 'mod_wsgi'"
+    required: false
+    default: 'mod_wsgi'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Enable Apache modules
+      run: |
+        set -euo pipefail
+        a2enmod headers rewrite proxy proxy_http >/dev/null 2>&1 || true
+        if [ '${{ inputs.mode }}' = 'mod_wsgi' ]; then
+          a2enmod wsgi >/dev/null 2>&1 || true
+        fi
+      shell: bash

@@ -1,0 +1,19 @@
+name: 'infra: ensure-apache-installed'
+description: 'Ensure Apache2 is installed on Ubuntu/Debian host'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Ensure Apache installed
+      run: |
+        set -euo pipefail
+        if ! command -v apache2ctl >/dev/null 2>&1; then
+          if command -v apt-get >/dev/null 2>&1; then
+            apt-get update -y
+            apt-get install -y apache2 libapache2-mod-proxy-uwsgi libapache2-mod-wsgi-py3
+          else
+            echo 'Error: Apache2 not found and not an apt-based system' >&2
+            exit 1
+          fi
+        fi
+      shell: bash
