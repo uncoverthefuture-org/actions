@@ -1,0 +1,188 @@
+name: 'dispatch: infra'
+description: 'Infra dispatch: route short calls to infra actions'
+
+inputs:
+  subaction:
+    description: "prepare-ubuntu-host | apache-manage-vhost"
+    required: true
+  params_json:
+    description: "JSON blob of parameters to pass to the selected subaction"
+    required: false
+
+  # Common SSH / remote
+  ssh_host:
+    required: false
+  ssh_user:
+    required: false
+  ssh_key:
+    required: false
+  root_ssh_key:
+    required: false
+  ssh_port:
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    required: false
+  podman_user:
+    required: false
+    default: 'deployer'
+  connect_mode:
+    required: false
+    default: 'auto'
+
+  # Prepare host
+  env_dir_path:
+    required: false
+    default: '/opt/ekaban/api'
+  install_podman:
+    required: false
+    default: 'true'
+  additional_packages:
+    required: false
+    default: 'jq curl ca-certificates'
+  create_podman_user:
+    required: false
+    default: 'false'
+  install_apache:
+    required: false
+    default: 'false'
+  install_webmin:
+    required: false
+    default: 'true'
+  install_usermin:
+    required: false
+    default: 'true'
+  configure_ufw:
+    required: false
+    default: 'true'
+  ufw_allow_ports:
+    required: false
+    default: '22 80 443 10000 20000'
+
+  # VHost
+  domain:
+    required: false
+  base_domain:
+    required: false
+  env_name:
+    required: false
+  env_file_path:
+    required: false
+    default: '/opt/ekaban/api/.env.'
+  host_port:
+    required: false
+  vhost_mode:
+    required: false
+    default: 'mod_wsgi'
+  wsgi_script_path:
+    required: false
+  server_admin:
+    required: false
+    default: 'webmaster@localhost'
+  require_dns_match:
+    required: false
+    default: 'true'
+  domain_prefix_prod:
+    required: false
+    default: 'api'
+  domain_prefix_staging:
+    required: false
+    default: 'api-staging'
+  domain_prefix_dev:
+    required: false
+    default: 'api-dev'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Normalize params JSON
+      id: pjson
+      env:
+        INPUT_PARAMS_JSON: ${{ inputs.params_json }}
+      run: |
+        set -euo pipefail
+        J="${INPUT_PARAMS_JSON}"
+        if [ -z "$J" ]; then J='{}'; fi
+        echo "json=$J" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - name: Validate infra subaction
+      run: |
+        set -euo pipefail
+        SA='${{ inputs.subaction }}'
+        case "$SA" in prepare-ubuntu-host|apache-manage-vhost) :;; *) echo "Error: unsupported infra subaction '$SA'" >&2; exit 1;; esac
+      shell: bash
+
+    - name: Validate base SSH for infra subactions
+      env:
+        J_SSH_HOST: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        J_SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        J_SSH_KEY:  ${{ inputs.ssh_key  != '' && inputs.ssh_key  || fromJSON(steps.pjson.outputs.json).ssh_key  }}
+      run: |
+        set -euo pipefail
+        case "${{ inputs.subaction }}" in
+          prepare-ubuntu-host|apache-manage-vhost)
+            for n in J_SSH_HOST J_SSH_USER J_SSH_KEY; do v="${!n}"; if [ -z "$v" ]; then echo "Error: ${n#J_} is required" >&2; exit 1; fi; done
+            ;;
+        esac
+      shell: bash
+
+    - name: Validate vhost inputs
+      if: ${{ inputs.subaction == 'apache-manage-vhost' }}
+      env:
+        J_DOMAIN: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
+        J_BASE_DOMAIN: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.pjson.outputs.json).base_domain }}
+        J_ENV_NAME: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+      run: |
+        set -euo pipefail
+        if [ -z "${J_DOMAIN}" ] && { [ -z "${J_BASE_DOMAIN}" ] || [ -z "${J_ENV_NAME}" ]; }; then
+          echo 'Error: provide domain or (base_domain and env_name) for apache-manage-vhost' >&2; exit 1;
+        fi
+      shell: bash
+
+    - name: prepare-ubuntu-host
+      if: ${{ inputs.subaction == 'prepare-ubuntu-host' }}
+      uses: ./.github/actions/infra/prepare-ubuntu-host
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.pjson.outputs.json).env_dir_path }}
+        install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.pjson.outputs.json).install_podman }}
+        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.pjson.outputs.json).additional_packages }}
+        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.pjson.outputs.json).create_podman_user }}
+        install_apache: ${{ inputs.install_apache != '' && inputs.install_apache || fromJSON(steps.pjson.outputs.json).install_apache }}
+        install_webmin: ${{ inputs.install_webmin != '' && inputs.install_webmin || fromJSON(steps.pjson.outputs.json).install_webmin }}
+        install_usermin: ${{ inputs.install_usermin != '' && inputs.install_usermin || fromJSON(steps.pjson.outputs.json).install_usermin }}
+        configure_ufw: ${{ inputs.configure_ufw != '' && inputs.configure_ufw || fromJSON(steps.pjson.outputs.json).configure_ufw }}
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.pjson.outputs.json).ufw_allow_ports }}
+
+    - name: apache-manage-vhost
+      if: ${{ inputs.subaction == 'apache-manage-vhost' }}
+      uses: ./.github/actions/infra/apache-manage-vhost
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: 'root'
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
+        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.pjson.outputs.json).base_domain }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.pjson.outputs.json).env_file_path }}
+        source_env: 'true'
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.pjson.outputs.json).host_port }}
+        mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.pjson.outputs.json).vhost_mode }}
+        wsgi_script_path: ${{ inputs.wsgi_script_path != '' && inputs.wsgi_script_path || fromJSON(steps.pjson.outputs.json).wsgi_script_path }}
+        server_admin: ${{ inputs.server_admin != '' && inputs.server_admin || fromJSON(steps.pjson.outputs.json).server_admin }}
+        require_dns_match: ${{ inputs.require_dns_match != '' && inputs.require_dns_match || fromJSON(steps.pjson.outputs.json).require_dns_match }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.pjson.outputs.json).domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.pjson.outputs.json).domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.pjson.outputs.json).domain_prefix_dev }}

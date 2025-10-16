@@ -1,0 +1,56 @@
+name: 'dispatch: build'
+description: 'Build dispatch: route short calls to build actions'
+
+inputs:
+  subaction:
+    description: "build-and-push"
+    required: true
+  params_json:
+    description: "JSON blob of parameters to pass (image_name, github_token, registry)"
+    required: false
+  image_name:
+    required: false
+  github_token:
+    required: false
+  registry:
+    required: false
+    default: 'ghcr.io'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Normalize params JSON
+      id: pjson
+      env:
+        INPUT_PARAMS_JSON: ${{ inputs.params_json }}
+      run: |
+        set -euo pipefail
+        J="${INPUT_PARAMS_JSON}"
+        if [ -z "$J" ]; then J='{}'; fi
+        echo "json=$J" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - name: Validate build subaction
+      run: |
+        set -euo pipefail
+        SA='${{ inputs.subaction }}'
+        case "$SA" in build-and-push) :;; *) echo "Error: unsupported build subaction '$SA'" >&2; exit 1;; esac
+      shell: bash
+
+    - name: Validate inputs
+      if: ${{ inputs.subaction == 'build-and-push' }}
+      env:
+        J_IMAGE_NAME: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name }}
+        J_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || fromJSON(steps.pjson.outputs.json).github_token }}
+      run: |
+        set -euo pipefail
+        if [ -z "${J_IMAGE_NAME}" ]; then echo 'Error: image_name is required' ; exit 1 ; fi
+        if [ -z "${J_GITHUB_TOKEN}" ]; then echo 'Error: github_token is required' ; exit 1 ; fi
+      shell: bash
+
+    - name: build-and-push
+      if: ${{ inputs.subaction == 'build-and-push' }}
+      uses: ./.github/actions/build/build-and-push
+      with:
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name }}
+        github_token: ${{ inputs.github_token != '' && inputs.github_token || fromJSON(steps.pjson.outputs.json).github_token }}
+        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.pjson.outputs.json).registry }}

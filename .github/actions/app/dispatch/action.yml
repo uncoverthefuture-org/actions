@@ -1,0 +1,269 @@
+name: 'dispatch: app'
+description: 'App dispatch: route short calls to app actions'
+
+inputs:
+  subaction:
+    description: "ssh-django-api-deploy | write-remote-env-file"
+    required: true
+  params_json:
+    description: "JSON blob of parameters to pass to the selected subaction"
+    required: false
+
+  # Common SSH / remote
+  ssh_host:
+    required: false
+  ssh_user:
+    required: false
+  ssh_key:
+    required: false
+  root_ssh_key:
+    required: false
+  ssh_port:
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    required: false
+  podman_user:
+    required: false
+    default: 'deployer'
+  connect_mode:
+    required: false
+    default: 'auto'
+
+  # Orchestration flags
+  prepare_host:
+    required: false
+    default: 'false'
+
+  # Host prep
+  env_dir_path:
+    required: false
+  install_podman:
+    required: false
+    default: 'true'
+  additional_packages:
+    required: false
+    default: 'jq curl ca-certificates'
+  create_podman_user:
+    required: false
+    default: 'false'
+
+  # Env
+  env_name:
+    required: false
+  env_file_path:
+    required: false
+  env_b64:
+    required: false
+  env_content:
+    required: false
+
+  # Registry & image
+  registry:
+    required: false
+    default: 'ghcr.io'
+  image_name:
+    required: false
+  image_tag:
+    required: false
+  registry_login:
+    required: false
+    default: 'true'
+  registry_username:
+    required: false
+  registry_token:
+    required: false
+
+  # Runtime
+  app_slug:
+    required: false
+  container_name:
+    required: false
+  host_port:
+    required: false
+  container_port:
+    required: false
+  restart_policy:
+    required: false
+    default: 'unless-stopped'
+  migrate:
+    required: false
+    default: 'true'
+  migrate_cmd:
+    required: false
+    default: 'python manage.py migrate --noinput'
+  extra_run_args:
+    required: false
+  memory_limit:
+    required: false
+    default: '512m'
+
+  # VHost
+  manage_vhost:
+    required: false
+    default: 'false'
+  domain:
+    required: false
+  base_domain:
+    required: false
+  domain_prefix_prod:
+    required: false
+    default: 'api'
+  domain_prefix_staging:
+    required: false
+    default: 'api-staging'
+  domain_prefix_dev:
+    required: false
+    default: 'api-dev'
+  vhost_mode:
+    required: false
+    default: 'mod_wsgi'
+  wsgi_script_path:
+    required: false
+  require_dns_match:
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Normalize params JSON
+      id: pjson
+      env:
+        INPUT_PARAMS_JSON: ${{ inputs.params_json }}
+      run: |
+        set -euo pipefail
+        J="${INPUT_PARAMS_JSON}"
+        if [ -z "$J" ]; then J='{}'; fi
+        echo "json=$J" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - name: Compute derived defaults
+      id: dfl
+      env:
+        GH_REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        REPO="${GH_REPOSITORY##*/}"
+        # slugify: lower-case and replace spaces with dashes
+        SLUG=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+        APP_SLUG="$SLUG"
+        ENV_DIR="/opt/${APP_SLUG}"
+        ENV_FILE_PATH="${ENV_DIR}/.env."
+        IMG_NAME="${GH_REPOSITORY}"
+        echo "app_slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
+        echo "env_dir_path=$ENV_DIR" >> "$GITHUB_OUTPUT"
+        echo "env_file_path=$ENV_FILE_PATH" >> "$GITHUB_OUTPUT"
+        echo "image_name=$IMG_NAME" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - name: Validate app subaction
+      run: |
+        set -euo pipefail
+        SA='${{ inputs.subaction }}'
+        case "$SA" in ssh-django-api-deploy|write-remote-env-file) :;; *) echo "Error: unsupported app subaction '$SA'" >&2; exit 1;; esac
+      shell: bash
+
+    - name: Validate base SSH for app subactions
+      env:
+        J_SSH_HOST: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        J_SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        J_SSH_KEY:  ${{ inputs.ssh_key  != '' && inputs.ssh_key  || fromJSON(steps.pjson.outputs.json).ssh_key  }}
+      run: |
+        set -euo pipefail
+        case "${{ inputs.subaction }}" in
+          ssh-django-api-deploy|write-remote-env-file)
+            for n in J_SSH_HOST J_SSH_USER J_SSH_KEY; do v="${!n}"; if [ -z "$v" ]; then echo "Error: ${n#J_} is required" >&2; exit 1; fi; done
+            ;;
+        esac
+      shell: bash
+
+    - name: Validate subaction-specific inputs
+      env:
+        J_ENV_NAME: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        J_ENV_B64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.pjson.outputs.json).env_b64 }}
+        J_ENV_CONTENT: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.pjson.outputs.json).env_content }}
+        J_IMAGE_NAME: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name }}
+        J_IMAGE_TAG: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.pjson.outputs.json).image_tag }}
+        J_REGISTRY_LOGIN: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.pjson.outputs.json).registry_login }}
+        J_REGISTRY_USERNAME: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.pjson.outputs.json).registry_username }}
+        J_REGISTRY_TOKEN: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.pjson.outputs.json).registry_token }}
+      run: |
+        set -euo pipefail
+        case "${{ inputs.subaction }}" in
+          write-remote-env-file)
+            if [ -z "${J_ENV_NAME}" ]; then echo 'Error: env_name is required for write-remote-env-file' >&2; exit 1; fi
+            if [ -z "${J_ENV_B64}" ] && [ -z "${J_ENV_CONTENT}" ]; then
+              echo 'Error: env_b64 or env_content required for write-remote-env-file' >&2; exit 1;
+            fi
+            ;;
+          ssh-django-api-deploy)
+            for v in J_ENV_NAME J_IMAGE_NAME J_IMAGE_TAG; do vv="${!v}"; if [ -z "$vv" ]; then echo "Error: ${v#J_} is required for ssh-django-api-deploy" >&2; exit 1; fi; done
+            if [ "${J_REGISTRY_LOGIN}" = "true" ]; then
+              for v in J_REGISTRY_USERNAME J_REGISTRY_TOKEN; do vv="${!v}"; if [ -z "$vv" ]; then echo "Error: ${v#J_} is required when registry_login=true" >&2; exit 1; fi; done
+            fi
+            ;;
+        esac
+      shell: bash
+
+    - name: write-remote-env-file
+      if: ${{ inputs.subaction == 'write-remote-env-file' }}
+      uses: ./.github/actions/app/write-remote-env-file
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.pjson.outputs.json).env_file_path || steps.dfl.outputs.env_file_path }}
+        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.pjson.outputs.json).env_b64 }}
+        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.pjson.outputs.json).env_content }}
+
+    - name: ssh-django-api-deploy
+      if: ${{ inputs.subaction == 'ssh-django-api-deploy' }}
+      uses: ./.github/actions/app/ssh-django-api-deploy
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        prepare_host: ${{ inputs.prepare_host != '' && inputs.prepare_host || fromJSON(steps.pjson.outputs.json).prepare_host }}
+        install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.pjson.outputs.json).install_podman }}
+        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.pjson.outputs.json).create_podman_user }}
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.pjson.outputs.json).env_dir_path || steps.dfl.outputs.env_dir_path }}
+        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.pjson.outputs.json).additional_packages }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.pjson.outputs.json).env_file_path || steps.dfl.outputs.env_file_path }}
+        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.pjson.outputs.json).write_env_file }}
+        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.pjson.outputs.json).env_b64 }}
+        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.pjson.outputs.json).env_content }}
+        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.pjson.outputs.json).registry }}
+        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.pjson.outputs.json).registry_username }}
+        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.pjson.outputs.json).registry_token }}
+        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.pjson.outputs.json).registry_login }}
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name || steps.dfl.outputs.image_name }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.pjson.outputs.json).image_tag }}
+        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.pjson.outputs.json).app_slug || steps.dfl.outputs.app_slug }}
+        container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.pjson.outputs.json).container_name }}
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.pjson.outputs.json).host_port }}
+        container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.pjson.outputs.json).container_port }}
+        restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.pjson.outputs.json).restart_policy }}
+        migrate: ${{ inputs.migrate != '' && inputs.migrate || fromJSON(steps.pjson.outputs.json).migrate }}
+        migrate_cmd: ${{ inputs.migrate_cmd != '' && inputs.migrate_cmd || fromJSON(steps.pjson.outputs.json).migrate_cmd }}
+        extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.pjson.outputs.json).extra_run_args }}
+        memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.pjson.outputs.json).memory_limit }}
+        manage_vhost: ${{ inputs.manage_vhost != '' && inputs.manage_vhost || fromJSON(steps.pjson.outputs.json).manage_vhost }}
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
+        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.pjson.outputs.json).base_domain }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.pjson.outputs.json).domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.pjson.outputs.json).domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.pjson.outputs.json).domain_prefix_dev }}
+        vhost_mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.pjson.outputs.json).vhost_mode }}
+        wsgi_script_path: ${{ inputs.wsgi_script_path != '' && inputs.wsgi_script_path || fromJSON(steps.pjson.outputs.json).wsgi_script_path }}
+        require_dns_match: ${{ inputs.require_dns_match != '' && inputs.require_dns_match || fromJSON(steps.pjson.outputs.json).require_dns_match }}

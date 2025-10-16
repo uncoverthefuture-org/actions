@@ -47,7 +47,6 @@ inputs:
   env_dir_path:
     description: 'Directory to hold env files and app data on the server'
     required: false
-    default: '/opt/ekaban/api'
   additional_packages:
     description: 'Space-separated additional apt packages for host preparation'
     required: false
@@ -60,7 +59,6 @@ inputs:
   env_file_path:
     description: 'Base path to the environment file on the server (prefix); final path is ${env_file_path}${env_name}'
     required: false
-    default: '/opt/ekaban/api/.env.'
   write_env_file:
     description: 'If true, write the env file on the server before deploy'
     required: false
@@ -98,7 +96,6 @@ inputs:
   app_slug:
     description: 'Slug used in default container name'
     required: false
-    default: 'ekaban-api'
   container_name:
     description: 'Override container name (defaults to ${app_slug}-${env_name})'
     required: false
@@ -257,13 +254,32 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Compute derived defaults
+      id: dfl
+      env:
+        GH_REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        REPO="${GH_REPOSITORY##*/}"
+        SLUG=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+        APP_SLUG="$SLUG"
+        ENV_DIR="/opt/${APP_SLUG}"
+        ENV_FILE_PATH="${ENV_DIR}/.env."
+        IMG_NAME="${GH_REPOSITORY}"
+        echo "app_slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
+        echo "env_dir_path=$ENV_DIR" >> "$GITHUB_OUTPUT"
+        echo "env_file_path=$ENV_FILE_PATH" >> "$GITHUB_OUTPUT"
+        echo "image_name=$IMG_NAME" >> "$GITHUB_OUTPUT"
+      shell: bash
     - name: Validate inputs
+      env:
+        J_IMAGE_NAME: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}
       run: |
         set -euo pipefail
         if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
         if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
         if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
-        if [ -z "${{ inputs.image_name }}" ]; then echo 'Error: image_name is required' ; exit 1 ; fi
+        if [ -z "${J_IMAGE_NAME}" ]; then echo 'Error: image_name is required' ; exit 1 ; fi
         if [ -z "${{ inputs.image_tag }}" ]; then echo 'Error: image_tag is required' ; exit 1 ; fi
         if [ "${{ inputs.registry_login }}" = "true" ]; then
           if [ -z "${{ inputs.registry_username }}" ]; then echo 'Error: registry_username is required when registry_login=true' ; exit 1 ; fi
@@ -280,7 +296,7 @@ runs:
 
     - name: Prepare host (optional)
       if: ${{ inputs.prepare_host == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/infra/prepare-ubuntu-host@v1
+      uses: ./.github/actions/infra/prepare-ubuntu-host
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -292,12 +308,12 @@ runs:
         connect_mode: ${{ inputs.connect_mode }}
         install_podman: ${{ inputs.install_podman }}
         create_podman_user: ${{ inputs.create_podman_user }}
-        env_dir_path: ${{ inputs.env_dir_path }}
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages }}
 
     - name: Write env file (optional)
       if: ${{ inputs.write_env_file == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/write-remote-env-file@v1
+      uses: ./.github/actions/app/write-remote-env-file
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -308,12 +324,12 @@ runs:
         podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         env_name: ${{ inputs.env_name }}
-        env_file_path: ${{ inputs.env_file_path }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
         env_b64: ${{ inputs.env_b64 }}
         env_content: ${{ inputs.env_content }}
 
     - name: Login and pull image
-      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-login-pull@v1
+      uses: ./.github/actions/podman/podman-login-pull
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -327,11 +343,11 @@ runs:
         registry_username: ${{ inputs.registry_username }}
         registry_token: ${{ inputs.registry_token }}
         registry_login: ${{ inputs.registry_login }}
-        image_name: ${{ inputs.image_name }}
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}
         image_tag: ${{ inputs.image_tag }}
 
     - name: Deploy Django API
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -342,18 +358,18 @@ runs:
         podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         env_name: ${{ inputs.env_name }}
-        env_file_path: ${{ inputs.env_file_path }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
         source_env: ${{ inputs.source_env }}
         fail_if_env_missing: ${{ inputs.fail_if_env_missing }}
         inline_script: |
           set -euo pipefail
 
-          ENV_FILE="${{ inputs.env_file_path }}${{ inputs.env_name }}"
-          IMAGE="${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.image_tag }}"
+          ENV_FILE="${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name }}"
+          IMAGE="${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:${{ inputs.image_tag }}"
 
           # container name
           CN_IN="${{ inputs.container_name }}"
-          APP_SLUG="${{ inputs.app_slug }}"
+          APP_SLUG="${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}"
           CONTAINER_NAME="${CN_IN:-${APP_SLUG}-${{ inputs.env_name }}}"
 
           # ports (allow overrides)
@@ -391,7 +407,7 @@ runs:
 
     - name: Run worker (optional)
       if: ${{ inputs.run_worker == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-run-service@v1
+      uses: ./.github/actions/podman/podman-run-service
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -402,8 +418,8 @@ runs:
         podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         service_name: ${{ inputs.worker_service_name }}
-        image: ${{ inputs.worker_image != '' && inputs.worker_image || format('{0}/{1}:{2}', inputs.registry, inputs.image_name, inputs.image_tag) }}
-        env_file: ${{ inputs.env_file_path }}${{ inputs.env_name }}
+        image: ${{ inputs.worker_image != '' && inputs.worker_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), inputs.image_tag) }}
+        env_file: ${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name }}
         command: ${{ inputs.worker_command }}
         restart_policy: 'unless-stopped'
         memory_limit: ${{ inputs.worker_memory_limit }}
@@ -411,7 +427,7 @@ runs:
 
     - name: Run scheduler (optional)
       if: ${{ inputs.run_scheduler == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-run-service@v1
+      uses: ./.github/actions/podman/podman-run-service
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -422,8 +438,8 @@ runs:
         podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         service_name: ${{ inputs.scheduler_service_name }}
-        image: ${{ inputs.scheduler_image != '' && inputs.scheduler_image || format('{0}/{1}:{2}', inputs.registry, inputs.image_name, inputs.image_tag) }}
-        env_file: ${{ inputs.env_file_path }}${{ inputs.env_name }}
+        image: ${{ inputs.scheduler_image != '' && inputs.scheduler_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), inputs.image_tag) }}
+        env_file: ${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name }}
         command: ${{ inputs.scheduler_command }}
         restart_policy: 'unless-stopped'
         memory_limit: ${{ inputs.scheduler_memory_limit }}
@@ -431,7 +447,7 @@ runs:
 
     - name: Manage Apache vhost (optional)
       if: ${{ inputs.manage_vhost == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/infra/apache-manage-vhost@v1
+      uses: ./.github/actions/infra/apache-manage-vhost
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -441,7 +457,7 @@ runs:
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         connect_mode: 'root'
         env_name: ${{ inputs.env_name }}
-        env_file_path: ${{ inputs.env_file_path }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
         domain: ${{ inputs.domain }}
         base_domain: ${{ inputs.base_domain }}
         domain_prefix_prod: ${{ inputs.domain_prefix_prod }}

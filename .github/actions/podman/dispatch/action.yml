@@ -1,0 +1,283 @@
+name: 'dispatch: podman'
+description: 'Podman dispatch: route short calls to podman actions'
+
+inputs:
+  subaction:
+    description: "remote-podman-exec | podman-login-pull | podman-stop-rm-container | podman-run-service | podman-run-db"
+    required: true
+  params_json:
+    description: "JSON blob of parameters to pass to the selected subaction"
+    required: false
+
+  # Common SSH / remote
+  ssh_host:
+    required: false
+  ssh_user:
+    required: false
+  ssh_key:
+    required: false
+  root_ssh_key:
+    required: false
+  ssh_port:
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    required: false
+  podman_user:
+    required: false
+    default: 'deployer'
+  connect_mode:
+    required: false
+    default: 'auto'
+
+  # Env for remote-podman-exec
+  env_name:
+    required: false
+  env_file_path:
+    required: false
+    default: '/opt/ekaban/api/.env.'
+  source_env:
+    required: false
+    default: 'false'
+  fail_if_env_missing:
+    required: false
+    default: 'true'
+  command:
+    required: false
+
+  # Registry / images
+  registry:
+    required: false
+    default: 'ghcr.io'
+  image_name:
+    required: false
+  image_tag:
+    required: false
+  registry_login:
+    required: false
+    default: 'true'
+  registry_username:
+    required: false
+  registry_token:
+    required: false
+
+  # Generic service runner
+  service_name:
+    required: false
+  image:
+    required: false
+  env_file:
+    required: false
+  restart_policy:
+    required: false
+    default: 'unless-stopped'
+  memory_limit:
+    required: false
+    default: '512m'
+  volumes:
+    required: false
+  host_port:
+    required: false
+  container_port:
+    required: false
+  extra_run_args:
+    required: false
+
+  # DB
+  db_type:
+    required: false
+    default: 'mysql'
+  db_service_name:
+    required: false
+  db_name:
+    required: false
+  db_user:
+    required: false
+  db_password:
+    required: false
+  db_root_password:
+    required: false
+  db_host_port:
+    required: false
+  db_data_volume:
+    required: false
+  db_image_tag:
+    required: false
+  db_memory_limit:
+    required: false
+    default: '512m'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Normalize params JSON
+      id: pjson
+      env:
+        INPUT_PARAMS_JSON: ${{ inputs.params_json }}
+      run: |
+        set -euo pipefail
+        J="${INPUT_PARAMS_JSON}"
+        if [ -z "$J" ]; then J='{}'; fi
+        echo "json=$J" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - name: Validate subaction
+      run: |
+        set -euo pipefail
+        SA='${{ inputs.subaction }}'
+        case "$SA" in remote-podman-exec|podman-login-pull|podman-stop-rm-container|podman-run-service|podman-run-db) :;; *) echo "Error: unsupported podman subaction '$SA'" >&2; exit 1;; esac
+      shell: bash
+
+    - name: Validate base SSH for podman subactions
+      env:
+        J_SSH_HOST: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        J_SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        J_SSH_KEY:  ${{ inputs.ssh_key  != '' && inputs.ssh_key  || fromJSON(steps.pjson.outputs.json).ssh_key  }}
+      run: |
+        set -euo pipefail
+        case "${{ inputs.subaction }}" in
+          remote-podman-exec|podman-login-pull|podman-stop-rm-container|podman-run-service|podman-run-db)
+            for n in J_SSH_HOST J_SSH_USER J_SSH_KEY; do v="${!n}"; if [ -z "$v" ]; then echo "Error: ${n#J_} is required" >&2; exit 1; fi; done
+            ;;
+        esac
+      shell: bash
+
+    - name: Validate subaction-specific inputs
+      env:
+        J_COMMAND: ${{ inputs.command != '' && inputs.command || fromJSON(steps.pjson.outputs.json).command }}
+        J_REGISTRY: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.pjson.outputs.json).registry }}
+        J_IMAGE_NAME: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name }}
+        J_IMAGE_TAG: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.pjson.outputs.json).image_tag }}
+        J_REGISTRY_LOGIN: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.pjson.outputs.json).registry_login }}
+        J_REGISTRY_USERNAME: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.pjson.outputs.json).registry_username }}
+        J_REGISTRY_TOKEN: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.pjson.outputs.json).registry_token }}
+        J_SERVICE_NAME: ${{ inputs.service_name != '' && inputs.service_name || fromJSON(steps.pjson.outputs.json).service_name }}
+        J_IMAGE: ${{ inputs.image != '' && inputs.image || fromJSON(steps.pjson.outputs.json).image }}
+        J_DB_SERVICE_NAME: ${{ inputs.db_service_name != '' && inputs.db_service_name || fromJSON(steps.pjson.outputs.json).db_service_name }}
+        J_DB_NAME: ${{ inputs.db_name != '' && inputs.db_name || fromJSON(steps.pjson.outputs.json).db_name }}
+        J_DB_USER: ${{ inputs.db_user != '' && inputs.db_user || fromJSON(steps.pjson.outputs.json).db_user }}
+        J_DB_PASSWORD: ${{ inputs.db_password != '' && inputs.db_password || fromJSON(steps.pjson.outputs.json).db_password }}
+        J_ENV_NAME: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+      run: |
+        set -euo pipefail
+        case "${{ inputs.subaction }}" in
+          remote-podman-exec)
+            if [ -z "${J_COMMAND}" ]; then echo 'Error: command is required for remote-podman-exec' >&2; exit 1; fi
+            ;;
+          podman-login-pull)
+            for v in J_REGISTRY J_IMAGE_NAME J_IMAGE_TAG; do vv="${!v}"; if [ -z "$vv" ]; then echo "Error: ${v#J_} is required for podman-login-pull" >&2; exit 1; fi; done
+            if [ "${J_REGISTRY_LOGIN}" = "true" ]; then
+              for v in J_REGISTRY_USERNAME J_REGISTRY_TOKEN; do vv="${!v}"; if [ -z "$vv" ]; then echo "Error: ${v#J_} is required when registry_login=true" >&2; exit 1; fi; done
+            fi
+            ;;
+          podman-stop-rm-container)
+            if [ -z "${J_SERVICE_NAME}" ] && { [ -z "${J_ENV_NAME}" ] || [ -z "${J_IMAGE_NAME}" ]; }; then
+              : # allow either explicit container_name mapping via service_name or app/env composition; handled inside action
+            fi
+            ;;
+          podman-run-service)
+            for v in J_SERVICE_NAME J_IMAGE; do vv="${!v}"; if [ -z "$vv" ]; then echo "Error: ${v#J_} is required for podman-run-service" >&2; exit 1; fi; done
+            ;;
+          podman-run-db)
+            for v in J_DB_SERVICE_NAME J_DB_NAME J_DB_USER J_DB_PASSWORD; do vv="${!v}"; if [ -z "$vv" ]; then echo "Error: ${v#J_} is required for podman-run-db" >&2; exit 1; fi; done
+            ;;
+        esac
+      shell: bash
+
+    - name: remote-podman-exec
+      if: ${{ inputs.subaction == 'remote-podman-exec' }}
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.pjson.outputs.json).env_file_path }}
+        source_env: ${{ inputs.source_env != '' && inputs.source_env || fromJSON(steps.pjson.outputs.json).source_env }}
+        fail_if_env_missing: ${{ inputs.fail_if_env_missing != '' && inputs.fail_if_env_missing || fromJSON(steps.pjson.outputs.json).fail_if_env_missing }}
+        inline_script: ${{ inputs.command != '' && inputs.command || fromJSON(steps.pjson.outputs.json).command }}
+
+    - name: podman-login-pull
+      if: ${{ inputs.subaction == 'podman-login-pull' }}
+      uses: ./.github/actions/podman/podman-login-pull
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.pjson.outputs.json).registry }}
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.pjson.outputs.json).image_tag }}
+        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.pjson.outputs.json).registry_login }}
+        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.pjson.outputs.json).registry_username }}
+        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.pjson.outputs.json).registry_token }}
+
+    - name: podman-stop-rm-container
+      if: ${{ inputs.subaction == 'podman-stop-rm-container' }}
+      uses: ./.github/actions/podman/podman-stop-rm-container
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        container_name: ${{ inputs.service_name != '' && inputs.service_name || fromJSON(steps.pjson.outputs.json).service_name }}
+        app_slug: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+
+    - name: podman-run-service
+      if: ${{ inputs.subaction == 'podman-run-service' }}
+      uses: ./.github/actions/podman/podman-run-service
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        service_name: ${{ inputs.service_name != '' && inputs.service_name || fromJSON(steps.pjson.outputs.json).service_name }}
+        image: ${{ inputs.image != '' && inputs.image || fromJSON(steps.pjson.outputs.json).image }}
+        env_file: ${{ inputs.env_file != '' && inputs.env_file || fromJSON(steps.pjson.outputs.json).env_file }}
+        command: ${{ inputs.command != '' && inputs.command || fromJSON(steps.pjson.outputs.json).command }}
+        restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.pjson.outputs.json).restart_policy }}
+        memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.pjson.outputs.json).memory_limit }}
+        volumes: ${{ inputs.volumes != '' && inputs.volumes || fromJSON(steps.pjson.outputs.json).volumes }}
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.pjson.outputs.json).host_port }}
+        container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.pjson.outputs.json).container_port }}
+        extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.pjson.outputs.json).extra_run_args }}
+
+    - name: podman-run-db
+      if: ${{ inputs.subaction == 'podman-run-db' }}
+      uses: ./.github/actions/podman/podman-run-db
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        db_type: ${{ inputs.db_type != '' && inputs.db_type || fromJSON(steps.pjson.outputs.json).db_type }}
+        service_name: ${{ inputs.db_service_name != '' && inputs.db_service_name || fromJSON(steps.pjson.outputs.json).db_service_name }}
+        db_name: ${{ inputs.db_name != '' && inputs.db_name || fromJSON(steps.pjson.outputs.json).db_name }}
+        db_user: ${{ inputs.db_user != '' && inputs.db_user || fromJSON(steps.pjson.outputs.json).db_user }}
+        db_password: ${{ inputs.db_password != '' && inputs.db_password || fromJSON(steps.pjson.outputs.json).db_password }}
+        db_root_password: ${{ inputs.db_root_password != '' && inputs.db_root_password || fromJSON(steps.pjson.outputs.json).db_root_password }}
+        host_port: ${{ inputs.db_host_port != '' && inputs.db_host_port || fromJSON(steps.pjson.outputs.json).db_host_port }}
+        data_volume: ${{ inputs.db_data_volume != '' && inputs.db_data_volume || fromJSON(steps.pjson.outputs.json).db_data_volume }}
+        image_tag: ${{ inputs.db_image_tag != '' && inputs.db_image_tag || fromJSON(steps.pjson.outputs.json).db_image_tag }}
+        memory_limit: ${{ inputs.db_memory_limit != '' && inputs.db_memory_limit || fromJSON(steps.pjson.outputs.json).db_memory_limit }}
