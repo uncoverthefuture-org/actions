@@ -1,0 +1,37 @@
+name: 'app: validate base ssh'
+description: 'Ensures SSH host and key are provided for applicable app subactions.'
+
+inputs:
+  subaction:
+    description: 'App subaction name.'
+    required: true
+  ssh_host:
+    description: 'SSH host value to validate.'
+    required: false
+  ssh_key:
+    description: 'SSH key value to validate.'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate base SSH requirements
+      shell: bash
+      env:
+        SUBACTION: ${{ inputs.subaction }}
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+      run: |
+        set -euo pipefail
+        case "$SUBACTION" in
+          ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file)
+            if [ -z "$SSH_HOST" ]; then
+              echo 'Error: ssh_host is required for app deployment subactions' >&2
+              exit 1
+            fi
+            if [ -z "$SSH_KEY" ]; then
+              echo 'Error: ssh_key is required for app deployment subactions' >&2
+              exit 1
+            fi
+            ;;
+        esac

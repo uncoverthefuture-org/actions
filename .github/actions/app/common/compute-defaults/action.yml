@@ -1,0 +1,37 @@
+name: 'app: compute defaults'
+description: 'Derive application defaults (slug, env paths, image name) from repository context.'
+
+outputs:
+  app_slug:
+    description: 'Slugified repository name.'
+    value: ${{ steps.defaults.outputs.app_slug }}
+  env_dir_path:
+    description: 'Default environment directory path on remote host.'
+    value: ${{ steps.defaults.outputs.env_dir_path }}
+  env_file_path:
+    description: 'Default environment file prefix on remote host.'
+    value: ${{ steps.defaults.outputs.env_file_path }}
+  image_name:
+    description: 'Default container image name derived from repository.'
+    value: ${{ steps.defaults.outputs.image_name }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Compute defaults
+      id: defaults
+      shell: bash
+      env:
+        GH_REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        REPO="${GH_REPOSITORY##*/}"
+        SLUG=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+        APP_SLUG="$SLUG"
+        ENV_DIR="/opt/${APP_SLUG}"
+        ENV_FILE_PATH="${ENV_DIR}/.env."
+        IMG_NAME="${GH_REPOSITORY}"
+        echo "app_slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
+        echo "env_dir_path=$ENV_DIR" >> "$GITHUB_OUTPUT"
+        echo "env_file_path=$ENV_FILE_PATH" >> "$GITHUB_OUTPUT"
+        echo "image_name=$IMG_NAME" >> "$GITHUB_OUTPUT"

@@ -55,7 +55,7 @@ runs:
     - name: build-and-push
       id: call
       if: ${{ inputs.subaction == 'build-and-push' }}
-      uses: ../build-and-push@master
+      uses: uncoverthefuture-org/actions/.github/actions/build/build-and-push@master
       with:
         image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name }}
         github_token: ${{ inputs.github_token != '' && inputs.github_token || fromJSON(steps.pjson.outputs.json).github_token }}

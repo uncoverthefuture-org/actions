@@ -1,0 +1,41 @@
+name: 'app: validate env inputs'
+description: 'Validates environment-related inputs for specific app subactions.'
+
+inputs:
+  subaction:
+    description: 'App subaction name.'
+    required: true
+  env_name:
+    description: 'Environment name value.'
+    required: false
+  env_b64:
+    description: 'Base64-encoded environment content.'
+    required: false
+  env_content:
+    description: 'Plain-text environment content.'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate env inputs
+      shell: bash
+      env:
+        SUBACTION: ${{ inputs.subaction }}
+        ENV_NAME: ${{ inputs.env_name }}
+        ENV_B64: ${{ inputs.env_b64 }}
+        ENV_CONTENT: ${{ inputs.env_content }}
+      run: |
+        set -euo pipefail
+        case "$SUBACTION" in
+          write-remote-env-file)
+            if [ -z "$ENV_NAME" ]; then
+              echo 'Error: env_name is required for write-remote-env-file' >&2
+              exit 1
+            fi
+            if [ -z "$ENV_B64" ] && [ -z "$ENV_CONTENT" ]; then
+              echo 'Error: env_b64 or env_content must be provided for write-remote-env-file' >&2
+              exit 1
+            fi
+            ;;
+        esac

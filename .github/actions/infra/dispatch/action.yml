@@ -141,7 +141,7 @@ runs:
 
     - name: prepare-ubuntu-host
       if: ${{ inputs.subaction == 'prepare-ubuntu-host' }}
-      uses: ../prepare-ubuntu-host
+      uses: uncoverthefuture-org/actions/.github/actions/infra/prepare-ubuntu-host@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -163,7 +163,7 @@ runs:
 
     - name: apache-manage-vhost
       if: ${{ inputs.subaction == 'apache-manage-vhost' }}
-      uses: ../apache-manage-vhost
+      uses: uncoverthefuture-org/actions/.github/actions/infra/apache-manage-vhost@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -189,7 +189,7 @@ runs:
 
     - name: install-podman
       if: ${{ inputs.subaction == 'install-podman' }}
-      uses: ../install-podman
+      uses: uncoverthefuture-org/actions/.github/actions/infra/install-podman@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -203,7 +203,7 @@ runs:
 
     - name: install-apache
       if: ${{ inputs.subaction == 'install-apache' }}
-      uses: ../install-apache
+      uses: uncoverthefuture-org/actions/.github/actions/infra/install-apache@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -216,7 +216,7 @@ runs:
 
     - name: install-webmin
       if: ${{ inputs.subaction == 'install-webmin' }}
-      uses: ../install-webmin
+      uses: uncoverthefuture-org/actions/.github/actions/infra/install-webmin@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -231,7 +231,7 @@ runs:
 
     - name: configure-ufw
       if: ${{ inputs.subaction == 'configure-ufw' }}
-      uses: ../configure-ufw
+      uses: uncoverthefuture-org/actions/.github/actions/infra/configure-ufw@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -245,7 +245,7 @@ runs:
 
     - name: setup-podman-user
       if: ${{ inputs.subaction == 'setup-podman-user' }}
-      uses: ../setup-podman-user
+      uses: uncoverthefuture-org/actions/.github/actions/infra/setup-podman-user@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -260,7 +260,7 @@ runs:
 
     - name: determine-domain
       if: ${{ inputs.subaction == 'determine-domain' }}
-      uses: ../determine-domain
+      uses: uncoverthefuture-org/actions/.github/actions/infra/determine-domain@master
       with:
         domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
         base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.pjson.outputs.json).base_domain }}
@@ -271,7 +271,7 @@ runs:
 
     - name: compute-host-port
       if: ${{ inputs.subaction == 'compute-host-port' }}
-      uses: ../compute-host-port
+      uses: uncoverthefuture-org/actions/.github/actions/infra/compute-host-port@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -288,24 +288,24 @@ runs:
 
     - name: check-dns-match
       if: ${{ inputs.subaction == 'check-dns-match' }}
-      uses: ../check-dns-match
+      uses: uncoverthefuture-org/actions/.github/actions/infra/check-dns-match@master
       with:
         domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
         require_dns_match: ${{ inputs.require_dns_match != '' && inputs.require_dns_match || fromJSON(steps.pjson.outputs.json).require_dns_match }}
 
     - name: ensure-apache-installed
       if: ${{ inputs.subaction == 'ensure-apache-installed' }}
-      uses: ../ensure-apache-installed
+      uses: uncoverthefuture-org/actions/.github/actions/infra/ensure-apache-installed@master
 
     - name: enable-apache-modules
       if: ${{ inputs.subaction == 'enable-apache-modules' }}
-      uses: ../enable-apache-modules
+      uses: uncoverthefuture-org/actions/.github/actions/infra/enable-apache-modules@master
       with:
         mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.pjson.outputs.json).vhost_mode }}
 
     - name: manage-vhost-config
       if: ${{ inputs.subaction == 'manage-vhost-config' }}
-      uses: ../manage-vhost-config
+      uses: uncoverthefuture-org/actions/.github/actions/infra/manage-vhost-config@master
       with:
         domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
         host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.pjson.outputs.json).host_port }}
@@ -315,6 +315,6 @@ runs:
 
     - name: enable-site-reload
       if: ${{ inputs.subaction == 'enable-site-reload' }}
-      uses: ../enable-site-reload
+      uses: uncoverthefuture-org/actions/.github/actions/infra/enable-site-reload@master
       with:
         domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
