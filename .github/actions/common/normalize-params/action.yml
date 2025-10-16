@@ -1,0 +1,30 @@
+name: 'common: normalize params json'
+description: 'Normalizes optional params_json input into a JSON output.'
+
+inputs:
+  params_json:
+    description: 'JSON string to normalize (optional).'
+    required: false
+
+outputs:
+  json:
+    description: 'Normalized JSON string.'
+    value: ${{ steps.norm.outputs.json }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Normalize params
+      id: norm
+      env:
+        INPUT_PARAMS_JSON: ${{ inputs.params_json }}
+      run: |
+        set -euo pipefail
+        J="${INPUT_PARAMS_JSON}"
+        if [ -z "$J" ]; then J='{}'; fi
+        {
+          printf 'json<<EOF\n'
+          printf '%s\n' "$J"
+          printf 'EOF\n'
+        } >> "$GITHUB_OUTPUT"
+      shell: bash

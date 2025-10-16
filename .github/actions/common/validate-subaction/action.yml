@@ -1,0 +1,41 @@
+name: 'common: validate subaction'
+description: 'Validates that a provided subaction matches an allow list.'
+
+inputs:
+  subaction:
+    description: 'Subaction name to validate.'
+    required: true
+  allowed:
+    description: 'Pipe-delimited list of allowed subaction names.'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate subaction input
+      env:
+        SA_INPUT: ${{ inputs.subaction }}
+        ALLOWED_LIST: ${{ inputs.allowed }}
+      run: |
+        set -euo pipefail
+        SA="${SA_INPUT}"
+        ALLOWED="${ALLOWED_LIST}"
+        if [ -z "$SA" ]; then
+          echo 'Error: subaction is required' >&2
+          exit 1
+        fi
+        MATCHED='false'
+        OLD_IFS="$IFS"
+        IFS='|'
+        for token in $ALLOWED; do
+          if [ "$SA" = "$token" ]; then
+            MATCHED='true'
+            break
+          fi
+        done
+        IFS="$OLD_IFS"
+        if [ "$MATCHED" != 'true' ]; then
+          echo "Error: unsupported subaction '$SA' (allowed: $ALLOWED)" >&2
+          exit 1
+        fi
+      shell: bash

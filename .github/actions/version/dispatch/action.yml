@@ -14,30 +14,25 @@ runs:
   steps:
     - name: Normalize params JSON
       id: pjson
-      env:
-        INPUT_PARAMS_JSON: ${{ inputs.params_json }}
-      run: |
-        set -euo pipefail
-        J="${INPUT_PARAMS_JSON}"
-        if [ -z "$J" ]; then J='{}'; fi
-        echo "json=$J" >> "$GITHUB_OUTPUT"
-      shell: bash
+      uses: ./.github/actions/common/normalize-params
+      with:
+        params_json: ${{ inputs.params_json }}
+
     - name: Validate subaction
-      run: |
-        set -euo pipefail
-        SA='${{ inputs.subaction }}'
-        case "$SA" in compute-next|update-tags|update-refs) :;; *) echo "Error: unsupported version subaction '$SA'" >&2; exit 1;; esac
-      shell: bash
+      uses: ./.github/actions/common/validate-subaction
+      with:
+        subaction: ${{ inputs.subaction }}
+        allowed: compute-next|update-tags|update-refs
 
     - name: compute-next
       if: ${{ inputs.subaction == 'compute-next' }}
-      uses: uncoverthefuture-org/actions/.github/actions/version/compute-next@master
+      uses: ./.github/actions/version/compute-next
       with:
         level: ${{ fromJSON(steps.pjson.outputs.json).level }}
 
     - name: update-tags
       if: ${{ inputs.subaction == 'update-tags' }}
-      uses: uncoverthefuture-org/actions/.github/actions/version/update-tags@master
+      uses: ./.github/actions/version/update-tags
       with:
         new: ${{ fromJSON(steps.pjson.outputs.json).new }}
         major: ${{ fromJSON(steps.pjson.outputs.json).major }}
@@ -46,6 +41,6 @@ runs:
 
     - name: update-refs
       if: ${{ inputs.subaction == 'update-refs' }}
-      uses: uncoverthefuture-org/actions/.github/actions/version/update-refs@master
+      uses: ./.github/actions/version/update-refs
       with:
         new_tag: ${{ fromJSON(steps.pjson.outputs.json).new_tag }}
