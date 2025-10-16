@@ -11,6 +11,30 @@ outputs:
   deploy_enabled:
     description: 'Whether deployment is enabled (from build dispatch)'
     value: ${{ steps.bdisp.outputs.deploy_enabled }}
+  new:
+    description: 'New semantic version computed by version dispatch.'
+    value: ${{ steps.vdisp.outputs.new }}
+  major:
+    description: 'Major alias (vX) computed by version dispatch.'
+    value: ${{ steps.vdisp.outputs.major }}
+  minor:
+    description: 'Minor alias (vX.Y) computed by version dispatch.'
+    value: ${{ steps.vdisp.outputs.minor }}
+  last:
+    description: 'Previous version tag reported by version dispatch.'
+    value: ${{ steps.vdisp.outputs.last }}
+  new_version:
+    description: 'New semantic version computed by compute-next.'
+    value: ${{ steps.vdisp.outputs.new }}
+  major_version:
+    description: 'Major alias (vX) computed by compute-next.'
+    value: ${{ steps.vdisp.outputs.major }}
+  minor_version:
+    description: 'Minor alias (vX.Y) computed by compute-next.'
+    value: ${{ steps.vdisp.outputs.minor }}
+  last_version:
+    description: 'Previous version tag reported by compute-next.'
+    value: ${{ steps.vdisp.outputs.last }}
 name: 'Uncover Actions'
 description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@'
 
@@ -118,6 +142,7 @@ runs:
         params_json: ${{ inputs.params_json }}
 
     - name: Version dispatch
+      id: vdisp
       if: ${{ steps.route.outputs.category == 'version' }}
       uses: ./.github/actions/version/dispatch
       with:

@@ -9,6 +9,20 @@ inputs:
     description: "JSON blob of parameters to pass to the selected subaction"
     required: false
 
+outputs:
+  new:
+    description: 'New semantic version tag returned by compute-next.'
+    value: ${{ steps.compute.outputs.new }}
+  major:
+    description: 'Major alias (vX) returned by compute-next.'
+    value: ${{ steps.compute.outputs.major }}
+  minor:
+    description: 'Minor alias (vX.Y) returned by compute-next.'
+    value: ${{ steps.compute.outputs.minor }}
+  last:
+    description: 'Previous full tag (vX.Y.Z) returned by compute-next.'
+    value: ${{ steps.compute.outputs.last }}
+
 runs:
   using: 'composite'
   steps:
@@ -26,6 +40,7 @@ runs:
 
     - name: compute-next
       if: ${{ inputs.subaction == 'compute-next' }}
+      id: compute
       uses: ./.github/actions/version/compute-next
       with:
         level: ${{ fromJSON(steps.pjson.outputs.json).level }}
