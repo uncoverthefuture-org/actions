@@ -78,7 +78,7 @@ runs:
             build-and-push) CAT='build' ;;
             remote-podman-exec|podman-login-pull|podman-stop-rm-container|podman-run-service|podman-run-db) CAT='podman' ;;
             prepare-ubuntu-host|apache-manage-vhost) CAT='infra' ;;
-            ssh-django-api-deploy|write-remote-env-file) CAT='app' ;;
+            ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file) CAT='app' ;;
             *) echo "Error: unsupported subaction '$SA'" >&2; exit 1 ;;
           esac
         fi

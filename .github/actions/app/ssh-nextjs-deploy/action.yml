@@ -1,0 +1,331 @@
+name: 'SSH Next.js Deploy'
+description: 'Upload env (optional) and deploy a Next.js container via Podman over SSH, with optional Apache vhost reverse proxy.'
+
+inputs:
+  # SSH / remote execution
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username'
+    required: false
+    default: 'root'
+  ssh_key:
+    description: 'SSH private key'
+    required: true
+  root_ssh_key:
+    description: 'SSH private key for root (optional)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Server SSH host key fingerprint (optional)'
+    required: false
+  podman_user:
+    description: 'User on remote host to execute podman commands as'
+    required: false
+    default: 'deployer'
+  connect_mode:
+    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    required: false
+    default: 'auto'
+
+  # Prepare host (optional)
+  prepare_host:
+    description: 'Install Podman and prepare directories/users on a fresh Ubuntu host'
+    required: false
+    default: 'false'
+  install_podman:
+    description: 'Install Podman when preparing host'
+    required: false
+    default: 'true'
+  create_podman_user:
+    description: 'Create podman_user if it does not exist during preparation'
+    required: false
+    default: 'false'
+  env_dir_path:
+    description: 'Directory to hold env files and app data on the server'
+    required: false
+  additional_packages:
+    description: 'Space-separated additional apt packages for host preparation'
+    required: false
+    default: 'jq curl ca-certificates'
+
+  # Environment file
+  env_name:
+    description: 'Environment name used to build container and env file path'
+    required: false
+  env_file_path:
+    description: 'Base path to the environment file on the server (prefix); final path is ${env_file_path}${env_name}'
+    required: false
+  write_env_file:
+    description: 'If true, write the env file on the server before deploy'
+    required: false
+    default: 'false'
+  env_b64:
+    description: 'Base64-encoded contents of the .env file to write on the server'
+    required: false
+  env_content:
+    description: 'Raw contents of the .env file to write on the server (use env_b64 instead when possible)'
+    required: false
+
+  # Image/registry
+  registry:
+    description: 'Container registry hostname'
+    required: false
+    default: 'ghcr.io'
+  image_name:
+    description: 'Image name (e.g., org/app)'
+    required: false
+  image_tag:
+    description: 'Image tag to deploy'
+    required: false
+  registry_username:
+    description: 'Registry username (for ghcr.io use your GH username)'
+    required: false
+  registry_token:
+    description: 'Registry token/password (for ghcr.io can be a PAT or GitHub token with package:write)'
+    required: false
+  registry_login:
+    description: 'Log in to registry before pulling image'
+    required: false
+    default: 'true'
+
+  # Runtime
+  app_slug:
+    description: 'Slug used in default container name'
+    required: false
+  container_name:
+    description: 'Override container name (defaults to ${app_slug}-${env_name})'
+    required: false
+  host_port:
+    description: 'Override host port (default derived from env file: WEB_HOST_PORT or PORT, else 3000)'
+    required: false
+  container_port:
+    description: 'Override container port (default derived from env file: WEB_CONTAINER_PORT or TARGET_PORT, else 3000)'
+    required: false
+  restart_policy:
+    description: 'Container restart policy'
+    required: false
+    default: 'unless-stopped'
+  extra_run_args:
+    description: 'Additional args passed to podman run'
+    required: false
+  memory_limit:
+    description: 'Container memory limit, e.g., 512m'
+    required: false
+    default: '512m'
+
+  # Env sourcing for deployment
+  source_env:
+    description: 'Source ENV_FILE prior to deploy commands'
+    required: false
+    default: 'true'
+  fail_if_env_missing:
+    description: 'Fail if source_env is true and env file is missing'
+    required: false
+    default: 'true'
+
+  # Apache vhost management (optional)
+  manage_vhost:
+    description: 'Create/update Apache vhost for the app domain'
+    required: false
+    default: 'false'
+  domain:
+    description: 'Full domain to configure (optional)'
+    required: false
+  base_domain:
+    description: 'Base domain used to compute domain if domain is not provided'
+    required: false
+  domain_prefix_prod:
+    description: 'Domain prefix for production/main env'
+    required: false
+    default: 'app'
+  domain_prefix_staging:
+    description: 'Domain prefix for staging env'
+    required: false
+  domain_prefix_dev:
+    description: 'Domain prefix for dev env'
+    required: false
+  vhost_mode:
+    description: "VHost mode: 'reverse_proxy' (default)"
+    required: false
+    default: 'reverse_proxy'
+  require_dns_match:
+    description: 'Require domain A-record match to server public IP before applying changes'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Compute derived defaults
+      id: dfl
+      env:
+        GH_REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        REPO="${GH_REPOSITORY##*/}"
+        SLUG=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+        APP_SLUG="$SLUG"
+        ENV_DIR="/opt/${APP_SLUG}"
+        ENV_FILE_PATH="${ENV_DIR}/.env."
+        IMG_NAME="${GH_REPOSITORY}"
+        REF_NAME="${GITHUB_REF_NAME:-}"
+        SHA7="${GITHUB_SHA:-unknown}"; SHA7="${SHA7:0:7}"
+        case "$REF_NAME" in
+          main|master) ENV_NAME_DEF='production' ;;
+          stage|staging) ENV_NAME_DEF='staging' ;;
+          dev|develop|development) ENV_NAME_DEF='dev' ;;
+          refs/tags/*) ENV_NAME_DEF='production' ;;
+          *) ENV_NAME_DEF='dev' ;;
+        esac
+        IMG_TAG_DEF="${ENV_NAME_DEF}-${SHA7}"
+        echo "app_slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
+        echo "env_dir_path=$ENV_DIR" >> "$GITHUB_OUTPUT"
+        echo "env_file_path=$ENV_FILE_PATH" >> "$GITHUB_OUTPUT"
+        echo "image_name=$IMG_NAME" >> "$GITHUB_OUTPUT"
+        echo "env_name_default=$ENV_NAME_DEF" >> "$GITHUB_OUTPUT"
+        echo "image_tag_default=$IMG_TAG_DEF" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    - name: Validate inputs
+      run: |
+        set -euo pipefail
+        if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
+        # registry creds only required for non-GHCR when registry_login=true
+        if [ "${{ inputs.registry_login }}" = "true" ] && [ "${{ inputs.registry }}" != "ghcr.io" ]; then
+          if [ -z "${{ inputs.registry_username }}" ] || [ -z "${{ inputs.registry_token }}" ]; then
+            echo 'Error: registry_username and registry_token are required for non-GHCR registries when registry_login=true' ; exit 1
+          fi
+        fi
+        if [ "${{ inputs.write_env_file }}" = "true" ]; then
+          if [ -z "${{ inputs.env_b64 }}" ] && [ -z "${{ inputs.env_content }}" ]; then
+            echo 'Error: write_env_file=true but neither env_b64 nor env_content provided' ; exit 1
+          fi
+        fi
+      shell: bash
+
+    - name: Prepare host (optional)
+      if: ${{ inputs.prepare_host == 'true' }}
+      uses: ./.github/actions/infra/prepare-ubuntu-host
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        install_podman: ${{ inputs.install_podman }}
+        create_podman_user: ${{ inputs.create_podman_user }}
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}
+        additional_packages: ${{ inputs.additional_packages }}
+
+    - name: Write env file (optional)
+      if: ${{ inputs.write_env_file == 'true' }}
+      uses: ./.github/actions/app/write-remote-env-file
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
+        env_b64: ${{ inputs.env_b64 }}
+        env_content: ${{ inputs.env_content }}
+
+    - name: Login and pull image
+      uses: ./.github/actions/podman/podman-login-pull
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        registry: ${{ inputs.registry }}
+        registry_username: ${{ inputs.registry_username }}
+        registry_token: ${{ inputs.registry_token }}
+        registry_login: ${{ inputs.registry_login }}
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}
+
+    - name: Deploy Next.js app
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
+        source_env: ${{ inputs.source_env }}
+        fail_if_env_missing: ${{ inputs.fail_if_env_missing }}
+        inline_script: |
+          set -euo pipefail
+
+          ENV_FILE="${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}"
+          IMAGE="${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}"
+
+          CN_IN="${{ inputs.container_name }}"
+          APP_SLUG="${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}"
+          CONTAINER_NAME="${CN_IN:-${APP_SLUG}-${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}}"
+
+          HP_IN="${{ inputs.host_port }}"
+          CP_IN="${{ inputs.container_port }}"
+          if [ -n "$HP_IN" ]; then
+            HOST_PORT="$HP_IN"
+          else
+            HOST_PORT="${WEB_HOST_PORT:-${PORT:-3000}}"
+          fi
+          if [ -n "$CP_IN" ]; then
+            CONTAINER_PORT="$CP_IN"
+          else
+            CONTAINER_PORT="${WEB_CONTAINER_PORT:-${TARGET_PORT:-3000}}"
+          fi
+
+          run_podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+          run_podman rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+
+          EXTRA_ARGS="${{ inputs.extra_run_args }}"
+          run_podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
+            -p "$HOST_PORT:$CONTAINER_PORT" --restart=${{ inputs.restart_policy }} \
+            --memory='${{ inputs.memory_limit }}' --memory-swap='${{ inputs.memory_limit }}' \
+            ${EXTRA_ARGS:+$EXTRA_ARGS} \
+            "$IMAGE"
+
+    - name: Manage Apache vhost (optional)
+      if: ${{ inputs.manage_vhost == 'true' || (inputs.manage_vhost == '' && (inputs.base_domain != '' || inputs.domain != '')) }}
+      uses: ./.github/actions/infra/apache-manage-vhost
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: 'root'
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
+        domain: ${{ inputs.domain }}
+        base_domain: ${{ inputs.base_domain }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
+        require_dns_match: ${{ inputs.require_dns_match }}
+        mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || 'reverse_proxy' }}

@@ -1,0 +1,46 @@
+name: CI/CD — Build and Deploy Laravel App
+
+on:
+  push:
+    branches: [ main, staging, develop ]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - id: build
+        uses: uncoverthefuture-org/actions@v1
+        with:
+          subaction: build-and-push
+
+      - name: Deploy Laravel App
+        if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
+        uses: uncoverthefuture-org/actions@v1
+        with:
+          subaction: ssh-laravel-deploy
+          params_json: |
+            {
+              "ssh_host": "${{ secrets.SSH_HOST }}",
+              "ssh_key":  "${{ secrets.SSH_KEY }}",
+              "base_domain": "example.com",
+              "domain_prefix_prod": "app"
+            }
+        # ssh_user defaults to "root". Provide "ssh_user" in params_json if you need a non-root user.
+        # Note: domain config is optional. If neither base_domain nor domain is provided,
+        # the Apache vhost step is skipped automatically.
+
+      # Optional: write env file from a secret (env_name defaults from branch; can omit)
+      # - uses: uncoverthefuture-org/actions@v1
+      #   with:
+      #     subaction: write-remote-env-file
+      #     params_json: |
+      #       {
+      #         "ssh_host": "${{ secrets.SSH_HOST }}",
+      #         "ssh_key":  "${{ secrets.SSH_KEY }}",
+      #         "env_name": "${{ steps.build.outputs.env_name }}",
+      #         "env_b64":  "${{ secrets.APP_ENV_B64 }}"
+      #       }
