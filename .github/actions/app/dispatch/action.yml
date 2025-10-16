@@ -162,7 +162,7 @@ runs:
         env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
         env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
 
-    - name: django: validate
+    - name: django validate
       if: ${{ inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-django-api-deploy' }}
       uses: uncoverthefuture-org/actions/.github/actions/app/django/validate@master
       with:
