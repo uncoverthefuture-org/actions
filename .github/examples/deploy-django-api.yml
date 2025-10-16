@@ -13,13 +13,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: build
-        uses: uncoverthefuture-org/actions@
+        uses: uncoverthefuture-org/actions@master
         with:
           subaction: build-and-push
 
       - name: Deploy Django API
         if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
-        uses: uncoverthefuture-org/actions@
+        uses: uncoverthefuture-org/actions@master
         with:
           subaction: ssh-django-api-deploy
           params_json: |
@@ -34,7 +34,7 @@ jobs:
         # the Apache vhost step is skipped automatically.
 
       # Optional: write env file from a secret (env_name defaults from branch; can omit)
-      # - uses: uncoverthefuture-org/actions@
+      # - uses: uncoverthefuture-org/actions@master
       #   with:
       #     subaction: write-remote-env-file
       #     params_json: |
