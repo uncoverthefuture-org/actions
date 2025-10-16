@@ -54,23 +54,19 @@ runs:
       shell: bash
 
     - name: Stop and remove container
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      uses: uncoverthefuture-org/actions@master
       with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
-        source_env: 'false'
-        inline_script: |
-          set -euo pipefail
-          CN_IN='${{ inputs.container_name }}'
-          APP_SLUG='${{ inputs.app_slug }}'
-          ENV_NAME='${{ inputs.env_name }}'
-          CONTAINER_NAME="${CN_IN:-${APP_SLUG}-${ENV_NAME}}"
-
-          run_podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-          run_podman rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+        subaction: remote-podman-exec
+        params_json: |
+          {
+            "ssh_host": "${{ inputs.ssh_host }}",
+            "ssh_user": "${{ inputs.ssh_user }}",
+            "ssh_key": "${{ inputs.ssh_key }}",
+            "root_ssh_key": "${{ inputs.root_ssh_key }}",
+            "ssh_port": "${{ inputs.ssh_port }}",
+            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
+            "podman_user": "${{ inputs.podman_user }}",
+            "connect_mode": "${{ inputs.connect_mode }}",
+            "source_env": "false",
+            "command": "set -euo pipefail\nCN_IN='${{ inputs.container_name }}'\nAPP_SLUG='${{ inputs.app_slug }}'\nENV_NAME='${{ inputs.env_name }}'\nCONTAINER_NAME=\"${CN_IN:-${APP_SLUG}-${ENV_NAME}}\"\n\nrun_podman stop \"$CONTAINER_NAME\" >/dev/null 2>&1 || true\nrun_podman rm \"$CONTAINER_NAME\" >/dev/null 2>&1 || true"
+          }

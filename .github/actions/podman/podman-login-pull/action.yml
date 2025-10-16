@@ -73,31 +73,19 @@ runs:
       shell: bash
 
     - name: Login and pull remotely
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      uses: uncoverthefuture-org/actions@master
       with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
-        source_env: 'false'
-        inline_script: |
-          set -euo pipefail
-          IMAGE="${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.image_tag }}"
-          REG="${{ inputs.registry }}"
-          USER_IN="${{ inputs.registry_username }}"
-          TOKEN_IN="${{ inputs.registry_token }}"
-          USER="$USER_IN"
-          TOKEN="$TOKEN_IN"
-          if [ "$REG" = "ghcr.io" ]; then
-            [ -n "$USER" ] || USER="${{ github.actor }}"
-            [ -n "$TOKEN" ] || TOKEN="${{ github.token }}"
-          fi
-
-          if [ "${{ inputs.registry_login }}" = "true" ]; then
-            printf '%s' "$TOKEN" | run_podman login "$REG" -u "$USER" --password-stdin
-          fi
-          run_podman pull "$IMAGE"
+        subaction: remote-podman-exec
+        params_json: |
+          {
+            "ssh_host": "${{ inputs.ssh_host }}",
+            "ssh_user": "${{ inputs.ssh_user }}",
+            "ssh_key": "${{ inputs.ssh_key }}",
+            "root_ssh_key": "${{ inputs.root_ssh_key }}",
+            "ssh_port": "${{ inputs.ssh_port }}",
+            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
+            "podman_user": "${{ inputs.podman_user }}",
+            "connect_mode": "${{ inputs.connect_mode }}",
+            "source_env": "false",
+            "command": "set -euo pipefail\nIMAGE=\"${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.image_tag }}\"\nREG=\"${{ inputs.registry }}\"\nUSER_IN=\"${{ inputs.registry_username }}\"\nTOKEN_IN=\"${{ inputs.registry_token }}\"\nUSER=\"$USER_IN\"\nTOKEN=\"$TOKEN_IN\"\nif [ \"$REG\" = \"ghcr.io\" ]; then\n  [ -n \"$USER\" ] || USER=\"${{ github.actor }}\"\n  [ -n \"$TOKEN\" ] || TOKEN=\"${{ github.token }}\"\nfi\n\nif [ \"${{ inputs.registry_login }}\" = \"true\" ]; then\n  printf '%s' \"$TOKEN\" | run_podman login \"$REG\" -u \"$USER\" --password-stdin\nfi\nrun_podman pull \"$IMAGE\""
+          }

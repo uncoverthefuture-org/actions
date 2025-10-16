@@ -81,74 +81,19 @@ runs:
       shell: bash
 
     - name: Run DB container
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      uses: uncoverthefuture-org/actions@master
       with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
-        source_env: 'false'
-        inline_script: |
-          set -euo pipefail
-
-          TYPE='${{ inputs.db_type }}'
-          NAME='${{ inputs.service_name }}'
-          DB='${{ inputs.db_name }}'
-          USER='${{ inputs.db_user }}'
-          PASS='${{ inputs.db_password }}'
-          ROOT='${{ inputs.db_root_password }}'
-          HOST_PORT='${{ inputs.host_port }}'
-          VOL='${{ inputs.data_volume }}'
-          MEM='${{ inputs.memory_limit }}'
-          TAG='${{ inputs.image_tag }}'
-
-          case "$TYPE" in
-            postgres)
-              IMG="postgres:${TAG:-16}"
-              PORT="5432"
-              ENV_ARGS="-e POSTGRES_DB=\"$DB\" -e POSTGRES_USER=\"$USER\" -e POSTGRES_PASSWORD=\"$PASS\""
-              DATA_PATH='/var/lib/postgresql/data'
-              ;;
-            mysql)
-              IMG="mysql:${TAG:-8}"
-              PORT="3306"
-              if [ -z "$ROOT" ]; then
-                ROOT="$PASS"
-              fi
-              ENV_ARGS="-e MYSQL_DATABASE=\"$DB\" -e MYSQL_USER=\"$USER\" -e MYSQL_PASSWORD=\"$PASS\" -e MYSQL_ROOT_PASSWORD=\"$ROOT\""
-              DATA_PATH='/var/lib/mysql'
-              ;;
-          esac
-
-          run_podman stop "$NAME" >/dev/null 2>&1 || true
-          run_podman rm "$NAME" >/dev/null 2>&1 || true
-
-          PORT_ARGS=""
-          if [ -n "$HOST_PORT" ]; then
-            PORT_ARGS="-p ${HOST_PORT}:${PORT}"
-          fi
-
-          VOL_ARGS=""
-          if [ -n "$VOL" ]; then
-            case "$VOL" in
-              /*)
-                VOL_ARGS="-v ${VOL}:${DATA_PATH}"
-                ;;
-              *)
-                run_podman volume inspect "$VOL" >/dev/null 2>&1 || run_podman volume create "$VOL" >/dev/null
-                VOL_ARGS="-v ${VOL}:${DATA_PATH}"
-                ;;
-            esac
-          fi
-
-          run_podman run -d --name "$NAME" \
-            ${PORT_ARGS} \
-            --restart=unless-stopped \
-            --memory="$MEM" --memory-swap="$MEM" \
-            ${VOL_ARGS} \
-            ${ENV_ARGS} \
-            "${IMG}"
+        subaction: remote-podman-exec
+        params_json: |
+          {
+            "ssh_host": "${{ inputs.ssh_host }}",
+            "ssh_user": "${{ inputs.ssh_user }}",
+            "ssh_key": "${{ inputs.ssh_key }}",
+            "root_ssh_key": "${{ inputs.root_ssh_key }}",
+            "ssh_port": "${{ inputs.ssh_port }}",
+            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
+            "podman_user": "${{ inputs.podman_user }}",
+            "connect_mode": "${{ inputs.connect_mode }}",
+            "source_env": "false",
+            "command": "set -euo pipefail\n\nTYPE='${{ inputs.db_type }}'\nNAME='${{ inputs.service_name }}'\nDB='${{ inputs.db_name }}'\nUSER='${{ inputs.db_user }}'\nPASS='${{ inputs.db_password }}'\nROOT='${{ inputs.db_root_password }}'\nHOST_PORT='${{ inputs.host_port }}'\nVOL='${{ inputs.data_volume }}'\nMEM='${{ inputs.memory_limit }}'\nTAG='${{ inputs.image_tag }}'\n\ncase \"$TYPE\" in\n  postgres)\n    IMG=\"postgres:${TAG:-16}\"\n    PORT=\"5432\"\n    ENV_ARGS=\"-e POSTGRES_DB=\\\"$DB\\\" -e POSTGRES_USER=\\\"$USER\\\" -e POSTGRES_PASSWORD=\\\"$PASS\\\"\"\n    DATA_PATH='/var/lib/postgresql/data'\n    ;;\n  mysql)\n    IMG=\"mysql:${TAG:-8}\"\n    PORT=\"3306\"\n    if [ -z \"$ROOT\" ]; then\n      ROOT=\"$PASS\"\n    fi\n    ENV_ARGS=\"-e MYSQL_DATABASE=\\\"$DB\\\" -e MYSQL_USER=\\\"$USER\\\" -e MYSQL_PASSWORD=\\\"$PASS\\\" -e MYSQL_ROOT_PASSWORD=\\\"$ROOT\\\"\"\n    DATA_PATH='/var/lib/mysql'\n    ;;\nesac\n\nrun_podman stop \"$NAME\" >/dev/null 2>&1 || true\nrun_podman rm \"$NAME\" >/dev/null 2>&1 || true\n\nPORT_ARGS=\"\"\nif [ -n \"$HOST_PORT\" ]; then\n  PORT_ARGS=\"-p ${HOST_PORT}:${PORT}\"\nfi\n\nVOL_ARGS=\"\"\nif [ -n \"$VOL\" ]; then\n  case \"$VOL\" in\n    /*)\n      VOL_ARGS=\"-v ${VOL}:${DATA_PATH}\"\n      ;;\n    *)\n      run_podman volume inspect \"$VOL\" >/dev/null 2>&1 || run_podman volume create \"$VOL\" >/dev/null\n      VOL_ARGS=\"-v ${VOL}:${DATA_PATH}\"\n      ;;\n  esac\nfi\n\nrun_podman run -d --name \"$NAME\" \\\n  ${PORT_ARGS} \\\n  --restart=unless-stopped \\\n  --memory=\"$MEM\" --memory-swap=\"$MEM\" \\\n  ${VOL_ARGS} \\\n  ${ENV_ARGS} \\\n  \"$IMG\""
+          }}"

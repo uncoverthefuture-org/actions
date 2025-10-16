@@ -38,7 +38,7 @@ jobs:
             exit 1
           fi
           # Check for deep repo uses
-          DEEP_FILES=$(find . -name "*.yml" -o -name "*.yaml" | xargs grep -l "uses: uncoverthefuture-org/actions/.github/actions/" || true)
+          DEEP_FILES=$(find . -name "*.yml" -o -name "*.yaml" | grep -v README.md | xargs grep -l "uses: uncoverthefuture-org/actions/.github/actions/" || true)
           if [ -n "$DEEP_FILES" ]; then
             echo "Error: Found deep repo uses in: $DEEP_FILES" >&2
             exit 1
