@@ -19,6 +19,21 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Validate tag inputs
+      shell: bash
+      env:
+        NEW: ${{ inputs.new }}
+        MAJOR: ${{ inputs.major }}
+        MINOR: ${{ inputs.minor }}
+      run: |
+        set -euo pipefail
+        for var in NEW MAJOR MINOR; do
+          value="${!var}"
+          if [ -z "$value" ]; then
+            echo "Error: ${var,,} input is required but was blank" >&2
+            exit 1
+          fi
+        done
     - name: Fetch tags
       shell: bash
       run: |
