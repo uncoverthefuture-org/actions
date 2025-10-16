@@ -10,12 +10,13 @@ runs:
   using: 'composite'
   steps:
     - name: Update action refs to new version
-      shell: bash
-      env:
-        NEW_TAG: ${{ inputs.new_tag }}
-      run: |
-        set -euo pipefail
-        find . -name "*.yml" -o -name "*.yaml" | xargs sed -i '' "s/@master/@$NEW_TAG/g"
+      uses: ./.github/actions/common/replace-ref
+      with:
+        old_ref: '@master'
+        new_ref: '@${{ inputs.new_tag }}'
+        patterns: |
+          *.yml
+          *.yaml
 
     - name: Commit version updates
       shell: bash

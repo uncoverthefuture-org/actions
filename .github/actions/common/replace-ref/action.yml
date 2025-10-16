@@ -1,0 +1,78 @@
+name: 'common: replace ref'
+description: 'Replaces an old reference string with a new one across tracked files with glob filtering.'
+
+inputs:
+  old_ref:
+    description: 'Reference string to search for (e.g., @master).'
+    required: true
+  new_ref:
+    description: 'Reference string to replace with (e.g., @v1.2.3).'
+    required: true
+  patterns:
+    description: 'Newline-separated glob patterns to include (default: *.yml and *.yaml).'
+    required: false
+    default: "*.yml\n*.yaml"
+  exclude:
+    description: 'Newline-separated glob patterns to exclude (optional).'
+    required: false
+    default: ''
+
+outputs:
+  changed_files:
+    description: 'Newline-separated list of files that were modified.'
+    value: ${{ steps.rewrite.outputs.changed_files }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Replace references
+      id: rewrite
+      shell: bash
+      env:
+        OLD_REF: ${{ inputs.old_ref }}
+        NEW_REF: ${{ inputs.new_ref }}
+        PATTERNS: ${{ inputs.patterns }}
+        EXCLUDE: ${{ inputs.exclude }}
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        import os
+        import sys
+        import fnmatch
+        from pathlib import Path
+
+        old = os.environ['OLD_REF']
+        new = os.environ['NEW_REF']
+        patterns = [p for p in os.environ.get('PATTERNS', '').splitlines() if p.strip()]
+        exclude = [p for p in os.environ.get('EXCLUDE', '').splitlines() if p.strip()]
+
+        candidates = []
+        root = Path('.')
+        for path in root.rglob('*'):
+            if not path.is_file():
+                continue
+            rel = path.as_posix()
+            if patterns and not any(fnmatch.fnmatch(rel, pat) for pat in patterns):
+                continue
+            if exclude and any(fnmatch.fnmatch(rel, pat) for pat in exclude):
+                continue
+            candidates.append(path)
+
+        changed = []
+        for path in candidates:
+            text = path.read_text(encoding='utf-8')
+            if old not in text:
+                continue
+            new_text = text.replace(old, new)
+            if new_text != text:
+                path.write_text(new_text, encoding='utf-8')
+                changed.append(path.as_posix())
+
+        out = '\n'.join(changed)
+        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+            fh.write(f"changed_files<<EOF\n{out}\nEOF\n")
+        PY
+
+        if [ -n "$OLD_REF" ] && [ "$OLD_REF" = "$NEW_REF" ]; then
+          echo "Warning: old_ref equals new_ref; nothing replaced" >&2
+        fi
