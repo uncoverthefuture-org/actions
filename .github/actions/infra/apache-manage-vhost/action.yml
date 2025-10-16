@@ -94,7 +94,7 @@ runs:
       shell: bash
 
     - name: Determine Domain
-      uses: uncoverthefuture-org/actions/.github/actions/infra/determine-domain@master
+      uses: ./.github/actions/infra/determine-domain
       with:
         domain: ${{ inputs.domain }}
         base_domain: ${{ inputs.base_domain }}
@@ -104,7 +104,7 @@ runs:
         domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
 
     - name: Compute Host Port
-      uses: uncoverthefuture-org/actions/.github/actions/infra/compute-host-port@master
+      uses: ./.github/actions/infra/compute-host-port
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -120,21 +120,21 @@ runs:
         host_port: ${{ inputs.host_port }}
 
     - name: Check DNS Match
-      uses: uncoverthefuture-org/actions/.github/actions/infra/check-dns-match@master
+      uses: ./.github/actions/infra/check-dns-match
       with:
         domain: ${{ inputs.domain }}
         require_dns_match: ${{ inputs.require_dns_match }}
 
     - name: Ensure Apache Installed
-      uses: uncoverthefuture-org/actions/.github/actions/infra/ensure-apache-installed@master
+      uses: ./.github/actions/infra/ensure-apache-installed
 
     - name: Enable Apache Modules
-      uses: uncoverthefuture-org/actions/.github/actions/infra/enable-apache-modules@master
+      uses: ./.github/actions/infra/enable-apache-modules
       with:
         mode: ${{ inputs.mode }}
 
     - name: Manage VHost Config
-      uses: uncoverthefuture-org/actions/.github/actions/infra/manage-vhost-config@master
+      uses: ./.github/actions/infra/manage-vhost-config
       with:
         domain: ${{ inputs.domain }}
         host_port: ${{ inputs.host_port }}
@@ -143,6 +143,6 @@ runs:
         server_admin: ${{ inputs.server_admin }}
 
     - name: Enable Site and Reload
-      uses: uncoverthefuture-org/actions/.github/actions/infra/enable-site-reload@master
+      uses: ./.github/actions/infra/enable-site-reload
       with:
         domain: ${{ inputs.domain }}

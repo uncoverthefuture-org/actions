@@ -211,7 +211,7 @@ runs:
 
     - name: Prepare host (optional)
       if: ${{ inputs.prepare_host == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/infra/prepare-ubuntu-host@master
+      uses: ./.github/actions/infra/prepare-ubuntu-host
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
@@ -228,7 +228,7 @@ runs:
 
     - name: Write env file (optional)
       if: ${{ inputs.write_env_file == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/write-remote-env-file@master
+      uses: ./.github/actions/app/write-remote-env-file
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
@@ -244,7 +244,7 @@ runs:
         env_content: ${{ inputs.env_content }}
 
     - name: Login and pull image
-      uses: uncoverthefuture-org/actions/.github/actions/podman/podman-login-pull@master
+      uses: ./.github/actions/podman/podman-login-pull
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
@@ -262,7 +262,7 @@ runs:
         image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}
 
     - name: Deploy Next.js app
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@master
+      uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
@@ -311,7 +311,7 @@ runs:
 
     - name: Manage Apache vhost (optional)
       if: ${{ inputs.manage_vhost == 'true' || (inputs.manage_vhost == '' && (inputs.base_domain != '' || inputs.domain != '')) }}
-      uses: uncoverthefuture-org/actions/.github/actions/infra/apache-manage-vhost@master
+      uses: ./.github/actions/infra/apache-manage-vhost
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}

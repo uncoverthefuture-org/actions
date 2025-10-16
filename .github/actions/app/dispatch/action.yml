@@ -129,23 +129,23 @@ runs:
   steps:
     - name: Normalize params JSON
       id: params
-      uses: uncoverthefuture-org/actions/.github/actions/app/common/normalize-params@master
+      uses: ./.github/actions/app/common/normalize-params
       with:
         params_json: ${{ inputs.params_json }}
 
     - name: Compute derived defaults
       id: defaults
-      uses: uncoverthefuture-org/actions/.github/actions/app/common/compute-defaults@master
+      uses: ./.github/actions/app/common/compute-defaults
 
     - name: Validate app subaction
-      uses: uncoverthefuture-org/actions/.github/actions/common/validate-subaction@master
+      uses: ./.github/actions/common/validate-subaction
       with:
         subaction: ${{ inputs.subaction }}
         allowed: ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file
 
     - name: Validate base SSH for app subactions
       if: ${{ inputs.subaction != 'write-remote-env-file' && inputs.subaction != 'ssh-django-api-deploy' && inputs.subaction != 'ssh-django-deploy' && inputs.subaction != 'ssh-nextjs-deploy' && inputs.subaction != 'ssh-react-deploy' && inputs.subaction != 'ssh-laravel-deploy' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/common/validate-base-ssh@master
+      uses: ./.github/actions/app/common/validate-base-ssh
       with:
         subaction: ${{ inputs.subaction }}
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
@@ -153,7 +153,7 @@ runs:
 
     - name: Validate subaction-specific inputs
       if: ${{ inputs.subaction != 'write-remote-env-file' && inputs.subaction != 'ssh-django-api-deploy' && inputs.subaction != 'ssh-django-deploy' && inputs.subaction != 'ssh-nextjs-deploy' && inputs.subaction != 'ssh-react-deploy' && inputs.subaction != 'ssh-laravel-deploy' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/common/validate-env-inputs@master
+      uses: ./.github/actions/app/common/validate-env-inputs
       with:
         subaction: ${{ inputs.subaction }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
@@ -162,7 +162,7 @@ runs:
 
     - name: django validate
       if: ${{ inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-django-api-deploy' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/django/validate@master
+      uses: ./.github/actions/app/django/validate
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
         ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
@@ -177,7 +177,7 @@ runs:
 
     - name: write-remote-env-file
       if: ${{ inputs.subaction == 'write-remote-env-file' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/write-remote-env-file@master
+      uses: ./.github/actions/app/write-remote-env-file
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
@@ -194,7 +194,7 @@ runs:
 
     - name: ssh-django-api-deploy
       if: ${{ inputs.subaction == 'ssh-django-api-deploy' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/ssh-django-api-deploy@master
+      uses: ./.github/actions/app/ssh-django-api-deploy
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
@@ -241,7 +241,7 @@ runs:
 
     - name: ssh-django-deploy
       if: ${{ inputs.subaction == 'ssh-django-deploy' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/ssh-django-deploy@master
+      uses: ./.github/actions/app/ssh-django-deploy
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
@@ -288,7 +288,7 @@ runs:
 
     - name: ssh-nextjs-deploy
       if: ${{ inputs.subaction == 'ssh-nextjs-deploy' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/ssh-nextjs-deploy@master
+      uses: ./.github/actions/app/ssh-nextjs-deploy
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
@@ -331,7 +331,7 @@ runs:
        
     - name: ssh-react-deploy
       if: ${{ inputs.subaction == 'ssh-react-deploy' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/ssh-react-deploy@master
+      uses: ./.github/actions/app/ssh-react-deploy
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
@@ -374,7 +374,7 @@ runs:
 
     - name: ssh-laravel-deploy
       if: ${{ inputs.subaction == 'ssh-laravel-deploy' }}
-      uses: uncoverthefuture-org/actions/.github/actions/app/ssh-laravel-deploy@master
+      uses: ./.github/actions/app/ssh-laravel-deploy
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}

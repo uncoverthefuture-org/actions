@@ -82,7 +82,7 @@ runs:
 
     - name: Install Podman
       if: ${{ inputs.install_podman == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/infra/install-podman@master
+      uses: ./.github/actions/infra/install-podman
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -96,7 +96,7 @@ runs:
 
     - name: Install Apache
       if: ${{ inputs.install_apache == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/infra/install-apache@master
+      uses: ./.github/actions/infra/install-apache
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -109,7 +109,7 @@ runs:
 
     - name: Install Webmin/Usermin
       if: ${{ inputs.install_webmin == 'true' || inputs.install_usermin == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/infra/install-webmin@master
+      uses: ./.github/actions/infra/install-webmin
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -124,7 +124,7 @@ runs:
 
     - name: Configure UFW
       if: ${{ inputs.configure_ufw == 'true' }}
-      uses: uncoverthefuture-org/actions/.github/actions/infra/configure-ufw@master
+      uses: ./.github/actions/infra/configure-ufw
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -137,7 +137,7 @@ runs:
         ufw_allow_ports: ${{ inputs.ufw_allow_ports }}
 
     - name: Setup Podman User
-      uses: uncoverthefuture-org/actions/.github/actions/infra/setup-podman-user@master
+      uses: ./.github/actions/infra/setup-podman-user
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
