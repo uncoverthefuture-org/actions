@@ -1,0 +1,63 @@
+name: 'version: compute-next'
+description: 'Compute next semver (vX.Y.Z) from existing tags, with bump level (patch|minor|major). Outputs new, major alias vX, minor alias vX.Y, and last.'
+
+inputs:
+  level:
+    description: 'Bump level: patch|minor|major'
+    required: false
+    default: 'patch'
+
+outputs:
+  new:
+    description: 'New tag (e.g., v1.0.1)'
+    value: ${{ steps.calc.outputs.new }}
+  major:
+    description: 'Major alias (e.g., v1)'
+    value: ${{ steps.calc.outputs.major }}
+  minor:
+    description: 'Minor alias (e.g., v1.0)'
+    value: ${{ steps.calc.outputs.minor }}
+  last:
+    description: 'Previous full tag (e.g., v1.0.0), empty if none'
+    value: ${{ steps.calc.outputs.last }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate level
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "${{ inputs.level }}" in patch|minor|major) :;; *) echo 'Error: level must be patch|minor|major' >&2; exit 1;; esac
+
+    - name: Fetch tags
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --tags --force
+
+    - name: Compute next version
+      id: calc
+      shell: bash
+      env:
+        LEVEL: ${{ inputs.level }}
+      run: |
+        set -euo pipefail
+        LAST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sed 's/^v//' | sort -V | tail -n1 || true)
+        if [ -z "$LAST" ]; then
+          MAJ=1; MIN=0; PAT=0
+        else
+          IFS=. read -r MAJ MIN PAT <<EOF
+        $LAST
+        EOF
+          case "$LEVEL" in
+            major) MAJ=$((MAJ+1)); MIN=0; PAT=0;;
+            minor) MIN=$((MIN+1)); PAT=0;;
+            *) PAT=$((PAT+1));;
+          esac
+        fi
+        NEW="v${MAJ}.${MIN}.${PAT}"
+        echo "new=$NEW" >> "$GITHUB_OUTPUT"
+        echo "major=v${MAJ}" >> "$GITHUB_OUTPUT"
+        echo "minor=v${MAJ}.${MIN}" >> "$GITHUB_OUTPUT"
+        echo "last=${LAST:+v$LAST}" >> "$GITHUB_OUTPUT"

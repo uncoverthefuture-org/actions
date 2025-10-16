@@ -1,0 +1,62 @@
+name: 'version: update-tags'
+description: 'Create the new version tag if missing, and (force) update major/minor alias tags to point to it.'
+
+inputs:
+  new:
+    description: 'New tag (vX.Y.Z) to create/point aliases to'
+    required: true
+  major:
+    description: 'Major alias (vX)'
+    required: true
+  minor:
+    description: 'Minor alias (vX.Y)'
+    required: true
+  tag_message:
+    description: 'Message for annotated tags'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Fetch tags
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --tags --force
+    - name: Configure Git user
+      shell: bash
+      run: |
+        set -euo pipefail
+        git config user.name "${GITHUB_ACTOR}"
+        git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+
+    - name: Create version tag if missing
+      shell: bash
+      env:
+        NEW: ${{ inputs.new }}
+        MSG: ${{ inputs.tag_message }}
+      run: |
+        set -euo pipefail
+        if git rev-parse -q --verify "refs/tags/$NEW" >/dev/null; then
+          echo "Tag $NEW already exists; skipping creation"
+        else
+          MSG_USE=${MSG:-"Release $NEW"}
+          git tag -a "$NEW" -m "$MSG_USE"
+          git push origin "$NEW"
+        fi
+
+    - name: Update major/minor alias tags to point to new
+      shell: bash
+      env:
+        NEW: ${{ inputs.new }}
+        MAJOR: ${{ inputs.major }}
+        MINOR: ${{ inputs.minor }}
+      run: |
+        set -euo pipefail
+        # Make aliases explicitly point at the commit referenced by NEW
+        COMMIT=$(git rev-parse --verify "$NEW^{commit}")
+        git tag -fa "$MAJOR" -m "Alias $MAJOR -> $NEW" "$COMMIT"
+        git tag -fa "$MINOR" -m "Alias $MINOR -> $NEW" "$COMMIT"
+        git push origin "$MAJOR" --force
+        git push origin "$MINOR" --force
