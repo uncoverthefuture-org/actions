@@ -98,6 +98,12 @@ runs:
             fi
           }
 
+          if ! command -v podman >/dev/null 2>&1; then
+            echo 'Error: podman is not installed on the remote host.' >&2
+            echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
+            exit 1
+          fi
+
           # Begin inline script
           ${{ inputs.inline_script }}
 
@@ -137,6 +143,12 @@ runs:
             fi
           }
 
+          if ! command -v podman >/dev/null 2>&1; then
+            echo 'Error: podman is not installed on the remote host.' >&2
+            echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
+            exit 1
+          fi
+
           # Begin inline script
           ${{ inputs.inline_script }}
 
@@ -175,6 +187,12 @@ runs:
               sudo -H -u "$PODMAN_USER" podman "$@"
             fi
           }
+
+          if ! command -v podman >/dev/null 2>&1; then
+            echo 'Error: podman is not installed on the remote host.' >&2
+            echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
+            exit 1
+          fi
 
           # Begin inline script
           ${{ inputs.inline_script }}

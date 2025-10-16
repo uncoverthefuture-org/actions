@@ -141,7 +141,7 @@ runs:
 
     - name: prepare-ubuntu-host
       if: ${{ inputs.subaction == 'prepare-ubuntu-host' }}
-      uses: ./.github/actions/infra/prepare-ubuntu-host
+      uses: ../prepare-ubuntu-host@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -163,7 +163,7 @@ runs:
 
     - name: apache-manage-vhost
       if: ${{ inputs.subaction == 'apache-manage-vhost' }}
-      uses: ./.github/actions/infra/apache-manage-vhost
+      uses: ../apache-manage-vhost@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}

@@ -185,7 +185,7 @@ runs:
 
     - name: remote-podman-exec
       if: ${{ inputs.subaction == 'remote-podman-exec' }}
-      uses: ./.github/actions/podman/remote-podman-exec
+      uses: ../remote-podman-exec@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -203,7 +203,7 @@ runs:
 
     - name: podman-login-pull
       if: ${{ inputs.subaction == 'podman-login-pull' }}
-      uses: ./.github/actions/podman/podman-login-pull
+      uses: ../podman-login-pull@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -222,7 +222,7 @@ runs:
 
     - name: podman-stop-rm-container
       if: ${{ inputs.subaction == 'podman-stop-rm-container' }}
-      uses: ./.github/actions/podman/podman-stop-rm-container
+      uses: ../podman-stop-rm-container@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -238,7 +238,7 @@ runs:
 
     - name: podman-run-service
       if: ${{ inputs.subaction == 'podman-run-service' }}
-      uses: ./.github/actions/podman/podman-run-service
+      uses: ../podman-run-service@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -261,7 +261,7 @@ runs:
 
     - name: podman-run-db
       if: ${{ inputs.subaction == 'podman-run-db' }}
-      uses: ./.github/actions/podman/podman-run-db
+      uses: ../podman-run-db@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}

@@ -1,16 +1,17 @@
-name: 'SSH React Deploy'
-description: 'Upload env (optional) and deploy a React container via Podman over SSH, with optional Apache vhost reverse proxy.'
+name: 'SSH Django Deploy'
+description: 'Optionally prepare a fresh Ubuntu host, upload env, and deploy a Django container via Podman over SSH.'
 
 inputs:
+  # SSH / remote execution
   ssh_host:
     description: 'SSH host'
     required: true
   ssh_user:
-    description: 'SSH username'
+    description: 'SSH username (non-root)'
     required: false
     default: 'root'
   ssh_key:
-    description: 'SSH private key'
+    description: 'SSH private key for non-root user'
     required: true
   root_ssh_key:
     description: 'SSH private key for root (optional)'
@@ -20,7 +21,7 @@ inputs:
     required: false
     default: '22'
   ssh_fingerprint:
-    description: 'Server SSH host key fingerprint (optional)'
+    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
     required: false
   podman_user:
     description: 'User on remote host to execute podman commands as'
@@ -31,6 +32,7 @@ inputs:
     required: false
     default: 'auto'
 
+  # Prepare host (optional)
   prepare_host:
     description: 'Install Podman and prepare directories/users on a fresh Ubuntu host'
     required: false
@@ -51,6 +53,7 @@ inputs:
     required: false
     default: 'jq curl ca-certificates'
 
+  # Environment file
   env_name:
     description: 'Environment name used to build container and env file path'
     required: false
@@ -68,13 +71,14 @@ inputs:
     description: 'Raw contents of the .env file to write on the server (use env_b64 instead when possible)'
     required: false
 
+  # Image/registry
   registry:
     description: 'Container registry hostname'
     required: false
     default: 'ghcr.io'
   image_name:
     description: 'Image name (e.g., org/app)'
-    required: false
+    required: true
   image_tag:
     description: 'Image tag to deploy'
     required: false
@@ -89,6 +93,7 @@ inputs:
     required: false
     default: 'true'
 
+  # Runtime
   app_slug:
     description: 'Slug used in default container name'
     required: false
@@ -96,15 +101,23 @@ inputs:
     description: 'Override container name (defaults to ${app_slug}-${env_name})'
     required: false
   host_port:
-    description: 'Override host port (default derived from env file: WEB_HOST_PORT or PORT, else 3000)'
+    description: 'Override host port (default is derived from env file: API_HOST_PORT or PORT, else 8000)'
     required: false
   container_port:
-    description: 'Override container port (default derived from env file: WEB_CONTAINER_PORT or TARGET_PORT, else 3000)'
+    description: 'Override container port (default derived from env file: API_CONTAINER_PORT or TARGET_PORT, else 8000)'
     required: false
   restart_policy:
     description: 'Container restart policy'
     required: false
     default: 'unless-stopped'
+  migrate:
+    description: 'Run Django migrations before starting the container'
+    required: false
+    default: 'true'
+  migrate_cmd:
+    description: 'Command to run migrations'
+    required: false
+    default: 'python manage.py migrate --noinput'
   extra_run_args:
     description: 'Additional args passed to podman run'
     required: false
@@ -113,6 +126,7 @@ inputs:
     required: false
     default: '512m'
 
+  # Env sourcing for deployment
   source_env:
     description: 'Source ENV_FILE prior to deploy commands'
     required: false
@@ -122,8 +136,9 @@ inputs:
     required: false
     default: 'true'
 
+  # Apache vhost management (optional)
   manage_vhost:
-    description: 'Create/update Apache vhost for the app domain'
+    description: 'Create/update Apache vhost for the API domain'
     required: false
     default: 'false'
   domain:
@@ -135,21 +150,107 @@ inputs:
   domain_prefix_prod:
     description: 'Domain prefix for production/main env'
     required: false
-    default: 'app'
+    default: 'api'
   domain_prefix_staging:
     description: 'Domain prefix for staging env'
     required: false
+    default: 'api-staging'
   domain_prefix_dev:
     description: 'Domain prefix for dev env'
     required: false
+    default: 'api-dev'
   vhost_mode:
-    description: "VHost mode: 'reverse_proxy' (default)"
+    description: "VHost mode: 'reverse_proxy' (default) or 'mod_wsgi'"
     required: false
-    default: 'reverse_proxy'
+    default: 'mod_wsgi'
+  wsgi_script_path:
+    description: 'Path to wsgi.py on server when vhost_mode=mod_wsgi'
+    required: false
   require_dns_match:
     description: 'Require domain A-record match to server public IP before applying changes'
     required: false
     default: 'true'
+
+  # Optional DB container
+  run_db:
+    description: 'Run a database container before deploying the API'
+    required: false
+    default: 'false'
+  db_type:
+    description: "Database type: 'postgres' or 'mysql'"
+    required: false
+    default: 'mysql'
+  db_service_name:
+    description: 'Container name for DB service (default: db-<app_slug>-<env_name>)'
+    required: false
+  db_name:
+    description: 'Database name'
+    required: false
+  db_user:
+    description: 'Database user'
+    required: false
+  db_password:
+    description: 'Database password'
+    required: false
+  db_root_password:
+    description: 'Root password (MySQL only)'
+    required: false
+  db_host_port:
+    description: 'Host port to expose DB (optional)'
+    required: false
+  db_data_volume:
+    description: 'Podman volume name or host path for DB data'
+    required: false
+  db_image_tag:
+    description: 'DB image tag (postgres default 16, mysql default 8)'
+    required: false
+  db_memory_limit:
+    description: 'DB memory limit, e.g., 512m'
+    required: false
+    default: '512m'
+
+  # Optional worker and scheduler services
+  run_worker:
+    description: 'Run a background worker container'
+    required: false
+    default: 'false'
+  worker_service_name:
+    description: 'Worker container name (default: worker-<app_slug>-<env_name>)'
+    required: false
+  worker_command:
+    description: 'Worker command to run inside the app image (e.g., celery -A app worker -l info)'
+    required: false
+  worker_image:
+    description: 'Alternate image for worker (defaults to API image)'
+    required: false
+  worker_memory_limit:
+    description: 'Worker memory limit, e.g., 512m'
+    required: false
+    default: '512m'
+  worker_volumes:
+    description: 'Newline-separated list of volumes for the worker container'
+    required: false
+
+  run_scheduler:
+    description: 'Run a scheduler/cron container'
+    required: false
+    default: 'false'
+  scheduler_service_name:
+    description: 'Scheduler container name (default: scheduler-<app_slug>-<env_name>)'
+    required: false
+  scheduler_command:
+    description: 'Scheduler command to run inside the app image (e.g., celery -A app beat -l info)'
+    required: false
+  scheduler_image:
+    description: 'Alternate image for scheduler (defaults to API image)'
+    required: false
+  scheduler_memory_limit:
+    description: 'Scheduler memory limit, e.g., 512m'
+    required: false
+    default: '512m'
+  scheduler_volumes:
+    description: 'Newline-separated list of volumes for the scheduler container'
+    required: false
 
 runs:
   using: 'composite'
@@ -185,10 +286,13 @@ runs:
       shell: bash
 
     - name: Validate inputs
+      env:
+        J_IMAGE_NAME: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}
       run: |
         set -euo pipefail
         if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
         if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
+        if [ -z "${J_IMAGE_NAME}" ]; then echo 'Error: image_name is required' ; exit 1 ; fi
         if [ "${{ inputs.registry_login }}" = "true" ] && [ "${{ inputs.registry }}" != "ghcr.io" ]; then
           if [ -z "${{ inputs.registry_username }}" ] || [ -z "${{ inputs.registry_token }}" ]; then
             echo 'Error: registry_username and registry_token are required for non-GHCR registries when registry_login=true' ; exit 1
@@ -265,7 +369,7 @@ runs:
             "image_tag": "${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}"
           }
 
-    - name: Deploy React app
+    - name: Deploy Django App
       uses: uncoverthefuture-org/actions@master
       with:
         subaction: remote-podman-exec
@@ -283,7 +387,55 @@ runs:
             "env_file_path": "${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}",
             "source_env": "${{ inputs.source_env }}",
             "fail_if_env_missing": "${{ inputs.fail_if_env_missing }}",
-            "command": "set -euo pipefail\n\nENV_FILE=\"${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}\"\nIMAGE=\"${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}\"\n\nCN_IN=\"${{ inputs.container_name }}\"\nAPP_SLUG=\"${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}\"\nCONTAINER_NAME=\"${CN_IN:-${APP_SLUG}-${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}}\"\n\nHP_IN=\"${{ inputs.host_port }}\"\nCP_IN=\"${{ inputs.container_port }}\"\nif [ -n \"$HP_IN\" ]; then\n  HOST_PORT=\"$HP_IN\"\nelse\n  HOST_PORT=\"${WEB_HOST_PORT:-${PORT:-3000}}\"\nfi\nif [ -n \"$CP_IN\" ]; then\n  CONTAINER_PORT=\"$CP_IN\"\nelse\n  CONTAINER_PORT=\"${WEB_CONTAINER_PORT:-${TARGET_PORT:-3000}}\"\nfi\n\nrun_podman stop \"$CONTAINER_NAME\" >/dev/null 2>&1 || true\nrun_podman rm \"$CONTAINER_NAME\" >/dev/null 2>&1 || true\n\nEXTRA_ARGS=\"${{ inputs.extra_run_args }}\"\nrun_podman run -d --name \"$CONTAINER_NAME\" --env-file \"$ENV_FILE\" \\\n  -p \"$HOST_PORT:$CONTAINER_PORT\" --restart=${{ inputs.restart_policy }} \\\n  --memory='${{ inputs.memory_limit }}' --memory-swap='${{ inputs.memory_limit }}' \\\n  ${EXTRA_ARGS:+$EXTRA_ARGS} \\\n  \"$IMAGE\""
+            "command": "set -euo pipefail\n\nENV_FILE=\"${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}\"\nIMAGE=\"${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}\"\n\nCN_IN=\"${{ inputs.container_name }}\"\nAPP_SLUG=\"${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}\"\nCONTAINER_NAME=\"${CN_IN:-${APP_SLUG}-${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}}\"\n\nHP_IN=\"${{ inputs.host_port }}\"\nCP_IN=\"${{ inputs.container_port }}\"\nif [ -n \"$HP_IN\" ]; then\n  HOST_PORT=\"$HP_IN\"\nelse\n  HOST_PORT=\"${API_HOST_PORT:-${PORT:-8000}}\"\nfi\nif [ -n \"$CP_IN\" ]; then\n  CONTAINER_PORT=\"$CP_IN\"\nelse\n  CONTAINER_PORT=\"${API_CONTAINER_PORT:-${TARGET_PORT:-8000}}\"\nfi\n\nrun_podman stop \"$CONTAINER_NAME\" >/dev/null 2>&1 || true\nrun_podman rm \"$CONTAINER_NAME\" >/dev/null 2>&1 || true\n\nif [ \"${{ inputs.migrate }}\" = \"true\" ]; then\n  run_podman run --rm --env-file \"$ENV_FILE\" \\\n    \"$IMAGE\" \\\n    ${{ inputs.migrate_cmd }}\nfi\n\nEXTRA_ARGS=\"${{ inputs.extra_run_args }}\"\nrun_podman run -d --name \"$CONTAINER_NAME\" --env-file \"$ENV_FILE\" \\\n  -p \"$HOST_PORT:$CONTAINER_PORT\" --restart=${{ inputs.restart_policy }} \\\n  --memory='${{ inputs.memory_limit }}' --memory-swap='${{ inputs.memory_limit }}' \\\n  ${EXTRA_ARGS:+$EXTRA_ARGS} \\\n  \"$IMAGE\""
+          }
+
+    - name: Run worker (optional)
+      if: ${{ inputs.run_worker == 'true' }}
+      uses: uncoverthefuture-org/actions@master
+      with:
+        subaction: podman-run-service
+        params_json: |
+          {
+            "ssh_host": "${{ inputs.ssh_host }}",
+            "ssh_user": "${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}",
+            "ssh_key": "${{ inputs.ssh_key }}",
+            "root_ssh_key": "${{ inputs.root_ssh_key }}",
+            "ssh_port": "${{ inputs.ssh_port }}",
+            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
+            "podman_user": "${{ inputs.podman_user }}",
+            "connect_mode": "${{ inputs.connect_mode }}",
+            "service_name": "${{ inputs.worker_service_name }}",
+            "image": "${{ inputs.worker_image != '' && inputs.worker_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), inputs.image_tag) }}",
+            "env_file": "${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}",
+            "command": "${{ inputs.worker_command }}",
+            "restart_policy": "unless-stopped",
+            "memory_limit": "${{ inputs.worker_memory_limit }}",
+            "volumes": "${{ inputs.worker_volumes }}"
+          }
+
+    - name: Run scheduler (optional)
+      if: ${{ inputs.run_scheduler == 'true' }}
+      uses: uncoverthefuture-org/actions@master
+      with:
+        subaction: podman-run-service
+        params_json: |
+          {
+            "ssh_host": "${{ inputs.ssh_host }}",
+            "ssh_user": "${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}",
+            "ssh_key": "${{ inputs.ssh_key }}",
+            "root_ssh_key": "${{ inputs.root_ssh_key }}",
+            "ssh_port": "${{ inputs.ssh_port }}",
+            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
+            "podman_user": "${{ inputs.podman_user }}",
+            "connect_mode": "${{ inputs.connect_mode }}",
+            "service_name": "${{ inputs.scheduler_service_name }}",
+            "image": "${{ inputs.scheduler_image != '' && inputs.scheduler_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default)) }}",
+            "env_file": "${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}",
+            "command": "${{ inputs.scheduler_command }}",
+            "restart_policy": "unless-stopped",
+            "memory_limit": "${{ inputs.scheduler_memory_limit }}",
+            "volumes": "${{ inputs.scheduler_volumes }}"
           }
 
     - name: Manage Apache vhost (optional)
@@ -294,7 +446,7 @@ runs:
         params_json: |
           {
             "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}",
+            "ssh_user": "${{ inputs.ssh_user }}",
             "ssh_key": "${{ inputs.ssh_key }}",
             "root_ssh_key": "${{ inputs.root_ssh_key }}",
             "ssh_port": "${{ inputs.ssh_port }}",
@@ -308,5 +460,6 @@ runs:
             "domain_prefix_staging": "${{ inputs.domain_prefix_staging }}",
             "domain_prefix_dev": "${{ inputs.domain_prefix_dev }}",
             "require_dns_match": "${{ inputs.require_dns_match }}",
-            "mode": "${{ inputs.vhost_mode != '' && inputs.vhost_mode || 'reverse_proxy' }}"
+            "mode": "${{ inputs.vhost_mode }}",
+            "wsgi_script_path": "${{ inputs.wsgi_script_path }}"
           }

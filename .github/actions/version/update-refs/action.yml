@@ -1,0 +1,34 @@
+name: 'version: update-refs'
+description: 'Update @master references to the new version tag in YAML files and commit the changes.'
+
+inputs:
+  new_tag:
+    description: 'New version tag (e.g., v1.2.3)'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Update action refs to new version
+      shell: bash
+      env:
+        NEW_TAG: ${{ inputs.new_tag }}
+      run: |
+        set -euo pipefail
+        find . -name "*.yml" -o -name "*.yaml" | xargs sed -i '' "s/@master/@$NEW_TAG/g"
+
+    - name: Commit version updates
+      shell: bash
+      env:
+        NEW_TAG: ${{ inputs.new_tag }}
+      run: |
+        set -euo pipefail
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add .
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update action refs to $NEW_TAG"
+          git push
+        fi

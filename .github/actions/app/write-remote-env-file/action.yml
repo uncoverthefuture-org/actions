@@ -70,29 +70,21 @@ runs:
       shell: bash
 
     - name: Write env file
-      uses: ./.github/actions/podman/remote-podman-exec
+      uses: uncoverthefuture-org/actions@master
       with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
-        env_name: ${{ inputs.env_name }}
-        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
-        source_env: 'false'
-        inline_script: |
-          set -euo pipefail
-          ENV_FILE="${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name }}"
-          mkdir -p "$(dirname "${ENV_FILE}")"
-          if [ -n "${{ inputs.env_b64 }}" ]; then
-            printf '%s' "${{ inputs.env_b64 }}" | base64 -d > "${ENV_FILE}"
-          else
-            cat > "${ENV_FILE}" <<'EOF_ENV'
-${{ inputs.env_content }}
-EOF_ENV
-          fi
-          chmod 600 "${ENV_FILE}" || true
-          chown "${{ inputs.podman_user }}":"${{ inputs.podman_user }}" "${ENV_FILE}" || true
+        subaction: remote-podman-exec
+        params_json: |
+          {
+            "ssh_host": "${{ inputs.ssh_host }}",
+            "ssh_user": "${{ inputs.ssh_user }}",
+            "ssh_key": "${{ inputs.ssh_key }}",
+            "root_ssh_key": "${{ inputs.root_ssh_key }}",
+            "ssh_port": "${{ inputs.ssh_port }}",
+            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
+            "podman_user": "${{ inputs.podman_user }}",
+            "connect_mode": "${{ inputs.connect_mode }}",
+            "env_name": "${{ inputs.env_name }}",
+            "env_file_path": "${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}",
+            "source_env": "false",
+            "command": "set -euo pipefail\nENV_FILE=\"${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name }}\"\nmkdir -p \"$(dirname \"${ENV_FILE}\")\"\nif [ -n \"${{ inputs.env_b64 }}\" ]; then\n  printf '%s' \"${{ inputs.env_b64 }}\" | base64 -d > \"${ENV_FILE}\"\nelse\n  cat > \"${ENV_FILE}\" <<'EOF_ENV'\n${{ inputs.env_content }}\nEOF_ENV\nfi\nchmod 600 \"${ENV_FILE}\" || true\nchown \"${{ inputs.podman_user }}\":\"${{ inputs.podman_user }}\" \"${ENV_FILE}\" || true"
+          }

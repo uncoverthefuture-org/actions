@@ -3,7 +3,7 @@ description: 'App dispatch: route short calls to app actions'
 
 inputs:
   subaction:
-    description: "ssh-django-api-deploy | ssh-nextjs-deploy | ssh-react-deploy | ssh-laravel-deploy | write-remote-env-file"
+    description: "ssh-django-deploy | ssh-django-api-deploy | ssh-nextjs-deploy | ssh-react-deploy | ssh-laravel-deploy | write-remote-env-file"
     required: true
   params_json:
     description: "JSON blob of parameters to pass to the selected subaction"
@@ -159,7 +159,7 @@ runs:
       run: |
         set -euo pipefail
         SA='${{ inputs.subaction }}'
-        case "$SA" in ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file) :;; *) echo "Error: unsupported app subaction '$SA'" >&2; exit 1;; esac
+        case "$SA" in ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file) :;; *) echo "Error: unsupported app subaction '$SA'" >&2; exit 1;; esac
       shell: bash
 
     - name: Validate base SSH for app subactions
@@ -169,7 +169,7 @@ runs:
       run: |
         set -euo pipefail
         case "${{ inputs.subaction }}" in
-          ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file)
+          ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file)
             for n in J_SSH_HOST J_SSH_KEY; do v="${!n}"; if [ -z "$v" ]; then echo "Error: ${n#J_} is required" >&2; exit 1; fi; done
             ;;
         esac
@@ -189,15 +189,30 @@ runs:
               echo 'Error: env_b64 or env_content required for write-remote-env-file' >&2; exit 1;
             fi
             ;;
-          ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy)
+          ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy)
             : # rely on sub-action defaults/validation
             ;;
         esac
       shell: bash
 
+    - name: django: validate
+      if: ${{ inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-django-api-deploy' }}
+      uses: ../django/validate@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.pjson.outputs.json).registry }}
+        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.pjson.outputs.json).registry_login }}
+        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.pjson.outputs.json).registry_username }}
+        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.pjson.outputs.json).registry_token }}
+        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.pjson.outputs.json).write_env_file }}
+        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.pjson.outputs.json).env_b64 }}
+        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.pjson.outputs.json).env_content }}
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name || steps.dfl.outputs.image_name }}
+
     - name: write-remote-env-file
       if: ${{ inputs.subaction == 'write-remote-env-file' }}
-      uses: ./.github/actions/app/write-remote-env-file
+      uses: ../write-remote-env-file@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -214,7 +229,54 @@ runs:
 
     - name: ssh-django-api-deploy
       if: ${{ inputs.subaction == 'ssh-django-api-deploy' }}
-      uses: ./.github/actions/app/ssh-django-api-deploy
+      uses: ../ssh-django-api-deploy@v1
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.pjson.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.pjson.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.pjson.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
+        prepare_host: ${{ inputs.prepare_host != '' && inputs.prepare_host || fromJSON(steps.pjson.outputs.json).prepare_host }}
+        install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.pjson.outputs.json).install_podman }}
+        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.pjson.outputs.json).create_podman_user }}
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.pjson.outputs.json).env_dir_path || steps.dfl.outputs.env_dir_path }}
+        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.pjson.outputs.json).additional_packages }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.pjson.outputs.json).env_file_path || steps.dfl.outputs.env_file_path }}
+        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.pjson.outputs.json).write_env_file }}
+        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.pjson.outputs.json).env_b64 }}
+        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.pjson.outputs.json).env_content }}
+        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.pjson.outputs.json).registry }}
+        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.pjson.outputs.json).registry_username }}
+        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.pjson.outputs.json).registry_token }}
+        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.pjson.outputs.json).registry_login }}
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name || steps.dfl.outputs.image_name }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.pjson.outputs.json).image_tag }}
+        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.pjson.outputs.json).app_slug || steps.dfl.outputs.app_slug }}
+        container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.pjson.outputs.json).container_name }}
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.pjson.outputs.json).host_port }}
+        container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.pjson.outputs.json).container_port }}
+        restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.pjson.outputs.json).restart_policy }}
+        migrate: ${{ inputs.migrate != '' && inputs.migrate || fromJSON(steps.pjson.outputs.json).migrate }}
+        migrate_cmd: ${{ inputs.migrate_cmd != '' && inputs.migrate_cmd || fromJSON(steps.pjson.outputs.json).migrate_cmd }}
+        extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.pjson.outputs.json).extra_run_args }}
+        memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.pjson.outputs.json).memory_limit }}
+        manage_vhost: ${{ inputs.manage_vhost != '' && inputs.manage_vhost || fromJSON(steps.pjson.outputs.json).manage_vhost }}
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.pjson.outputs.json).domain }}
+        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.pjson.outputs.json).base_domain }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.pjson.outputs.json).domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.pjson.outputs.json).domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.pjson.outputs.json).domain_prefix_dev }}
+        vhost_mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.pjson.outputs.json).vhost_mode }}
+        wsgi_script_path: ${{ inputs.wsgi_script_path != '' && inputs.wsgi_script_path || fromJSON(steps.pjson.outputs.json).wsgi_script_path }}
+        require_dns_match: ${{ inputs.require_dns_match != '' && inputs.require_dns_match || fromJSON(steps.pjson.outputs.json).require_dns_match }}
+
+    - name: ssh-django-deploy
+      if: ${{ inputs.subaction == 'ssh-django-deploy' }}
+      uses: ../ssh-django-deploy@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -261,7 +323,7 @@ runs:
 
     - name: ssh-nextjs-deploy
       if: ${{ inputs.subaction == 'ssh-nextjs-deploy' }}
-      uses: ./.github/actions/app/ssh-nextjs-deploy
+      uses: ../ssh-nextjs-deploy@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -304,7 +366,7 @@ runs:
 
     - name: ssh-react-deploy
       if: ${{ inputs.subaction == 'ssh-react-deploy' }}
-      uses: ./.github/actions/app/ssh-react-deploy
+      uses: ../ssh-react-deploy@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -347,7 +409,7 @@ runs:
 
     - name: ssh-laravel-deploy
       if: ${{ inputs.subaction == 'ssh-laravel-deploy' }}
-      uses: ./.github/actions/app/ssh-laravel-deploy
+      uses: ../ssh-laravel-deploy@v1
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}

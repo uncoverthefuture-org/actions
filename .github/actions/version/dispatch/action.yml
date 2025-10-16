@@ -1,0 +1,51 @@
+name: 'dispatch: version'
+description: 'Version dispatch: route short calls to version actions'
+
+inputs:
+  subaction:
+    description: "compute-next | update-tags | update-refs"
+    required: true
+  params_json:
+    description: "JSON blob of parameters to pass to the selected subaction"
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Normalize params JSON
+      id: pjson
+      env:
+        INPUT_PARAMS_JSON: ${{ inputs.params_json }}
+      run: |
+        set -euo pipefail
+        J="${INPUT_PARAMS_JSON}"
+        if [ -z "$J" ]; then J='{}'; fi
+        echo "json=$J" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - name: Validate subaction
+      run: |
+        set -euo pipefail
+        SA='${{ inputs.subaction }}'
+        case "$SA" in compute-next|update-tags|update-refs) :;; *) echo "Error: unsupported version subaction '$SA'" >&2; exit 1;; esac
+      shell: bash
+
+    - name: compute-next
+      if: ${{ inputs.subaction == 'compute-next' }}
+      uses: ../compute-next
+      with:
+        level: ${{ fromJSON(steps.pjson.outputs.json).level }}
+
+    - name: update-tags
+      if: ${{ inputs.subaction == 'update-tags' }}
+      uses: ../update-tags
+      with:
+        new: ${{ fromJSON(steps.pjson.outputs.json).new }}
+        major: ${{ fromJSON(steps.pjson.outputs.json).major }}
+        minor: ${{ fromJSON(steps.pjson.outputs.json).minor }}
+        tag_message: ${{ fromJSON(steps.pjson.outputs.json).tag_message }}
+
+    - name: update-refs
+      if: ${{ inputs.subaction == 'update-refs' }}
+      uses: ../update-refs
+      with:
+        new_tag: ${{ fromJSON(steps.pjson.outputs.json).new_tag }}

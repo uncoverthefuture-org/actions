@@ -12,7 +12,7 @@ outputs:
     description: 'Whether deployment is enabled (from build dispatch)'
     value: ${{ steps.bdisp.outputs.deploy_enabled }}
 name: 'Uncover Actions'
-description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@v1'
+description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@master'
 
 inputs:
   subaction:
@@ -37,7 +37,7 @@ runs:
           ROOT="${GITHUB_ACTION_PATH}"
           BASE="${ROOT}/.github/actions"
           echo "\nUncover Actions — available subactions:" 
-          for CAT in build podman infra app; do
+          for CAT in build podman infra app version; do
             DIR="${BASE}/${CAT}"
             [ -d "$DIR" ] || continue
             MAP=""
@@ -52,7 +52,7 @@ runs:
             fi
           done
           echo "\nUsage:"
-          echo "- uses: uncoverthefuture-org/actions@v1"
+          echo "- uses: uncoverthefuture-org/actions@master"
           echo "  with:"
           echo "    subaction: <one-of-the-above>"
           echo "    # optional: category: build|podman|infra|app\n"
@@ -61,7 +61,8 @@ runs:
           echo "- build:  ${BASE_URL}/build"
           echo "- podman: ${BASE_URL}/podman"
           echo "- infra:  ${BASE_URL}/infra"
-          echo "- app:    ${BASE_URL}/app\n"
+          echo "- app:    ${BASE_URL}/app"
+          echo "- version: ${BASE_URL}/version"
           echo "Tip: pass 'subaction: help' to print this list."
           exit 1
         fi
@@ -78,39 +79,47 @@ runs:
             build-and-push) CAT='build' ;;
             remote-podman-exec|podman-login-pull|podman-stop-rm-container|podman-run-service|podman-run-db) CAT='podman' ;;
             prepare-ubuntu-host|apache-manage-vhost) CAT='infra' ;;
-            ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file) CAT='app' ;;
+            ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file) CAT='app' ;;
+            compute-next|update-tags|update-refs) CAT='version' ;;
             *) echo "Error: unsupported subaction '$SA'" >&2; exit 1 ;;
           esac
         fi
-        case "$CAT" in build|podman|infra|app) :;; *) echo "Error: unsupported category '$CAT'" >&2; exit 1;; esac
+        case "$CAT" in build|podman|infra|app|version) :;; *) echo "Error: unsupported category '$CAT'" >&2; exit 1;; esac
         echo "category=$CAT" >> "$GITHUB_OUTPUT"
       shell: bash
 
     - name: Build dispatch
       id: bdisp
       if: ${{ steps.route.outputs.category == 'build' }}
-      uses: ./.github/actions/build/dispatch
+      uses: uncoverthefuture-org/actions/.github/actions/build/dispatch@v1
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: Podman dispatch
       if: ${{ steps.route.outputs.category == 'podman' }}
-      uses: ./.github/actions/podman/dispatch
+      uses: uncoverthefuture-org/actions/.github/actions/podman/dispatch@v1
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: Infra dispatch
       if: ${{ steps.route.outputs.category == 'infra' }}
-      uses: ./.github/actions/infra/dispatch
+      uses: uncoverthefuture-org/actions/.github/actions/infra/dispatch@v1
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: App dispatch
       if: ${{ steps.route.outputs.category == 'app' }}
-      uses: ./.github/actions/app/dispatch
+      uses: uncoverthefuture-org/actions/.github/actions/app/dispatch@v1
+      with:
+        subaction: ${{ inputs.subaction }}
+        params_json: ${{ inputs.params_json }}
+
+    - name: Version dispatch
+      if: ${{ steps.route.outputs.category == 'version' }}
+      uses: uncoverthefuture-org/actions/.github/actions/version/dispatch@v1
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
