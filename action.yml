@@ -1,3 +1,16 @@
+outputs:
+  env_name:
+    description: 'Environment name (from build dispatch)'
+    value: ${{ steps.bdisp.outputs.env_name }}
+  env_key:
+    description: 'Environment key (from build dispatch)'
+    value: ${{ steps.bdisp.outputs.env_key }}
+  image_tag:
+    description: 'Image tag (from build dispatch)'
+    value: ${{ steps.bdisp.outputs.image_tag }}
+  deploy_enabled:
+    description: 'Whether deployment is enabled (from build dispatch)'
+    value: ${{ steps.bdisp.outputs.deploy_enabled }}
 name: 'Uncover Actions'
 description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@v1'
 
@@ -74,6 +87,7 @@ runs:
       shell: bash
 
     - name: Build dispatch
+      id: bdisp
       if: ${{ steps.route.outputs.category == 'build' }}
       uses: ./.github/actions/build/dispatch
       with:

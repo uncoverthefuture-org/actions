@@ -55,7 +55,7 @@ inputs:
   # Environment file
   env_name:
     description: 'Environment name used to build container and env file path'
-    required: true
+    required: false
   env_file_path:
     description: 'Base path to the environment file on the server (prefix); final path is ${env_file_path}${env_name}'
     required: false
@@ -80,7 +80,7 @@ inputs:
     required: true
   image_tag:
     description: 'Image tag to deploy'
-    required: true
+    required: false
   registry_username:
     description: 'Registry username (for ghcr.io use your GH username)'
     required: false
@@ -266,10 +266,23 @@ runs:
         ENV_DIR="/opt/${APP_SLUG}"
         ENV_FILE_PATH="${ENV_DIR}/.env."
         IMG_NAME="${GH_REPOSITORY}"
+        # derive env_name and image_tag from ref if not provided
+        REF_NAME="${GITHUB_REF_NAME:-}"
+        SHA7="${GITHUB_SHA:-unknown}"; SHA7="${SHA7:0:7}"
+        case "$REF_NAME" in
+          main|master) ENV_NAME_DEF='production' ;;
+          stage|staging) ENV_NAME_DEF='staging' ;;
+          dev|develop|development) ENV_NAME_DEF='dev' ;;
+          refs/tags/*) ENV_NAME_DEF='production' ;;
+          *) ENV_NAME_DEF='dev' ;;
+        esac
+        IMG_TAG_DEF="${ENV_NAME_DEF}-${SHA7}"
         echo "app_slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
         echo "env_dir_path=$ENV_DIR" >> "$GITHUB_OUTPUT"
         echo "env_file_path=$ENV_FILE_PATH" >> "$GITHUB_OUTPUT"
         echo "image_name=$IMG_NAME" >> "$GITHUB_OUTPUT"
+        echo "env_name_default=$ENV_NAME_DEF" >> "$GITHUB_OUTPUT"
+        echo "image_tag_default=$IMG_TAG_DEF" >> "$GITHUB_OUTPUT"
       shell: bash
     - name: Validate inputs
       env:
@@ -280,12 +293,12 @@ runs:
         if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
         if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
         if [ -z "${J_IMAGE_NAME}" ]; then echo 'Error: image_name is required' ; exit 1 ; fi
-        if [ -z "${{ inputs.image_tag }}" ]; then echo 'Error: image_tag is required' ; exit 1 ; fi
-        if [ "${{ inputs.registry_login }}" = "true" ]; then
-          if [ -z "${{ inputs.registry_username }}" ]; then echo 'Error: registry_username is required when registry_login=true' ; exit 1 ; fi
-          if [ -z "${{ inputs.registry_token }}" ]; then echo 'Error: registry_token is required when registry_login=true' ; exit 1 ; fi
+        # registry creds only required for non-GHCR when registry_login=true
+        if [ "${{ inputs.registry_login }}" = "true" ] && [ "${{ inputs.registry }}" != "ghcr.io" ]; then
+          if [ -z "${{ inputs.registry_username }}" ] || [ -z "${{ inputs.registry_token }}" ]; then
+            echo 'Error: registry_username and registry_token are required for non-GHCR registries when registry_login=true' ; exit 1
+          fi
         fi
-        if [ -z "${{ inputs.env_name }}" ]; then echo 'Error: env_name is required' ; exit 1 ; fi
         # Env writing conditions
         if [ "${{ inputs.write_env_file }}" = "true" ]; then
           if [ -z "${{ inputs.env_b64 }}" ] && [ -z "${{ inputs.env_content }}" ]; then
@@ -323,7 +336,7 @@ runs:
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
-        env_name: ${{ inputs.env_name }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
         env_b64: ${{ inputs.env_b64 }}
         env_content: ${{ inputs.env_content }}
@@ -344,7 +357,7 @@ runs:
         registry_token: ${{ inputs.registry_token }}
         registry_login: ${{ inputs.registry_login }}
         image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}
-        image_tag: ${{ inputs.image_tag }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}
 
     - name: Deploy Django API
       uses: ./.github/actions/podman/remote-podman-exec
@@ -357,20 +370,20 @@ runs:
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
-        env_name: ${{ inputs.env_name }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
         source_env: ${{ inputs.source_env }}
         fail_if_env_missing: ${{ inputs.fail_if_env_missing }}
         inline_script: |
           set -euo pipefail
 
-          ENV_FILE="${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name }}"
-          IMAGE="${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:${{ inputs.image_tag }}"
+          ENV_FILE="${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}"
+          IMAGE="${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}"
 
           # container name
           CN_IN="${{ inputs.container_name }}"
           APP_SLUG="${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}"
-          CONTAINER_NAME="${CN_IN:-${APP_SLUG}-${{ inputs.env_name }}}"
+          CONTAINER_NAME="${CN_IN:-${APP_SLUG}-${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}}"
 
           # ports (allow overrides)
           HP_IN="${{ inputs.host_port }}"
@@ -419,7 +432,7 @@ runs:
         connect_mode: ${{ inputs.connect_mode }}
         service_name: ${{ inputs.worker_service_name }}
         image: ${{ inputs.worker_image != '' && inputs.worker_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), inputs.image_tag) }}
-        env_file: ${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name }}
+        env_file: ${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         command: ${{ inputs.worker_command }}
         restart_policy: 'unless-stopped'
         memory_limit: ${{ inputs.worker_memory_limit }}
@@ -438,15 +451,15 @@ runs:
         podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         service_name: ${{ inputs.scheduler_service_name }}
-        image: ${{ inputs.scheduler_image != '' && inputs.scheduler_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), inputs.image_tag) }}
-        env_file: ${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name }}
+        image: ${{ inputs.scheduler_image != '' && inputs.scheduler_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default)) }}
+        env_file: ${{ (inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path) }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         command: ${{ inputs.scheduler_command }}
         restart_policy: 'unless-stopped'
         memory_limit: ${{ inputs.scheduler_memory_limit }}
         volumes: ${{ inputs.scheduler_volumes }}
 
     - name: Manage Apache vhost (optional)
-      if: ${{ inputs.manage_vhost == 'true' }}
+      if: ${{ inputs.manage_vhost == 'true' || (inputs.manage_vhost == '' && (inputs.base_domain != '' || inputs.domain != '')) }}
       uses: ./.github/actions/infra/apache-manage-vhost
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -456,7 +469,7 @@ runs:
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         connect_mode: 'root'
-        env_name: ${{ inputs.env_name }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
         domain: ${{ inputs.domain }}
         base_domain: ${{ inputs.base_domain }}

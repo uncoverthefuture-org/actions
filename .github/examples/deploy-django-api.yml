@@ -1,0 +1,47 @@
+name: CI/CD — Build and Deploy Django API
+
+on:
+  push:
+    branches: [ main, staging, develop ]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - id: build
+        uses: uncoverthefuture-org/actions@v1
+        with:
+          subaction: build-and-push
+
+      - name: Deploy Django API
+        if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
+        uses: uncoverthefuture-org/actions@v1
+        with:
+          subaction: ssh-django-api-deploy
+          params_json: |
+            {
+              "ssh_host": "${{ secrets.SSH_HOST }}",
+              "ssh_user": "${{ secrets.SSH_USER }}",
+              "ssh_key":  "${{ secrets.SSH_KEY }}",
+              "base_domain": "example.com",
+              "domain_prefix_prod": "app"
+            }
+        # Note: domain config is optional. If neither base_domain nor domain is provided,
+        # the Apache vhost step is skipped automatically.
+
+      # Optional: write env file from a secret (env_name defaults from branch; can omit)
+      # - uses: uncoverthefuture-org/actions@v1
+      #   with:
+      #     subaction: write-remote-env-file
+      #     params_json: |
+      #       {
+      #         "ssh_host": "${{ secrets.SSH_HOST }}",
+      #         "ssh_user": "${{ secrets.SSH_USER }}",
+      #         "ssh_key":  "${{ secrets.SSH_KEY }}",
+      #         "env_name": "${{ needs.build.outputs.env_name }}",
+      #         "env_b64":  "${{ secrets.API_ENV_B64 }}"
+      #       }

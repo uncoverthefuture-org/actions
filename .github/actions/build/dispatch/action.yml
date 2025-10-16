@@ -16,6 +16,20 @@ inputs:
     required: false
     default: 'ghcr.io'
 
+outputs:
+  env_name:
+    description: 'Environment name from build step'
+    value: ${{ steps.call.outputs.env_name }}
+  env_key:
+    description: 'Environment key from build step'
+    value: ${{ steps.call.outputs.env_key }}
+  image_tag:
+    description: 'Image tag produced by build step'
+    value: ${{ steps.call.outputs.image_tag }}
+  deploy_enabled:
+    description: 'Whether deployment is enabled'
+    value: ${{ steps.call.outputs.deploy_enabled }}
+
 runs:
   using: 'composite'
   steps:
@@ -36,18 +50,10 @@ runs:
         case "$SA" in build-and-push) :;; *) echo "Error: unsupported build subaction '$SA'" >&2; exit 1;; esac
       shell: bash
 
-    - name: Validate inputs
-      if: ${{ inputs.subaction == 'build-and-push' }}
-      env:
-        J_IMAGE_NAME: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name }}
-        J_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || fromJSON(steps.pjson.outputs.json).github_token }}
-      run: |
-        set -euo pipefail
-        if [ -z "${J_IMAGE_NAME}" ]; then echo 'Error: image_name is required' ; exit 1 ; fi
-        if [ -z "${J_GITHUB_TOKEN}" ]; then echo 'Error: github_token is required' ; exit 1 ; fi
-      shell: bash
+    # No strict validation here; downstream action applies safe defaults
 
     - name: build-and-push
+      id: call
       if: ${{ inputs.subaction == 'build-and-push' }}
       uses: ./.github/actions/build/build-and-push
       with:

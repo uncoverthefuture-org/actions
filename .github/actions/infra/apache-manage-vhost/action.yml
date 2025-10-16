@@ -43,15 +43,13 @@ inputs:
   domain_prefix_prod:
     description: 'Prefix for production/main env'
     required: false
-    default: 'api'
+    default: 'app'
   domain_prefix_staging:
     description: 'Prefix for staging env'
     required: false
-    default: 'api-staging'
   domain_prefix_dev:
     description: 'Prefix for dev env'
     required: false
-    default: 'api-dev'
   require_dns_match:
     description: 'Require the domain A record to match the server public IP before applying changes'
     required: false
@@ -61,7 +59,6 @@ inputs:
   env_file_path:
     description: 'Base path to the environment file on the server (prefix); final path is ${env_file_path}${env_name}'
     required: false
-    default: '/opt/ekaban/api/.env.'
   source_env:
     description: 'Source env file to derive HOST_PORT if host_port not provided'
     required: false
@@ -97,7 +94,7 @@ runs:
       shell: bash
 
     - name: Configure Apache vhost
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -118,8 +115,11 @@ runs:
           BASE_DOMAIN='${{ inputs.base_domain }}'
           ENV_NAME='${{ inputs.env_name }}'
           DP_PROD='${{ inputs.domain_prefix_prod }}'
+          if [ -z "$DP_PROD" ]; then DP_PROD='app'; fi
           DP_STG='${{ inputs.domain_prefix_staging }}'
+          if [ -z "$DP_STG" ]; then DP_STG="${DP_PROD}-staging"; fi
           DP_DEV='${{ inputs.domain_prefix_dev }}'
+          if [ -z "$DP_DEV" ]; then DP_DEV="${DP_PROD}-dev"; fi
           if [ -n "$DOMAIN_IN" ]; then
             DOMAIN="$DOMAIN_IN"
           else

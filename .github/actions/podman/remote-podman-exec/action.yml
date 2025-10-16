@@ -32,7 +32,6 @@ inputs:
   env_file_path:
     description: 'Base path to env files on server (prefix); final path is ${env_file_path}${env_name}'
     required: false
-    default: '/opt/ekaban/api/.env.'
   env_name:
     description: 'Environment name (used to build ENV_FILE path)'
     required: false

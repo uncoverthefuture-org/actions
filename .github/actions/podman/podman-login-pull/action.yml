@@ -62,15 +62,18 @@ runs:
         if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
         if [ -z "${{ inputs.registry }}" ]; then echo 'Error: registry is required' ; exit 1 ; fi
         if [ "${{ inputs.registry_login }}" = "true" ]; then
-          if [ -z "${{ inputs.registry_username }}" ]; then echo 'Error: registry_username is required when registry_login=true' ; exit 1 ; fi
-          if [ -z "${{ inputs.registry_token }}" ]; then echo 'Error: registry_token is required when registry_login=true' ; exit 1 ; fi
+          if [ -z "${{ inputs.registry_username }}" ] || [ -z "${{ inputs.registry_token }}" ]; then
+            if [ "${{ inputs.registry }}" != "ghcr.io" ]; then
+              echo 'Error: registry_username and registry_token are required for non-GHCR registries when registry_login=true' ; exit 1
+            fi
+          fi
         fi
         if [ -z "${{ inputs.image_name }}" ]; then echo 'Error: image_name is required' ; exit 1 ; fi
         if [ -z "${{ inputs.image_tag }}" ]; then echo 'Error: image_tag is required' ; exit 1 ; fi
       shell: bash
 
     - name: Login and pull remotely
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+      uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
@@ -84,9 +87,17 @@ runs:
         inline_script: |
           set -euo pipefail
           IMAGE="${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.image_tag }}"
+          REG="${{ inputs.registry }}"
+          USER_IN="${{ inputs.registry_username }}"
+          TOKEN_IN="${{ inputs.registry_token }}"
+          USER="$USER_IN"
+          TOKEN="$TOKEN_IN"
+          if [ "$REG" = "ghcr.io" ]; then
+            [ -n "$USER" ] || USER="${{ github.actor }}"
+            [ -n "$TOKEN" ] || TOKEN="${{ github.token }}"
+          fi
 
           if [ "${{ inputs.registry_login }}" = "true" ]; then
-            # Use password-stdin to avoid exposing token in process args
-            printf '%s' '${{ inputs.registry_token }}' | run_podman login '${{ inputs.registry }}' -u '${{ inputs.registry_username }}' --password-stdin
+            printf '%s' "$TOKEN" | run_podman login "$REG" -u "$USER" --password-stdin
           fi
           run_podman pull "$IMAGE"

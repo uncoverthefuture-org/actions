@@ -8,10 +8,10 @@ inputs:
     default: 'ghcr.io'
   image_name:
     description: 'Name of the Docker image'
-    required: true
+    required: false
   github_token:
     description: 'GitHub token for authentication'
-    required: true
+    required: false
   environment_script:
     description: 'Path to the script that sets environment context'
     required: false
@@ -36,21 +36,55 @@ runs:
   steps:
     - name: Validate inputs
       run: |
-        if [ -z "${{ inputs.image_name }}" ]; then
-          echo "Error: image_name is required"
-          exit 1
-        fi
-        if [ -z "${{ inputs.github_token }}" ]; then
-          echo "Error: github_token is required"
-          exit 1
-        fi
+        : # no strict validation; defaults are applied below
       shell: bash
     - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Determine environment context
       id: environment
-      run: bash ${{ inputs.environment_script }}
+      run: |
+        set -euo pipefail
+        SCRIPT='${{ inputs.environment_script }}'
+        if [ -f "$SCRIPT" ]; then
+          bash "$SCRIPT"
+        else
+          REF_NAME="${GITHUB_REF_NAME:-}"
+          SHA7="${GITHUB_SHA:-unknown}"
+          SHA7="${SHA7:0:7}"
+          case "$REF_NAME" in
+            main|master)
+              ENV_NAME='production'
+              ENV_KEY='prod'
+              DEPLOY='true'
+              ;;
+            stage|staging)
+              ENV_NAME='staging'
+              ENV_KEY='staging'
+              DEPLOY='true'
+              ;;
+            dev|develop|development)
+              ENV_NAME='dev'
+              ENV_KEY='dev'
+              DEPLOY='true'
+              ;;
+            refs/tags/*)
+              ENV_NAME='production'
+              ENV_KEY='prod'
+              DEPLOY='true'
+              ;;
+            *)
+              ENV_NAME='dev'
+              ENV_KEY='dev'
+              DEPLOY='false'
+              ;;
+          esac
+          IMAGE_TAG="${ENV_NAME}-${SHA7}"
+          echo "env_name=$ENV_NAME" >> "$GITHUB_OUTPUT"
+          echo "env_key=$ENV_KEY" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "deploy_enabled=$DEPLOY" >> "$GITHUB_OUTPUT"
+        fi
       shell: bash
 
     - name: Log in to registry
@@ -58,13 +92,13 @@ runs:
       with:
         registry: ${{ inputs.registry }}
         username: ${{ github.actor }}
-        password: ${{ inputs.github_token }}
+        password: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
 
     - name: Extract Docker metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ${{ inputs.registry }}/${{ inputs.image_name }}
+        images: ${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || github.repository }}
         tags: |
           type=raw,value=${{ steps.environment.outputs.image_tag }}
 
