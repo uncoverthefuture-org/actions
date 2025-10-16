@@ -42,18 +42,34 @@ runs:
   using: 'composite'
   steps:
     - name: Install Webmin/Usermin
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@master
       with:
-        subaction: remote-podman-exec
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "command": "set -euo pipefail\napt-get update -y\napt-get install -y gnupg wget apt-transport-https software-properties-common\nif [ ! -f /usr/share/keyrings/webmin.gpg ]; then\n  wget -qO- https://download.webmin.com/jcameron-key.asc | gpg --dearmor -o /usr/share/keyrings/webmin.gpg\n  echo 'deb [signed-by=/usr/share/keyrings/webmin.gpg] https://download.webmin.com/download/repository sarge contrib' > /etc/apt/sources.list.d/webmin.list\n  apt-get update -y\nfi\nif [ '${{ inputs.install_webmin }}' = 'true' ]; then\n  apt-get install -y webmin\n  systemctl enable webmin || true\n  systemctl restart webmin || true\nfi\nif [ '${{ inputs.install_usermin }}' = 'true' ]; then\n  apt-get install -y usermin\n  systemctl enable usermin || true\n  systemctl restart usermin || true\nfi"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        source_env: 'false'
+        fail_if_env_missing: 'false'
+        inline_script: |
+          set -euo pipefail
+          apt-get update -y
+          apt-get install -y gnupg wget apt-transport-https software-properties-common
+          if [ ! -f /usr/share/keyrings/webmin.gpg ]; then
+            wget -qO- https://download.webmin.com/jcameron-key.asc | gpg --dearmor -o /usr/share/keyrings/webmin.gpg
+            echo 'deb [signed-by=/usr/share/keyrings/webmin.gpg] https://download.webmin.com/download/repository sarge contrib' > /etc/apt/sources.list.d/webmin.list
+            apt-get update -y
+          fi
+          if [ "${{ inputs.install_webmin }}" = "true" ]; then
+            apt-get install -y webmin
+            systemctl enable webmin || true
+            systemctl restart webmin || true
+          fi
+          if [ "${{ inputs.install_usermin }}" = "true" ]; then
+            apt-get install -y usermin
+            systemctl enable usermin || true
+            systemctl restart usermin || true
+          fi

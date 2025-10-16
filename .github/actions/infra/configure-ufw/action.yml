@@ -38,18 +38,23 @@ runs:
   using: 'composite'
   steps:
     - name: Configure UFW
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@master
       with:
-        subaction: remote-podman-exec
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "command": "set -euo pipefail\napt-get install -y ufw || true\nufw --force enable || true\nfor p in ${{ inputs.ufw_allow_ports }}; do\n  ufw allow \"$p\"/tcp || true\ndone\nufw status || true"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        source_env: 'false'
+        fail_if_env_missing: 'false'
+        inline_script: |
+          set -euo pipefail
+          apt-get install -y ufw || true
+          ufw --force enable || true
+          for p in ${{ inputs.ufw_allow_ports }}; do
+            ufw allow "$p"/tcp || true
+          done
+          ufw status || true

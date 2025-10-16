@@ -42,18 +42,41 @@ runs:
   using: 'composite'
   steps:
     - name: Setup Podman User
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@master
       with:
-        subaction: remote-podman-exec
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "command": "set -euo pipefail\nif id -u \"${{ inputs.podman_user }}\" >/dev/null 2>&1; then\n  echo \"User ${{ inputs.podman_user }} exists\"\nelse\n  if [ '${{ inputs.create_podman_user }}' = 'true' ]; then\n    useradd -m -s /usr/sbin/nologin \"${{ inputs.podman_user }}\" || adduser --disabled-password --gecos \"\" \"${{ inputs.podman_user }}\"\n  else\n    echo \"Warning: podman_user ${{ inputs.podman_user }} does not exist and create_podman_user=false\" >&2\n  fi\nfi\n\n# Ensure subuid/subgid ranges for rootless podman\nif ! grep -q \"^${{ inputs.podman_user }}:\" /etc/subuid 2>/dev/null; then\n  echo \"${{ inputs.podman_user }}:100000:65536\" >> /etc/subuid || true\nfi\nif ! grep -q \"^${{ inputs.podman_user }}:\" /etc/subgid 2>/dev/null; then\n  echo \"${{ inputs.podman_user }}:100000:65536\" >> /etc/subgid || true\nfi\n\n# Create env directory and set permissions\nmkdir -p \"${{ inputs.env_dir_path }}\"\nchown -R \"${{ inputs.podman_user }}\":\"${{ inputs.podman_user }}\" \"${{ inputs.env_dir_path }}\" || true\n\n# Show podman version\npodman --version || true"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        source_env: 'false'
+        fail_if_env_missing: 'false'
+        inline_script: |
+          set -euo pipefail
+          if id -u "${{ inputs.podman_user }}" >/dev/null 2>&1; then
+            echo "User ${{ inputs.podman_user }} exists"
+          else
+            if [ '${{ inputs.create_podman_user }}' = 'true' ]; then
+              useradd -m -s /usr/sbin/nologin "${{ inputs.podman_user }}" || adduser --disabled-password --gecos "" "${{ inputs.podman_user }}"
+            else
+              echo "Warning: podman_user ${{ inputs.podman_user }} does not exist and create_podman_user=false" >&2
+            fi
+          fi
+
+          # Ensure subuid/subgid ranges for rootless podman
+          if ! grep -q "^${{ inputs.podman_user }}:" /etc/subuid 2>/dev/null; then
+            echo "${{ inputs.podman_user }}:100000:65536" >> /etc/subuid || true
+          fi
+          if ! grep -q "^${{ inputs.podman_user }}:" /etc/subgid 2>/dev/null; then
+            echo "${{ inputs.podman_user }}:100000:65536" >> /etc/subgid || true
+          fi
+
+          # Create env directory and set permissions
+          mkdir -p "${{ inputs.env_dir_path }}"
+          chown -R "${{ inputs.podman_user }}":"${{ inputs.podman_user }}" "${{ inputs.env_dir_path }}" || true
+
+          # Show podman version
+          podman --version || true

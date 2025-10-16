@@ -82,90 +82,70 @@ runs:
 
     - name: Install Podman
       if: ${{ inputs.install_podman == 'true' }}
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/install-podman@master
       with:
-        subaction: install-podman
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "additional_packages": "${{ inputs.additional_packages }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        additional_packages: ${{ inputs.additional_packages }}
 
     - name: Install Apache
       if: ${{ inputs.install_apache == 'true' }}
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/install-apache@master
       with:
-        subaction: install-apache
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
 
     - name: Install Webmin/Usermin
       if: ${{ inputs.install_webmin == 'true' || inputs.install_usermin == 'true' }}
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/install-webmin@master
       with:
-        subaction: install-webmin
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "install_webmin": "${{ inputs.install_webmin }}",
-            "install_usermin": "${{ inputs.install_usermin }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        install_webmin: ${{ inputs.install_webmin }}
+        install_usermin: ${{ inputs.install_usermin }}
 
     - name: Configure UFW
       if: ${{ inputs.configure_ufw == 'true' }}
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/configure-ufw@master
       with:
-        subaction: configure-ufw
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "ufw_allow_ports": "${{ inputs.ufw_allow_ports }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports }}
 
     - name: Setup Podman User
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/setup-podman-user@master
       with:
-        subaction: setup-podman-user
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "create_podman_user": "${{ inputs.create_podman_user }}",
-            "env_dir_path": "${{ inputs.env_dir_path }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        create_podman_user: ${{ inputs.create_podman_user }}
+        env_dir_path: ${{ inputs.env_dir_path }}

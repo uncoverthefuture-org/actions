@@ -78,19 +78,53 @@ runs:
       shell: bash
 
     - name: Run service
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@master
       with:
-        subaction: remote-podman-exec
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "source_env": "false",
-            "command": "set -euo pipefail\n\nNAME='${{ inputs.service_name }}'\nIMAGE='${{ inputs.image }}'\nENV_FILE='${{ inputs.env_file }}'\nRESTART='${{ inputs.restart_policy }}'\nMEM='${{ inputs.memory_limit }}'\nEXTRA='${{ inputs.extra_run_args }}'\n\nrun_podman stop \"$NAME\" >/dev/null 2>&1 || true\nrun_podman rm \"$NAME\" >/dev/null 2>&1 || true\n\nPORT_ARGS=\"\"\nif [ -n \"${{ inputs.host_port }}\" ] && [ -n \"${{ inputs.container_port }}\" ]; then\n  PORT_ARGS=\"-p ${{ inputs.host_port }}:${{ inputs.container_port }}\"\nfi\n\nVOL_ARGS=\"\"\nif [ -n \"${{ inputs.volumes }}\" ]; then\n  while IFS= read -r line; do\n    [ -z \"$line\" ] && continue\n    VOL_ARGS=\"$VOL_ARGS -v $line\"\n  done << 'EOFV'\n${{ inputs.volumes }}\nEOFV\nfi\n\nCMD_STR='${{ inputs.command }}'\n\nrun_podman run -d --name \"$NAME\" \\\n  ${ENV_FILE:+--env-file \"$ENV_FILE\"} \\\n  ${PORT_ARGS} \\\n  --restart=\"$RESTART\" \\\n  --memory=\"$MEM\" --memory-swap=\"$MEM\" \\\n  ${VOL_ARGS} \\\n  ${EXTRA:+$EXTRA} \\\n  \"$IMAGE\" ${CMD_STR:+$CMD_STR}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        source_env: 'false'
+        fail_if_env_missing: 'false'
+        inline_script: |
+          set -euo pipefail
+
+          NAME='${{ inputs.service_name }}'
+          IMAGE='${{ inputs.image }}'
+          ENV_FILE='${{ inputs.env_file }}'
+          RESTART='${{ inputs.restart_policy }}'
+          MEM='${{ inputs.memory_limit }}'
+          EXTRA='${{ inputs.extra_run_args }}'
+
+          run_podman stop "$NAME" >/dev/null 2>&1 || true
+          run_podman rm "$NAME" >/dev/null 2>&1 || true
+
+          PORT_ARGS=""
+          if [ -n "${{ inputs.host_port }}" ] && [ -n "${{ inputs.container_port }}" ]; then
+            PORT_ARGS="-p ${{ inputs.host_port }}:${{ inputs.container_port }}"
+          fi
+
+          VOL_ARGS=""
+          if [ -n "${{ inputs.volumes }}" ]; then
+            while IFS= read -r line; do
+              [ -z "$line" ] && continue
+              VOL_ARGS="$VOL_ARGS -v $line"
+            done << 'EOFV'
+${{ inputs.volumes }}
+EOFV
+          fi
+
+          CMD_STR='${{ inputs.command }}'
+
+          run_podman run -d --name "$NAME" \
+            ${ENV_FILE:+--env-file "$ENV_FILE"} \
+            ${PORT_ARGS} \
+            --restart="$RESTART" \
+            --memory="$MEM" --memory-swap="$MEM" \
+            ${VOL_ARGS} \
+            ${EXTRA:+$EXTRA} \
+            "$IMAGE" ${CMD_STR:+$CMD_STR}

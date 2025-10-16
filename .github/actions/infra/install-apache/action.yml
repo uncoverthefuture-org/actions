@@ -34,18 +34,22 @@ runs:
   using: 'composite'
   steps:
     - name: Install Apache2
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@master
       with:
-        subaction: remote-podman-exec
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "command": "set -euo pipefail\napt-get update -y\napt-get install -y apache2 libapache2-mod-wsgi-py3\na2enmod headers proxy proxy_http proxy_uwsgi wsgi || true\nsystemctl enable apache2 || true\nsystemctl restart apache2 || true"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        source_env: 'false'
+        fail_if_env_missing: 'false'
+        inline_script: |
+          set -euo pipefail
+          apt-get update -y
+          apt-get install -y apache2 libapache2-mod-wsgi-py3
+          a2enmod headers proxy proxy_http proxy_uwsgi wsgi || true
+          systemctl enable apache2 || true
+          systemctl restart apache2 || true

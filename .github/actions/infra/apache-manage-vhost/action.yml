@@ -94,81 +94,55 @@ runs:
       shell: bash
 
     - name: Determine Domain
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/determine-domain@master
       with:
-        subaction: determine-domain
-        params_json: |
-          {
-            "domain": "${{ inputs.domain }}",
-            "base_domain": "${{ inputs.base_domain }}",
-            "env_name": "${{ inputs.env_name }}",
-            "domain_prefix_prod": "${{ inputs.domain_prefix_prod }}",
-            "domain_prefix_staging": "${{ inputs.domain_prefix_staging }}",
-            "domain_prefix_dev": "${{ inputs.domain_prefix_dev }}"
-          }
+        domain: ${{ inputs.domain }}
+        base_domain: ${{ inputs.base_domain }}
+        env_name: ${{ inputs.env_name }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
 
     - name: Compute Host Port
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/compute-host-port@master
       with:
-        subaction: compute-host-port
-        params_json: |
-          {
-            "ssh_host": "${{ inputs.ssh_host }}",
-            "ssh_user": "${{ inputs.ssh_user }}",
-            "ssh_key": "${{ inputs.ssh_key }}",
-            "root_ssh_key": "${{ inputs.root_ssh_key }}",
-            "ssh_port": "${{ inputs.ssh_port }}",
-            "ssh_fingerprint": "${{ inputs.ssh_fingerprint }}",
-            "podman_user": "${{ inputs.podman_user }}",
-            "connect_mode": "${{ inputs.connect_mode }}",
-            "env_name": "${{ inputs.env_name }}",
-            "env_file_path": "${{ inputs.env_file_path }}",
-            "source_env": "${{ inputs.source_env }}",
-            "host_port": "${{ inputs.host_port }}"
-          }
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name }}
+        env_file_path: ${{ inputs.env_file_path }}
+        source_env: ${{ inputs.source_env }}
+        host_port: ${{ inputs.host_port }}
 
     - name: Check DNS Match
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/check-dns-match@master
       with:
-        subaction: check-dns-match
-        params_json: |
-          {
-            "domain": "${{ inputs.domain }}",
-            "require_dns_match": "${{ inputs.require_dns_match }}"
-          }
+        domain: ${{ inputs.domain }}
+        require_dns_match: ${{ inputs.require_dns_match }}
 
     - name: Ensure Apache Installed
-      uses: uncoverthefuture-org/actions@
-      with:
-        subaction: ensure-apache-installed
+      uses: uncoverthefuture-org/actions/.github/actions/infra/ensure-apache-installed@master
 
     - name: Enable Apache Modules
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/enable-apache-modules@master
       with:
-        subaction: enable-apache-modules
-        params_json: |
-          {
-            "mode": "${{ inputs.mode }}"
-          }
+        mode: ${{ inputs.mode }}
 
     - name: Manage VHost Config
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/manage-vhost-config@master
       with:
-        subaction: manage-vhost-config
-        params_json: |
-          {
-            "domain": "${{ inputs.domain }}",
-            "host_port": "${{ inputs.host_port }}",
-            "mode": "${{ inputs.mode }}",
-            "wsgi_script_path": "${{ inputs.wsgi_script_path }}",
-            "server_admin": "${{ inputs.server_admin }}"
-          }
+        domain: ${{ inputs.domain }}
+        host_port: ${{ inputs.host_port }}
+        mode: ${{ inputs.mode }}
+        wsgi_script_path: ${{ inputs.wsgi_script_path }}
+        server_admin: ${{ inputs.server_admin }}
 
     - name: Enable Site and Reload
-      uses: uncoverthefuture-org/actions@
+      uses: uncoverthefuture-org/actions/.github/actions/infra/enable-site-reload@master
       with:
-        subaction: enable-site-reload
-        params_json: |
-          {
-            "domain": "${{ inputs.domain }}"
-          }
+        domain: ${{ inputs.domain }}
