@@ -70,7 +70,7 @@ runs:
       shell: bash
 
     - name: Write env file
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: remote-podman-exec
         params_json: |

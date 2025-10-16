@@ -53,7 +53,7 @@ runs:
   steps:
     - name: Compute host port
       id: compute
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: remote-podman-exec
         params_json: |

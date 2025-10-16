@@ -211,7 +211,7 @@ runs:
 
     - name: Prepare host (optional)
       if: ${{ inputs.prepare_host == 'true' }}
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: prepare-ubuntu-host
         params_json: |
@@ -232,7 +232,7 @@ runs:
 
     - name: Write env file (optional)
       if: ${{ inputs.write_env_file == 'true' }}
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: write-remote-env-file
         params_json: |
@@ -252,7 +252,7 @@ runs:
           }
 
     - name: Login and pull image
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: podman-login-pull
         params_json: |
@@ -274,7 +274,7 @@ runs:
           }
 
     - name: Deploy Next.js app
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: remote-podman-exec
         params_json: |
@@ -296,7 +296,7 @@ runs:
 
     - name: Manage Apache vhost (optional)
       if: ${{ inputs.manage_vhost == 'true' || (inputs.manage_vhost == '' && (inputs.base_domain != '' || inputs.domain != '')) }}
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: apache-manage-vhost
         params_json: |

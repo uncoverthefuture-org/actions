@@ -3,7 +3,7 @@ description: 'Replaces an old reference string with a new one across tracked fil
 
 inputs:
   old_ref:
-    description: 'Reference string to search for (e.g., @master).'
+    description: 'Reference string to search for (e.g., @).'
     required: true
   new_ref:
     description: 'Reference string to replace with (e.g., @v1.2.3).'

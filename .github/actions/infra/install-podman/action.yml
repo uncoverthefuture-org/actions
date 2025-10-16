@@ -37,7 +37,7 @@ runs:
   using: 'composite'
   steps:
     - name: Install Podman
-      uses: uncoverthefuture-org/actions@master
+      uses: uncoverthefuture-org/actions@
       with:
         subaction: remote-podman-exec
         params_json: |
