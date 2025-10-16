@@ -110,12 +110,10 @@ runs:
 
           VOL_ARGS=""
           if [ -n "${{ inputs.volumes }}" ]; then
-            while IFS= read -r line; do
+            printf '%s\n' "${{ inputs.volumes }}" | while IFS= read -r line; do
               [ -z "$line" ] && continue
               VOL_ARGS="$VOL_ARGS -v $line"
-            done << 'EOFV'
-${{ inputs.volumes }}
-EOFV
+            done
           fi
 
           CMD_STR='${{ inputs.command }}'
