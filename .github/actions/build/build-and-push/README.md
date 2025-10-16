@@ -12,7 +12,7 @@ Build and push a container image to a registry. Determines environment context (
 ## Example (via root aggregator)
 ```yaml
 - id: build
-  uses: uncoverthefuture-org/actions@v1
+  uses: uncoverthefuture-org/actions@master
   with:
     subaction: build-and-push
     params_json: |

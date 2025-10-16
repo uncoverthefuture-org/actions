@@ -15,7 +15,7 @@ Create or update an Apache vhost for the Django API. Supports `reverse_proxy` (d
 
 ## Example
 ```yaml
-- uses: uncoverthefuture-org/actions@v1
+- uses: uncoverthefuture-org/actions@master
   with:
     subaction: apache-manage-vhost
     params_json: |

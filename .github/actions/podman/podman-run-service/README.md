@@ -8,7 +8,7 @@ Run a long-lived container (service) on a remote host via Podman, with optional 
 
 ## Example
 ```yaml
-- uses: uncoverthefuture-org/actions@v1
+- uses: uncoverthefuture-org/actions@master
   with:
     subaction: podman-run-service
     params_json: |

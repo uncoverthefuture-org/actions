@@ -11,7 +11,7 @@ Prepare a fresh Ubuntu host for running the Django API with Podman:
 
 ## Example
 ```yaml
-- uses: uncoverthefuture-org/actions@v1
+- uses: uncoverthefuture-org/actions@master
   with:
     subaction: prepare-ubuntu-host
     params_json: |

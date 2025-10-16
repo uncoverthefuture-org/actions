@@ -22,7 +22,7 @@ This action builds and pushes a Docker image for a Django API, determining the e
 ### Usage
 
 ```yaml
-- uses: uncoverthefuture-org/actions/.github/actions/build-and-push@v1
+- uses: uncoverthefuture-org/actions/.github/actions/build-and-push@master
   with:
     image_name: ${{ github.repository_owner }}/my-app
     github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -51,7 +51,7 @@ Generic SSH runner that exposes a `run_podman` helper and supports root vs user 
 ### Usage
 
 ```yaml
-- uses: uncoverthefuture-org/actions/.github/actions/remote-podman-exec@v1
+- uses: uncoverthefuture-org/actions/.github/actions/remote-podman-exec@master
   with:
     ssh_host: ${{ secrets.SSH_HOST }}
     ssh_user: ${{ secrets.SSH_USER }}
@@ -82,7 +82,7 @@ Prepares a fresh Ubuntu host for rootless Podman deployments.
 ### Usage
 
 ```yaml
-- uses: uncoverthefuture-org/actions/.github/actions/prepare-ubuntu-host@v1
+- uses: uncoverthefuture-org/actions/.github/actions/prepare-ubuntu-host@master
   with:
     ssh_host: ${{ secrets.SSH_HOST }}
     ssh_user: ${{ secrets.SSH_USER }}
@@ -110,7 +110,7 @@ Optionally prepares the host, writes an env file, and deploys a Django API conta
 ### Usage: full setup on a fresh server
 
 ```yaml
-- uses: uncoverthefuture-org/actions/.github/actions/ssh-django-api-deploy@v1
+- uses: uncoverthefuture-org/actions/.github/actions/ssh-django-api-deploy@master
   with:
     ssh_host: ${{ secrets.SSH_HOST }}
     ssh_user: ${{ secrets.SSH_USER }}
@@ -160,7 +160,7 @@ Writes a `.env` file to the remote host.
 ### Usage
 
 ```yaml
-- uses: uncoverthefuture-org/actions/.github/actions/write-remote-env-file@v1
+- uses: uncoverthefuture-org/actions/.github/actions/write-remote-env-file@master
   with:
     ssh_host: ${{ secrets.SSH_HOST }}
     ssh_user: ${{ secrets.SSH_USER }}
@@ -185,7 +185,7 @@ Securely logs in to the registry using `--password-stdin` and pulls the image.
 ### Usage
 
 ```yaml
-- uses: uncoverthefuture-org/actions/.github/actions/podman-login-pull@v1
+- uses: uncoverthefuture-org/actions/.github/actions/podman-login-pull@master
   with:
     ssh_host: ${{ secrets.SSH_HOST }}
     ssh_user: ${{ secrets.SSH_USER }}
@@ -213,7 +213,7 @@ Stops and removes a container by name on the remote host.
 ### Usage
 
 ```yaml
-- uses: uncoverthefuture-org/actions/.github/actions/podman-stop-rm-container@v1
+- uses: uncoverthefuture-org/actions/.github/actions/podman-stop-rm-container@master
   with:
     ssh_host: ${{ secrets.SSH_HOST }}
     ssh_user: ${{ secrets.SSH_USER }}

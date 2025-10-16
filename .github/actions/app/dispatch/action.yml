@@ -197,7 +197,7 @@ runs:
 
     - name: django: validate
       if: ${{ inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-django-api-deploy' }}
-      uses: ../django/validate@v1
+      uses: ../django/validate@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.pjson.outputs.json).ssh_key }}
@@ -212,7 +212,7 @@ runs:
 
     - name: write-remote-env-file
       if: ${{ inputs.subaction == 'write-remote-env-file' }}
-      uses: ../write-remote-env-file@v1
+      uses: ../write-remote-env-file@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -229,7 +229,7 @@ runs:
 
     - name: ssh-django-api-deploy
       if: ${{ inputs.subaction == 'ssh-django-api-deploy' }}
-      uses: ../ssh-django-api-deploy@v1
+      uses: ../ssh-django-api-deploy@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -276,7 +276,7 @@ runs:
 
     - name: ssh-django-deploy
       if: ${{ inputs.subaction == 'ssh-django-deploy' }}
-      uses: ../ssh-django-deploy@v1
+      uses: ../ssh-django-deploy@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -323,7 +323,7 @@ runs:
 
     - name: ssh-nextjs-deploy
       if: ${{ inputs.subaction == 'ssh-nextjs-deploy' }}
-      uses: ../ssh-nextjs-deploy@v1
+      uses: ../ssh-nextjs-deploy@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -366,7 +366,7 @@ runs:
 
     - name: ssh-react-deploy
       if: ${{ inputs.subaction == 'ssh-react-deploy' }}
-      uses: ../ssh-react-deploy@v1
+      uses: ../ssh-react-deploy@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}
@@ -409,7 +409,7 @@ runs:
 
     - name: ssh-laravel-deploy
       if: ${{ inputs.subaction == 'ssh-laravel-deploy' }}
-      uses: ../ssh-laravel-deploy@v1
+      uses: ../ssh-laravel-deploy@master
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.pjson.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.pjson.outputs.json).ssh_user }}

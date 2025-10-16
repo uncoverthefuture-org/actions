@@ -9,7 +9,7 @@ Log into a container registry and pull an image on a remote host via Podman.
 
 ## Example
 ```yaml
-- uses: uncoverthefuture-org/actions@v1
+- uses: uncoverthefuture-org/actions@master
   with:
     subaction: podman-login-pull
     params_json: |

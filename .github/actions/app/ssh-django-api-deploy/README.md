@@ -17,7 +17,7 @@ Deploy a Django API to a remote Linux host over SSH. Optionally prepares the hos
 
 ## Example (via root aggregator)
 ```yaml
-- uses: uncoverthefuture-org/actions@v1
+- uses: uncoverthefuture-org/actions@master
   with:
     subaction: ssh-django-api-deploy
     params_json: |

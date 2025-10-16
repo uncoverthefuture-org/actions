@@ -13,7 +13,7 @@ Write a `.env` file on a remote host via SSH. Uses the same SSH connection and u
 
 ## Example (via root aggregator)
 ```yaml
-- uses: uncoverthefuture-org/actions@v1
+- uses: uncoverthefuture-org/actions@master
   with:
     subaction: write-remote-env-file
     params_json: |

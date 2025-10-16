@@ -13,7 +13,7 @@ Run an inline script on a remote host over SSH with a `run_podman` helper functi
 
 ## Example (direct)
 ```yaml
-- uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1
+- uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@master
   with:
     ssh_host: ${{ secrets.SSH_HOST }}
     ssh_user: ${{ secrets.SSH_USER }}
