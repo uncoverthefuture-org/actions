@@ -1,0 +1,168 @@
+name: 'infra: host'
+description: 'Host provisioning helpers (podman setup, webmin, ufw, etc.)'
+
+inputs:
+  params_json:
+    required: false
+  subaction:
+    description: 'prepare-ubuntu-host | install-podman | install-apache | install-webmin | configure-ufw | setup-podman-user'
+    required: true
+  ssh_host:
+    required: false
+  ssh_user:
+    required: false
+  ssh_key:
+    required: false
+  root_ssh_key:
+    required: false
+  ssh_port:
+    required: false
+  ssh_fingerprint:
+    required: false
+  podman_user:
+    required: false
+  connect_mode:
+    required: false
+  env_dir_path:
+    required: false
+  install_podman:
+    required: false
+  additional_packages:
+    required: false
+  create_podman_user:
+    required: false
+  install_apache:
+    required: false
+  install_webmin:
+    required: false
+  install_certbot:
+    required: false
+  install_usermin:
+    required: false
+  configure_ufw:
+    required: false
+  ufw_allow_ports:
+    required: false
+
+outputs: {}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Normalize params JSON
+      id: params
+      uses: ./.github/actions/app/common/normalize-params
+      with:
+        params_json: ${{ inputs.params_json }}
+
+    - name: Compute defaults
+      id: defaults
+      uses: ./.github/actions/app/common/compute-defaults
+
+    - name: Resolve remote
+      id: remote
+      uses: ./.github/actions/infra/common/resolve-remote
+      with:
+        params_json: ${{ steps.params.outputs.json }}
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+
+    - name: prepare-ubuntu-host
+      if: ${{ inputs.subaction == 'prepare-ubuntu-host' }}
+      uses: ./.github/actions/infra/prepare-ubuntu-host
+      with:
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: ${{ steps.remote.outputs.connect_mode }}
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}
+        install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.params.outputs.json).install_podman }}
+        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.params.outputs.json).additional_packages }}
+        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.params.outputs.json).create_podman_user }}
+        install_apache: ${{ inputs.install_apache != '' && inputs.install_apache || fromJSON(steps.params.outputs.json).install_apache }}
+        install_webmin: ${{ inputs.install_webmin != '' && inputs.install_webmin || fromJSON(steps.params.outputs.json).install_webmin }}
+        install_certbot: ${{ inputs.install_certbot != '' && inputs.install_certbot || fromJSON(steps.params.outputs.json).install_certbot }}
+        install_usermin: ${{ inputs.install_usermin != '' && inputs.install_usermin || fromJSON(steps.params.outputs.json).install_usermin }}
+        configure_ufw: ${{ inputs.configure_ufw != '' && inputs.configure_ufw || fromJSON(steps.params.outputs.json).configure_ufw }}
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
+
+    - name: install-podman
+      if: ${{ inputs.subaction == 'install-podman' }}
+      uses: ./.github/actions/infra/install-podman
+      with:
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: ${{ steps.remote.outputs.connect_mode }}
+        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.params.outputs.json).additional_packages }}
+
+    - name: install-apache
+      if: ${{ inputs.subaction == 'install-apache' }}
+      uses: ./.github/actions/infra/install-apache
+      with:
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: ${{ steps.remote.outputs.connect_mode }}
+
+    - name: install-webmin
+      if: ${{ inputs.subaction == 'install-webmin' }}
+      uses: ./.github/actions/infra/install-webmin
+      with:
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: ${{ steps.remote.outputs.connect_mode }}
+        install_webmin: ${{ inputs.install_webmin != '' && inputs.install_webmin || fromJSON(steps.params.outputs.json).install_webmin }}
+        install_usermin: ${{ inputs.install_usermin != '' && inputs.install_usermin || fromJSON(steps.params.outputs.json).install_usermin }}
+
+    - name: configure-ufw
+      if: ${{ inputs.subaction == 'configure-ufw' }}
+      uses: ./.github/actions/infra/configure-ufw
+      with:
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: ${{ steps.remote.outputs.connect_mode }}
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
+
+    - name: setup-podman-user
+      if: ${{ inputs.subaction == 'setup-podman-user' }}
+      uses: ./.github/actions/infra/setup-podman-user
+      with:
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: ${{ steps.remote.outputs.connect_mode }}
+        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.params.outputs.json).create_podman_user }}
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}

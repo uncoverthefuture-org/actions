@@ -1,0 +1,88 @@
+name: 'infra: certbot'
+description: 'Certbot helper subactions'
+
+inputs:
+  params_json:
+    required: false
+  subaction:
+    description: 'install-certbot | request-certbot-cert'
+    required: true
+  ssh_host:
+    required: false
+  ssh_user:
+    required: false
+  ssh_key:
+    required: false
+  root_ssh_key:
+    required: false
+  ssh_port:
+    required: false
+  ssh_fingerprint:
+    required: false
+  podman_user:
+    required: false
+  connect_mode:
+    required: false
+  domain:
+    required: false
+  certbot_email:
+    required: false
+  certbot_extra_domains:
+    required: false
+  certbot_staging:
+    required: false
+
+outputs: {}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Normalize params JSON
+      id: params
+      uses: ./.github/actions/app/common/normalize-params
+      with:
+        params_json: ${{ inputs.params_json }}
+
+    - name: Resolve remote
+      id: remote
+      uses: ./.github/actions/infra/common/resolve-remote
+      with:
+        params_json: ${{ steps.params.outputs.json }}
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+
+    - name: install-certbot
+      if: ${{ inputs.subaction == 'install-certbot' }}
+      uses: ./.github/actions/infra/install-certbot
+      with:
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: 'root'
+
+    - name: request-certbot-cert
+      if: ${{ inputs.subaction == 'request-certbot-cert' }}
+      uses: ./.github/actions/infra/request-certbot-cert
+      with:
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: 'root'
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+        email: ${{ inputs.certbot_email != '' && inputs.certbot_email || fromJSON(steps.params.outputs.json).certbot_email }}
+        extra_domains: ${{ inputs.certbot_extra_domains != '' && inputs.certbot_extra_domains || fromJSON(steps.params.outputs.json).certbot_extra_domains }}
+        staging: ${{ inputs.certbot_staging != '' && inputs.certbot_staging || fromJSON(steps.params.outputs.json).certbot_staging }}

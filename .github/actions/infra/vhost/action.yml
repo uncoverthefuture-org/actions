@@ -1,0 +1,184 @@
+name: 'infra: vhost'
+description: 'VHost and domain helper subactions'
+
+inputs:
+  params_json:
+    required: false
+  subaction:
+    description: 'apache-manage-vhost | determine-domain | compute-host-port | check-dns-match | manage-vhost-config | enable-site-reload | enable-apache-modules | ensure-apache-installed'
+    required: true
+  ssh_host:
+    required: false
+  ssh_user:
+    required: false
+  ssh_key:
+    required: false
+  root_ssh_key:
+    required: false
+  ssh_port:
+    required: false
+  ssh_fingerprint:
+    required: false
+  podman_user:
+    required: false
+  connect_mode:
+    required: false
+  domain:
+    required: false
+  base_domain:
+    required: false
+  env_name:
+    required: false
+  env_file_path:
+    required: false
+  source_env:
+    required: false
+  fail_if_env_missing:
+    required: false
+  host_port:
+    required: false
+  vhost_mode:
+    required: false
+  wsgi_script_path:
+    required: false
+  server_admin:
+    required: false
+  require_dns_match:
+    required: false
+  domain_prefix_prod:
+    required: false
+  domain_prefix_staging:
+    required: false
+  domain_prefix_dev:
+    required: false
+
+outputs: {}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Normalize params JSON
+      id: params
+      uses: ./.github/actions/app/common/normalize-params
+      with:
+        params_json: ${{ inputs.params_json }}
+
+    - name: Compute defaults
+      id: defaults
+      uses: ./.github/actions/app/common/compute-defaults
+
+    - name: Resolve remote
+      id: remote
+      uses: ./.github/actions/infra/common/resolve-remote
+      with:
+        params_json: ${{ steps.params.outputs.json }}
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+
+    - name: Validate domain inputs
+      if: ${{ inputs.subaction == 'apache-manage-vhost' }}
+      env:
+        J_DOMAIN: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+        J_BASE_DOMAIN: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
+        J_ENV_NAME: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
+      run: |
+        set -euo pipefail
+        if [ -z "${J_DOMAIN}" ] && { [ -z "${J_BASE_DOMAIN}" ] || [ -z "${J_ENV_NAME}" ]; }; then
+          echo 'Error: provide domain or (base_domain and env_name) for apache-manage-vhost' >&2
+          exit 1
+        fi
+      shell: bash
+
+    - name: apache-manage-vhost
+      if: ${{ inputs.subaction == 'apache-manage-vhost' }}
+      uses: ./.github/actions/infra/apache-manage-vhost
+      with:
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: 'root'
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
+        source_env: 'true'
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
+        mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.params.outputs.json).vhost_mode }}
+        wsgi_script_path: ${{ inputs.wsgi_script_path != '' && inputs.wsgi_script_path || fromJSON(steps.params.outputs.json).wsgi_script_path }}
+        server_admin: ${{ inputs.server_admin != '' && inputs.server_admin || fromJSON(steps.params.outputs.json).server_admin }}
+        require_dns_match: ${{ inputs.require_dns_match != '' && inputs.require_dns_match || fromJSON(steps.params.outputs.json).require_dns_match }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev }}
+
+    - name: determine-domain
+      if: ${{ inputs.subaction == 'determine-domain' }}
+      uses: ./.github/actions/infra/determine-domain
+      with:
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev }}
+
+    - name: compute-host-port
+      if: ${{ inputs.subaction == 'compute-host-port' }}
+      uses: ./.github/actions/infra/compute-host-port
+      with:
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: ${{ steps.remote.outputs.connect_mode }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
+        source_env: ${{ inputs.source_env != '' && inputs.source_env || fromJSON(steps.params.outputs.json).source_env }}
+        fail_if_env_missing: ${{ inputs.fail_if_env_missing != '' && inputs.fail_if_env_missing || fromJSON(steps.params.outputs.json).fail_if_env_missing }}
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
+
+    - name: check-dns-match
+      if: ${{ inputs.subaction == 'check-dns-match' }}
+      uses: ./.github/actions/infra/check-dns-match
+      with:
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+        require_dns_match: ${{ inputs.require_dns_match != '' && inputs.require_dns_match || fromJSON(steps.params.outputs.json).require_dns_match }}
+
+    - name: manage-vhost-config
+      if: ${{ inputs.subaction == 'manage-vhost-config' }}
+      uses: ./.github/actions/infra/manage-vhost-config
+      with:
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
+        mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.params.outputs.json).vhost_mode }}
+        wsgi_script_path: ${{ inputs.wsgi_script_path != '' && inputs.wsgi_script_path || fromJSON(steps.params.outputs.json).wsgi_script_path }}
+        server_admin: ${{ inputs.server_admin != '' && inputs.server_admin || fromJSON(steps.params.outputs.json).server_admin }}
+
+    - name: enable-site-reload
+      if: ${{ inputs.subaction == 'enable-site-reload' }}
+      uses: ./.github/actions/infra/enable-site-reload
+      with:
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+
+    - name: enable-apache-modules
+      if: ${{ inputs.subaction == 'enable-apache-modules' }}
+      uses: ./.github/actions/infra/enable-apache-modules
+      with:
+        mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.params.outputs.json).vhost_mode }}
+
+    - name: ensure-apache-installed
+      if: ${{ inputs.subaction == 'ensure-apache-installed' }}
+      uses: ./.github/actions/infra/ensure-apache-installed

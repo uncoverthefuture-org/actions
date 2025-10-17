@@ -1,0 +1,99 @@
+name: 'common: resolve remote'
+description: 'Resolve remote connection inputs with defaults and params fallback'
+
+inputs:
+  params_json:
+    required: false
+  ssh_host:
+    required: false
+  ssh_user:
+    required: false
+  ssh_key:
+    required: false
+  root_ssh_key:
+    required: false
+  ssh_port:
+    required: false
+  ssh_fingerprint:
+    required: false
+  podman_user:
+    required: false
+  connect_mode:
+    required: false
+
+outputs:
+  ssh_host:
+    value: ${{ steps.resolve.outputs.ssh_host }}
+  ssh_user:
+    value: ${{ steps.resolve.outputs.ssh_user }}
+  ssh_key:
+    value: ${{ steps.resolve.outputs.ssh_key }}
+  root_ssh_key:
+    value: ${{ steps.resolve.outputs.root_ssh_key }}
+  ssh_port:
+    value: ${{ steps.resolve.outputs.ssh_port }}
+  ssh_fingerprint:
+    value: ${{ steps.resolve.outputs.ssh_fingerprint }}
+  podman_user:
+    value: ${{ steps.resolve.outputs.podman_user }}
+  connect_mode:
+    value: ${{ steps.resolve.outputs.connect_mode }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve remote inputs
+      id: resolve
+      shell: bash
+      env:
+        PARAMS_JSON: ${{ inputs.params_json }}
+        IN_SSH_HOST: ${{ inputs.ssh_host }}
+        IN_SSH_USER: ${{ inputs.ssh_user }}
+        IN_SSH_KEY: ${{ inputs.ssh_key }}
+        IN_ROOT_SSH_KEY: ${{ inputs.root_ssh_key }}
+        IN_SSH_PORT: ${{ inputs.ssh_port }}
+        IN_SSH_FINGERPRINT: ${{ inputs.ssh_fingerprint }}
+        IN_PODMAN_USER: ${{ inputs.podman_user }}
+        IN_CONNECT_MODE: ${{ inputs.connect_mode }}
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+import json
+import os
+
+params_json = os.environ.get('PARAMS_JSON', '')
+if not params_json:
+    params_json = '{}'
+params = json.loads(params_json)
+
+def stringify(value):
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    return '' if value is None else str(value)
+
+defaults = {
+    'ssh_host': '',
+    'ssh_user': '',
+    'ssh_key': '',
+    'root_ssh_key': '',
+    'ssh_port': '22',
+    'ssh_fingerprint': '',
+    'podman_user': 'deployer',
+    'connect_mode': 'auto',
+}
+
+outputs = {}
+for key in defaults:
+    env_val = os.environ.get(f'IN_{key.upper()}', '')
+    json_val = stringify(params.get(key))
+    if env_val:
+        outputs[key] = env_val
+    elif json_val:
+        outputs[key] = json_val
+    else:
+        outputs[key] = defaults[key]
+
+with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+    for key, value in outputs.items():
+        fh.write(f"{key}={value}\n")
+PY

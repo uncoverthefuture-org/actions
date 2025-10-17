@@ -14,15 +14,15 @@ inputs:
   domain_prefix_prod:
     description: 'Prefix for production/main env'
     required: false
-    default: 'app'
+    default: ''
   domain_prefix_staging:
     description: 'Prefix for staging env'
     required: false
-    default: '__DEFAULT__'
+    default: 'staging'
   domain_prefix_dev:
     description: 'Prefix for dev env'
     required: false
-    default: '__DEFAULT__'
+    default: 'dev'
 
 outputs:
   domain:
@@ -41,34 +41,26 @@ runs:
         ENV_NAME='${{ inputs.env_name }}'
         DP_PROD='${{ inputs.domain_prefix_prod }}'
         DP_STG='${{ inputs.domain_prefix_staging }}'
-        DP_STG_AUTO='false'
-        case "$DP_STG" in
-          '__DEFAULT__'|'null'|'NULL')
-            DP_STG_AUTO='true'
-            DP_STG=''
-            ;;
-        esac
         DP_DEV='${{ inputs.domain_prefix_dev }}'
-        DP_DEV_AUTO='false'
-        case "$DP_DEV" in
-          '__DEFAULT__'|'null'|'NULL')
-            DP_DEV_AUTO='true'
-            DP_DEV=''
-            ;;
-        esac
-        if [ "$DP_STG_AUTO" = 'true' ]; then
+        if [ -z "$DP_STG" ]; then
           if [ -n "$DP_PROD" ]; then
             DP_STG="${DP_PROD}-staging"
           else
             DP_STG='staging'
           fi
         fi
-        if [ "$DP_DEV_AUTO" = 'true' ]; then
+        if [ -z "$DP_DEV" ]; then
           if [ -n "$DP_PROD" ]; then
             DP_DEV="${DP_PROD}-dev"
           else
             DP_DEV='dev'
           fi
+        fi
+        if [ "$DP_STG" = 'staging' ] && [ -n "$DP_PROD" ]; then
+          DP_STG="${DP_PROD}-staging"
+        fi
+        if [ "$DP_DEV" = 'dev' ] && [ -n "$DP_PROD" ]; then
+          DP_DEV="${DP_PROD}-dev"
         fi
         if [ -n "$DOMAIN_IN" ]; then
           DOMAIN="$DOMAIN_IN"

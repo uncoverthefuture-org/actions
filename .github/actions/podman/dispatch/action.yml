@@ -35,7 +35,6 @@ inputs:
     required: false
   env_file_path:
     required: false
-    default: '/opt/ekaban/api/.env.'
   source_env:
     required: false
     default: 'false'
@@ -120,6 +119,9 @@ runs:
         if [ -z "$J" ]; then J='{}'; fi
         echo "json=$J" >> "$GITHUB_OUTPUT"
       shell: bash
+    - name: Compute repo defaults
+      id: defaults
+      uses: ./.github/actions/app/common/compute-defaults
     - name: Validate subaction
       run: |
         set -euo pipefail
@@ -196,7 +198,7 @@ runs:
         podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.pjson.outputs.json).podman_user }}
         connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.pjson.outputs.json).connect_mode }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
-        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.pjson.outputs.json).env_file_path }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.pjson.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
         source_env: ${{ inputs.source_env != '' && inputs.source_env || fromJSON(steps.pjson.outputs.json).source_env }}
         fail_if_env_missing: ${{ inputs.fail_if_env_missing != '' && inputs.fail_if_env_missing || fromJSON(steps.pjson.outputs.json).fail_if_env_missing }}
         inline_script: ${{ inputs.command != '' && inputs.command || fromJSON(steps.pjson.outputs.json).command }}
