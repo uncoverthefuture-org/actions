@@ -219,4 +219,21 @@ runs:
         domain_prefix_staging: ${{ inputs.domain_prefix_staging }}
         domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
 
-    ]
+    - name: Run certbot subaction
+      if: ${{ inputs.subaction == 'install-certbot' || inputs.subaction == 'request-certbot-cert' || inputs.subaction == 'ensure-certbot-cert' }}
+      uses: ./.github/actions/infra/certbot
+      with:
+        params_json: ${{ inputs.params_json }}
+        subaction: ${{ inputs.subaction }}
+        ssh_host: ${{ steps.remote.outputs.ssh_host }}
+        ssh_user: ${{ steps.remote.outputs.ssh_user }}
+        ssh_key: ${{ steps.remote.outputs.ssh_key }}
+        root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
+        ssh_port: ${{ steps.remote.outputs.ssh_port }}
+        ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
+        podman_user: ${{ steps.remote.outputs.podman_user }}
+        connect_mode: ${{ steps.remote.outputs.connect_mode }}
+        domain: ${{ inputs.domain }}
+        certbot_email: ${{ inputs.certbot_email }}
+        certbot_extra_domains: ${{ inputs.certbot_extra_domains }}
+        certbot_staging: ${{ inputs.certbot_staging }}
