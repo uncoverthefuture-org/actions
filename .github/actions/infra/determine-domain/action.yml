@@ -18,9 +18,11 @@ inputs:
   domain_prefix_staging:
     description: 'Prefix for staging env'
     required: false
+    default: '__DEFAULT__'
   domain_prefix_dev:
     description: 'Prefix for dev env'
     required: false
+    default: '__DEFAULT__'
 
 outputs:
   domain:
@@ -38,11 +40,36 @@ runs:
         BASE_DOMAIN='${{ inputs.base_domain }}'
         ENV_NAME='${{ inputs.env_name }}'
         DP_PROD='${{ inputs.domain_prefix_prod }}'
-        if [ -z "$DP_PROD" ]; then DP_PROD='app'; fi
         DP_STG='${{ inputs.domain_prefix_staging }}'
-        if [ -z "$DP_STG" ]; then DP_STG="${DP_PROD}-staging"; fi
+        DP_STG_AUTO='false'
+        case "$DP_STG" in
+          '__DEFAULT__'|'null'|'NULL')
+            DP_STG_AUTO='true'
+            DP_STG=''
+            ;;
+        esac
         DP_DEV='${{ inputs.domain_prefix_dev }}'
-        if [ -z "$DP_DEV" ]; then DP_DEV="${DP_PROD}-dev"; fi
+        DP_DEV_AUTO='false'
+        case "$DP_DEV" in
+          '__DEFAULT__'|'null'|'NULL')
+            DP_DEV_AUTO='true'
+            DP_DEV=''
+            ;;
+        esac
+        if [ "$DP_STG_AUTO" = 'true' ]; then
+          if [ -n "$DP_PROD" ]; then
+            DP_STG="${DP_PROD}-staging"
+          else
+            DP_STG='staging'
+          fi
+        fi
+        if [ "$DP_DEV_AUTO" = 'true' ]; then
+          if [ -n "$DP_PROD" ]; then
+            DP_DEV="${DP_PROD}-dev"
+          else
+            DP_DEV='dev'
+          fi
+        fi
         if [ -n "$DOMAIN_IN" ]; then
           DOMAIN="$DOMAIN_IN"
         else
@@ -52,11 +79,26 @@ runs:
           fi
           case "$ENV_NAME" in
             prod|production|main|master)
-              DOMAIN="$DP_PROD.$BASE_DOMAIN" ;;
+              if [ -n "$DP_PROD" ]; then
+                DOMAIN="$DP_PROD.$BASE_DOMAIN"
+              else
+                DOMAIN="$BASE_DOMAIN"
+              fi
+              ;;
             stage|staging)
-              DOMAIN="$DP_STG.$BASE_DOMAIN" ;;
+              if [ -n "$DP_STG" ]; then
+                DOMAIN="$DP_STG.$BASE_DOMAIN"
+              else
+                DOMAIN="$BASE_DOMAIN"
+              fi
+              ;;
             dev|develop|development)
-              DOMAIN="$DP_DEV.$BASE_DOMAIN" ;;
+              if [ -n "$DP_DEV" ]; then
+                DOMAIN="$DP_DEV.$BASE_DOMAIN"
+              else
+                DOMAIN="$BASE_DOMAIN"
+              fi
+              ;;
             *)
               DOMAIN="$ENV_NAME.$BASE_DOMAIN" ;;
           esac
