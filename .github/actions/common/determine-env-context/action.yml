@@ -108,15 +108,17 @@ runs:
 
           deploy=$(normalize_deploy "$override_deploy")
 
-          image_tag="$override_tag"
-          if [ -n "$override_deploy" ]; then
-            deploy=$(normalize_deploy "$override_deploy")
-          else
-            deploy="${DEFAULT_DEPLOY}"
-          fi
-            sha="${GITHUB_SHA:-unknown}"
-            sha7="${sha:0:7}"
-            image_tag="${env_name}-${sha7}"
+            image_tag="$override_tag"
+            if [ -n "$override_deploy" ]; then
+              deploy=$(normalize_deploy "$override_deploy")
+            else
+              deploy="${DEFAULT_DEPLOY}"
+            fi
+            if [ -z "$image_tag" ]; then
+              sha="${GITHUB_SHA:-unknown}"
+              sha7="${sha:0:7}"
+              image_tag="${env_name}-${sha7}"
+            fi
           fi
 
           emit_outputs "$env_name" "$env_key" "$deploy" "$image_tag"
