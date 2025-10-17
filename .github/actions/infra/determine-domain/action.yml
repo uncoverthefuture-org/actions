@@ -86,12 +86,14 @@ runs:
               fi
               ;;
             stage|staging)
-              if [ -n "$DP_STG" ]; then
-                DOMAIN="$DP_STG.$BASE_DOMAIN"
-              else
-                DOMAIN="$BASE_DOMAIN"
-              fi
-              ;;
+        if [ -n "$DP_STG" ]; then
+          DOMAIN="$DP_STG.$BASE_DOMAIN"
+        elif [ -n "$DP_PROD" ]; then
+          DOMAIN="${DP_PROD}-staging.$BASE_DOMAIN"
+        else
+          DOMAIN="staging.$BASE_DOMAIN"
+        fi
+        ;;
             dev|develop|development)
               if [ -n "$DP_DEV" ]; then
                 DOMAIN="$DP_DEV.$BASE_DOMAIN"
