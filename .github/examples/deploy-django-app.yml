@@ -20,11 +20,11 @@ jobs:
         with:
           subaction: build-and-push
 
-      - name: Deploy Django API
+      - name: Deploy Django App
         if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
         uses: uncoverthefuture-org/actions@master
         with:
-          subaction: ssh-django-api-deploy
+          subaction: ssh-django-deploy
           params_json: |
             {
               "ssh_host": "${{ secrets.SSH_HOST }}",
