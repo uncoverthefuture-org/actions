@@ -5,7 +5,7 @@ inputs:
   params_json:
     required: false
   subaction:
-    description: 'install-certbot | request-certbot-cert'
+    description: 'install-certbot | request-certbot-cert | ensure-certbot-cert'
     required: true
   ssh_host:
     required: false
@@ -58,7 +58,7 @@ runs:
         connect_mode: ${{ inputs.connect_mode }}
 
     - name: install-certbot
-      if: ${{ inputs.subaction == 'install-certbot' }}
+      if: ${{ inputs.subaction == 'install-certbot' || inputs.subaction == 'ensure-certbot-cert' }}
       uses: ./.github/actions/infra/install-certbot
       with:
         ssh_host: ${{ steps.remote.outputs.ssh_host }}
@@ -71,7 +71,7 @@ runs:
         connect_mode: 'root'
 
     - name: request-certbot-cert
-      if: ${{ inputs.subaction == 'request-certbot-cert' }}
+      if: ${{ inputs.subaction == 'request-certbot-cert' || inputs.subaction == 'ensure-certbot-cert' }}
       uses: ./.github/actions/infra/request-certbot-cert
       with:
         ssh_host: ${{ steps.remote.outputs.ssh_host }}

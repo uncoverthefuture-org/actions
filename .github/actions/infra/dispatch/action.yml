@@ -3,7 +3,7 @@ description: 'Infra dispatch: route short calls to infra actions'
 
 inputs:
   subaction:
-    description: "prepare-ubuntu-host | apache-manage-vhost | install-podman | install-apache | install-webmin | install-certbot | request-certbot-cert | configure-ufw | setup-podman-user | determine-domain | compute-host-port | check-dns-match | ensure-apache-installed | enable-apache-modules | manage-vhost-config | enable-site-reload"
+    description: "prepare-ubuntu-host | apache-manage-vhost | install-podman | install-apache | install-webmin | install-certbot | request-certbot-cert | ensure-certbot-cert | configure-ufw | setup-podman-user | determine-domain | compute-host-port | check-dns-match | ensure-apache-installed | enable-apache-modules | manage-vhost-config | enable-site-reload"
     required: true
   params_json:
     description: "JSON blob of parameters to pass to the selected subaction"
@@ -141,7 +141,7 @@ runs:
       run: |
         set -euo pipefail
         SA='${{ inputs.subaction }}'
-        case "$SA" in prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|install-certbot|request-certbot-cert|configure-ufw|setup-podman-user|determine-domain|compute-host-port|check-dns-match|ensure-apache-installed|enable-apache-modules|manage-vhost-config|enable-site-reload) :;; *) echo "Error: unsupported infra subaction '$SA'" >&2; exit 1;; esac
+        case "$SA" in prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|install-certbot|request-certbot-cert|ensure-certbot-cert|configure-ufw|setup-podman-user|determine-domain|compute-host-port|check-dns-match|ensure-apache-installed|enable-apache-modules|manage-vhost-config|enable-site-reload) :;; *) echo "Error: unsupported infra subaction '$SA'" >&2; exit 1;; esac
       shell: bash
 
     - name: Validate base SSH for infra subactions
@@ -153,7 +153,7 @@ runs:
       run: |
         set -euo pipefail
         case "$SA" in
-          prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|install-certbot|request-certbot-cert|configure-ufw|setup-podman-user|compute-host-port)
+          prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|install-certbot|request-certbot-cert|ensure-certbot-cert|configure-ufw|setup-podman-user|compute-host-port)
             for var in SSH_HOST SSH_USER SSH_KEY; do
               val="${!var}"
               if [ -z "$val" ]; then
@@ -220,7 +220,7 @@ runs:
         domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
 
     - name: Run certbot subaction
-      if: ${{ inputs.subaction == 'install-certbot' || inputs.subaction == 'request-certbot-cert' }}
+      if: ${{ inputs.subaction == 'install-certbot' || inputs.subaction == 'request-certbot-cert' || inputs.subaction == 'ensure-certbot-cert' }}
       uses: ./.github/actions/infra/certbot
       with:
         params_json: ${{ inputs.params_json }}
