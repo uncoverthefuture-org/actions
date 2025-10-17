@@ -15,6 +15,16 @@ inputs:
   registry:
     required: false
     default: 'ghcr.io'
+  env_name:
+    required: false
+  env_key:
+    required: false
+  deploy_enabled:
+    required: false
+  image_tag:
+    required: false
+  environment_script:
+    required: false
 
 outputs:
   env_name:
@@ -60,3 +70,8 @@ runs:
         image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name }}
         github_token: ${{ inputs.github_token != '' && inputs.github_token || fromJSON(steps.pjson.outputs.json).github_token }}
         registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.pjson.outputs.json).registry }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        env_key: ${{ inputs.env_key != '' && inputs.env_key || fromJSON(steps.pjson.outputs.json).env_key }}
+        deploy_enabled: ${{ inputs.deploy_enabled != '' && inputs.deploy_enabled || fromJSON(steps.pjson.outputs.json).deploy_enabled }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.pjson.outputs.json).image_tag }}
+        environment_script: ${{ inputs.environment_script != '' && inputs.environment_script || fromJSON(steps.pjson.outputs.json).environment_script }}

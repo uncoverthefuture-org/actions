@@ -1,0 +1,64 @@
+name: 'common: select-env-secret'
+description: 'Resolve an environment-specific base64 secret using a naming convention (e.g., ENV_B64_PROD)'
+
+inputs:
+  env_name:
+    description: 'Environment name (e.g., prod, staging, dev)'
+    required: true
+  secret_prefix:
+    description: "Secret name prefix. Final secret is <prefix><UPPERCASE env name>."
+    required: false
+    default: 'ENV_B64_'
+  required:
+    description: 'Set to true to fail when the resolved secret is empty/missing'
+    required: false
+    default: 'false'
+
+outputs:
+  env_b64:
+    description: 'Resolved base64-encoded secret value (may be empty when not required)'
+    value: ${{ steps.resolve.outputs.env_b64 }}
+  secret_name:
+    description: 'Fully-qualified secret name that was queried'
+    value: ${{ steps.resolve.outputs.secret_name }}
+  found:
+    description: "'true' when the secret existed and had a non-empty value"
+    value: ${{ steps.resolve.outputs.found }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve environment secret
+      id: resolve
+      shell: bash
+      env:
+        SECRET_PREFIX: ${{ inputs.secret_prefix }}
+        ENV_NAME_RAW: ${{ inputs.env_name }}
+        REQUIRED: ${{ inputs.required }}
+      run: |
+        set -euo pipefail
+
+        env_name="${ENV_NAME_RAW}"
+        if [ -z "${env_name}" ]; then
+          echo 'Environment name is required.' >&2
+          exit 1
+        fi
+
+        env_upper=$(echo "${env_name}" | tr '[:lower:]' '[:upper:]')
+        secret_name="${SECRET_PREFIX}${env_upper}"
+        secret_value="$(printenv "${secret_name}" 2>/dev/null || true)"
+
+        if [ -z "${secret_value}" ]; then
+          if [ "${REQUIRED}" = "true" ]; then
+            echo "Error: Secret ${secret_name} is not configured or empty." >&2
+            exit 1
+          fi
+          found="false"
+        else
+          echo "::add-mask::${secret_value}"
+          found="true"
+        fi
+
+        printf 'env_b64=%s\n' "${secret_value}" >>"${GITHUB_OUTPUT}"
+        printf 'secret_name=%s\n' "${secret_name}" >>"${GITHUB_OUTPUT}"
+        printf 'found=%s\n' "${found}" >>"${GITHUB_OUTPUT}"
