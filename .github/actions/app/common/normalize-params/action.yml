@@ -23,4 +23,8 @@ runs:
         set -euo pipefail
         J="${INPUT_PARAMS_JSON}"
         if [ -z "$J" ]; then J='{}'; fi
-        echo "json=$J" >> "$GITHUB_OUTPUT"
+        {
+          echo 'json<<EOF'
+          printf '%s\n' "$J"
+          echo 'EOF'
+        } >> "$GITHUB_OUTPUT"
