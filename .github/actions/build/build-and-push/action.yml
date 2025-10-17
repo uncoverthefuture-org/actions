@@ -32,41 +32,22 @@ inputs:
 outputs:
   env_name:
     description: 'Environment name'
-    value: ${{ steps.environment.outputs.env_name }}
+    value: ${{ inputs.env_name }}
   env_key:
     description: 'Environment key'
-    value: ${{ steps.environment.outputs.env_key }}
+    value: ${{ inputs.env_key }}
   image_tag:
     description: 'Image tag'
-    value: ${{ steps.environment.outputs.image_tag }}
+    value: ${{ inputs.image_tag }}
   deploy_enabled:
     description: 'Whether deployment is enabled'
-    value: ${{ steps.environment.outputs.deploy_enabled }}
+    value: ${{ inputs.deploy_enabled }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Validate inputs
-      run: |
-        : # no strict validation; defaults are applied below
-      shell: bash
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Determine environment context
-      id: environment
-      uses: ./.github/actions/common/determine-env-context
-      with:
-        env_name: ${{ inputs.env_name }}
-        env_key: ${{ inputs.env_key }}
-        deploy_enabled: ${{ inputs.deploy_enabled }}
-        image_tag: ${{ inputs.image_tag }}
-        environment_script: ${{ inputs.environment_script }}
-
-    - name: Ensure runner has disk space
-      uses: ./.github/actions/common/cleanup-runner
-      with:
-        min_free_gb: '5'
 
     - name: Log in to registry
       uses: docker/login-action@v3
@@ -81,7 +62,7 @@ runs:
       with:
         images: ${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || github.repository }}
         tags: |
-          type=raw,value=${{ steps.environment.outputs.image_tag }}
+          type=raw,value=${{ inputs.image_tag }}
 
     - name: Build and push
       uses: docker/build-push-action@v6
