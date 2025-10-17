@@ -11,33 +11,14 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    env:
-      ENV_B64_PROD: ${{ secrets.ENV_B64_PROD }}
-      ENV_B64_STAGING: ${{ secrets.ENV_B64_STAGING }}
-      ENV_B64_DEV: ${{ secrets.ENV_B64_DEV }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Determine environment context
-        id: context
-        uses: ./.github/actions/common/resolve-env-context
-
-      - name: Select env secret
-        id: env
-        uses: ./.github/actions/common/select-env-secret
-        with:
-          env_name: ${{ steps.context.outputs.env_key }}
-          required: 'false'
 
       - id: build
         uses: uncoverthefuture-org/actions@master
         with:
           subaction: build-and-push
-          env_name: ${{ steps.context.outputs.env_name }}
-          env_key: ${{ steps.context.outputs.env_key }}
-          deploy_enabled: ${{ steps.context.outputs.deploy_enabled }}
-          image_tag: ${{ steps.context.outputs.image_tag }}
 
       - name: Deploy Django App
         if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
