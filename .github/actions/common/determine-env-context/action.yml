@@ -93,10 +93,7 @@ runs:
         }
 
         if [ -n "$override_env" ] || [ -n "$override_key" ] || [ -n "$override_deploy" ] || [ -n "$override_tag" ]; then
-          env_name="$override_env"
-          if [ -z "$env_name" ]; then
-            env_name='dev'
-          fi
+          env_name="${override_env:-${DEFAULT_ENV_NAME}}"
 
           env_key="$override_key"
           if [ -z "$env_key" ]; then
@@ -112,7 +109,11 @@ runs:
           deploy=$(normalize_deploy "$override_deploy")
 
           image_tag="$override_tag"
-          if [ -z "$image_tag" ]; then
+          if [ -n "$override_deploy" ]; then
+            deploy=$(normalize_deploy "$override_deploy")
+          else
+            deploy="${DEFAULT_DEPLOY}"
+          fi
             sha="${GITHUB_SHA:-unknown}"
             sha7="${sha:0:7}"
             image_tag="${env_name}-${sha7}"
