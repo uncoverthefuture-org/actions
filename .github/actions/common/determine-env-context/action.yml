@@ -78,6 +78,11 @@ runs:
         override_deploy="${INPUT_DEPLOY}"
         override_tag="${INPUT_IMAGE_TAG}"
 
+        env_name=''
+        env_key=''
+        deploy=''
+        image_tag=''
+
         emit_outputs() {
           printf 'env_name=%s\n' "$1" >>"$GITHUB_OUTPUT"
           printf 'env_key=%s\n' "$2" >>"$GITHUB_OUTPUT"
@@ -106,19 +111,17 @@ runs:
             esac
           fi
 
-          deploy=$(normalize_deploy "$override_deploy")
+          if [ -n "$override_deploy" ]; then
+            deploy=$(normalize_deploy "$override_deploy")
+          else
+            deploy=$(normalize_deploy "${DEFAULT_DEPLOY}")
+          fi
 
-            image_tag="$override_tag"
-            if [ -n "$override_deploy" ]; then
-              deploy=$(normalize_deploy "$override_deploy")
-            else
-              deploy="${DEFAULT_DEPLOY}"
-            fi
-            if [ -z "$image_tag" ]; then
-              sha="${GITHUB_SHA:-unknown}"
-              sha7="${sha:0:7}"
-              image_tag="${env_name}-${sha7}"
-            fi
+          image_tag="$override_tag"
+          if [ -z "$image_tag" ]; then
+            sha="${GITHUB_SHA:-unknown}"
+            sha7="${sha:0:7}"
+            image_tag="${env_name}-${sha7}"
           fi
 
           emit_outputs "$env_name" "$env_key" "$deploy" "$image_tag"

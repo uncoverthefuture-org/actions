@@ -184,26 +184,8 @@ runs:
         echo "image_tag_default=$IMG_TAG_DEF" >> "$GITHUB_OUTPUT"
       shell: bash
 
-    - name: Validate inputs
-      run: |
-        set -euo pipefail
-        if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
-        if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
-        if [ "${{ inputs.registry_login }}" = "true" ] && [ "${{ inputs.registry }}" != "ghcr.io" ]; then
-          if [ -z "${{ inputs.registry_username }}" ] || [ -z "${{ inputs.registry_token }}" ]; then
-            echo 'Error: registry_username and registry_token are required for non-GHCR registries when registry_login=true' ; exit 1
-          fi
-        fi
-        if [ "${{ inputs.write_env_file }}" = "true" ]; then
-          if [ -z "${{ inputs.env_b64 }}" ] && [ -z "${{ inputs.env_content }}" ]; then
-            echo 'Error: write_env_file=true but neither env_b64 nor env_content provided' ; exit 1
-          fi
-        fi
-      shell: bash
-
-    - name: Prepare host (optional)
-      if: ${{ inputs.prepare_host == 'true' }}
-      uses: ./.github/actions/infra/prepare-ubuntu-host
+    - name: Deploy preflight
+      uses: ./.github/actions/app/common/deploy-preflight
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
@@ -211,47 +193,25 @@ runs:
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || 'deployer' }}
         connect_mode: ${{ inputs.connect_mode }}
+        prepare_host: ${{ inputs.prepare_host }}
         install_podman: ${{ inputs.install_podman }}
         create_podman_user: ${{ inputs.create_podman_user }}
         env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages }}
-
-    - name: Write env file (optional)
-      if: ${{ inputs.write_env_file == 'true' }}
-      uses: ./.github/actions/app/write-remote-env-file
-      with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
+        write_env_file: ${{ inputs.write_env_file }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
         env_b64: ${{ inputs.env_b64 }}
         env_content: ${{ inputs.env_content }}
-
-    - name: Login and pull image
-      uses: ./.github/actions/podman/podman-login-pull
-      with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
         registry: ${{ inputs.registry }}
         registry_username: ${{ inputs.registry_username }}
         registry_token: ${{ inputs.registry_token }}
         registry_login: ${{ inputs.registry_login }}
         image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}
         image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}
+        require_image_name: 'true'
 
     - name: Deploy React app
       uses: ./.github/actions/podman/remote-podman-exec
