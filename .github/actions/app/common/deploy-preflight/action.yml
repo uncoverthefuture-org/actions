@@ -1,0 +1,190 @@
+name: 'app: deploy preflight'
+description: 'Common preflight for SSH-based Podman deployments (validation, optional host prep, env sync, registry login).'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH user to connect as'
+    required: false
+    default: 'root'
+  ssh_key:
+    description: 'SSH private key'
+    required: true
+  root_ssh_key:
+    description: 'Optional root SSH key'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'SSH host key fingerprint'
+    required: false
+  podman_user:
+    description: 'Remote user for Podman commands'
+    required: false
+    default: 'deployer'
+  connect_mode:
+    description: "Connection mode: auto, root, or user"
+    required: false
+    default: 'auto'
+  prepare_host:
+    description: 'Whether to run host preparation'
+    required: false
+    default: 'false'
+  install_podman:
+    description: 'Install Podman when preparing host'
+    required: false
+    default: 'true'
+  create_podman_user:
+    description: 'Create Podman user during preparation'
+    required: false
+    default: 'false'
+  env_dir_path:
+    description: 'Target environment directory path on host'
+    required: false
+  additional_packages:
+    description: 'Additional apt packages for host preparation'
+    required: false
+  write_env_file:
+    description: 'Whether to write the env file before deploy'
+    required: false
+    default: 'false'
+  env_name:
+    description: 'Resolved environment name'
+    required: false
+  env_file_path:
+    description: 'Resolved environment file prefix on host'
+    required: false
+  env_b64:
+    description: 'Base64 encoded env payload'
+    required: false
+  env_content:
+    description: 'Raw env content fallback'
+    required: false
+  registry:
+    description: 'Registry hostname'
+    required: false
+    default: 'ghcr.io'
+  registry_username:
+    description: 'Registry username'
+    required: false
+  registry_token:
+    description: 'Registry token or password'
+    required: false
+  registry_login:
+    description: 'Whether to log in to the registry before pulling'
+    required: false
+    default: 'true'
+  image_name:
+    description: 'Resolved image name'
+    required: false
+  image_tag:
+    description: 'Resolved image tag'
+    required: false
+  require_image_name:
+    description: 'Fail when image_name is empty'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate deploy inputs
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        REGISTRY: ${{ inputs.registry }}
+        REGISTRY_LOGIN: ${{ inputs.registry_login }}
+        REGISTRY_USERNAME: ${{ inputs.registry_username }}
+        REGISTRY_TOKEN: ${{ inputs.registry_token }}
+        WRITE_ENV_FILE: ${{ inputs.write_env_file }}
+        ENV_B64: ${{ inputs.env_b64 }}
+        ENV_CONTENT: ${{ inputs.env_content }}
+        IMAGE_NAME: ${{ inputs.image_name }}
+        REQUIRE_IMAGE: ${{ inputs.require_image_name }}
+      run: |
+        set -euo pipefail
+        if [ -z "$SSH_HOST" ]; then
+          echo 'Error: ssh_host is required' >&2
+          exit 1
+        fi
+        if [ -z "$SSH_KEY" ]; then
+          echo 'Error: ssh_key is required' >&2
+          exit 1
+        fi
+        if [ "$REGISTRY_LOGIN" = "true" ] && [ "$REGISTRY" != "ghcr.io" ]; then
+          if [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_TOKEN" ]; then
+            echo 'Error: registry_username and registry_token are required for non-GHCR registries when registry_login=true' >&2
+            exit 1
+          fi
+        fi
+        if [ "$WRITE_ENV_FILE" = "true" ]; then
+          if [ -z "$ENV_B64" ] && [ -z "$ENV_CONTENT" ]; then
+            echo 'Error: write_env_file=true but neither env_b64 nor env_content provided' >&2
+            exit 1
+          fi
+        fi
+        case "$REQUIRE_IMAGE" in
+          true|"true"|1)
+            if [ -z "$IMAGE_NAME" ]; then
+              echo 'Error: image_name is required for this deployment' >&2
+              exit 1
+            fi
+            ;;
+        esac
+
+    - name: Prepare host (optional)
+      if: ${{ inputs.prepare_host == 'true' }}
+      uses: ./.github/actions/infra/prepare-ubuntu-host
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        install_podman: ${{ inputs.install_podman }}
+        create_podman_user: ${{ inputs.create_podman_user }}
+        env_dir_path: ${{ inputs.env_dir_path }}
+        additional_packages: ${{ inputs.additional_packages }}
+
+    - name: Write env file (optional)
+      if: ${{ inputs.write_env_file == 'true' }}
+      uses: ./.github/actions/app/write-remote-env-file
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name }}
+        env_file_path: ${{ inputs.env_file_path }}
+        env_b64: ${{ inputs.env_b64 }}
+        env_content: ${{ inputs.env_content }}
+
+    - name: Login and pull image
+      uses: ./.github/actions/podman/podman-login-pull
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        registry: ${{ inputs.registry }}
+        registry_username: ${{ inputs.registry_username }}
+        registry_token: ${{ inputs.registry_token }}
+        registry_login: ${{ inputs.registry_login }}
+        image_name: ${{ inputs.image_name }}
+        image_tag: ${{ inputs.image_tag }}
