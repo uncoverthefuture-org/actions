@@ -45,14 +45,9 @@ runs:
   steps:
     - name: Normalize params JSON
       id: pjson
-      env:
-        INPUT_PARAMS_JSON: ${{ inputs.params_json }}
-      run: |
-        set -euo pipefail
-        J="${INPUT_PARAMS_JSON}"
-        if [ -z "$J" ]; then J='{}'; fi
-        echo "json=$J" >> "$GITHUB_OUTPUT"
-      shell: bash
+      uses: ./.github/actions/common/normalize-params
+      with:
+        params_json: ${{ inputs.params_json }}
     - name: Validate build subaction
       run: |
         set -euo pipefail
@@ -60,7 +55,20 @@ runs:
         case "$SA" in build-and-push) :;; *) echo "Error: unsupported build subaction '$SA'" >&2; exit 1;; esac
       shell: bash
 
-    # No strict validation here; downstream action applies safe defaults
+    - name: Determine environment context
+      id: environment
+      uses: ./.github/actions/common/determine-env-context
+      with:
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        env_key: ${{ inputs.env_key != '' && inputs.env_key || fromJSON(steps.pjson.outputs.json).env_key }}
+        deploy_enabled: ${{ inputs.deploy_enabled != '' && inputs.deploy_enabled || fromJSON(steps.pjson.outputs.json).deploy_enabled }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.pjson.outputs.json).image_tag }}
+        environment_script: ${{ inputs.environment_script != '' && inputs.environment_script || fromJSON(steps.pjson.outputs.json).environment_script }}
+
+    - name: Ensure runner has disk space
+      uses: ./.github/actions/common/cleanup-runner
+      with:
+        min_free_gb: '5'
 
     - name: build-and-push
       id: call
@@ -70,8 +78,7 @@ runs:
         image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.pjson.outputs.json).image_name }}
         github_token: ${{ inputs.github_token != '' && inputs.github_token || fromJSON(steps.pjson.outputs.json).github_token }}
         registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.pjson.outputs.json).registry }}
-        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
-        env_key: ${{ inputs.env_key != '' && inputs.env_key || fromJSON(steps.pjson.outputs.json).env_key }}
-        deploy_enabled: ${{ inputs.deploy_enabled != '' && inputs.deploy_enabled || fromJSON(steps.pjson.outputs.json).deploy_enabled }}
-        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.pjson.outputs.json).image_tag }}
-        environment_script: ${{ inputs.environment_script != '' && inputs.environment_script || fromJSON(steps.pjson.outputs.json).environment_script }}
+        env_name: ${{ steps.environment.outputs.env_name }}
+        env_key: ${{ steps.environment.outputs.env_key }}
+        deploy_enabled: ${{ steps.environment.outputs.deploy_enabled }}
+        image_tag: ${{ steps.environment.outputs.image_tag }}
