@@ -11,14 +11,33 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      ENV_B64_PROD: ${{ secrets.ENV_B64_PROD }}
+      ENV_B64_STAGING: ${{ secrets.ENV_B64_STAGING }}
+      ENV_B64_DEV: ${{ secrets.ENV_B64_DEV }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Determine environment context
+        id: context
+        uses: ./.github/actions/common/resolve-env-context
+
+      - name: Select env secret
+        id: env
+        uses: ./.github/actions/common/select-env-secret
+        with:
+          env_name: ${{ steps.context.outputs.env_key }}
+          required: 'false'
 
       - id: build
         uses: uncoverthefuture-org/actions@master
         with:
           subaction: build-and-push
+          env_name: ${{ steps.context.outputs.env_name }}
+          env_key: ${{ steps.context.outputs.env_key }}
+          deploy_enabled: ${{ steps.context.outputs.deploy_enabled }}
+          image_tag: ${{ steps.context.outputs.image_tag }}
 
       - name: Deploy Django App
         if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
@@ -38,7 +57,7 @@ jobs:
         # the Apache vhost step is skipped automatically.
         # Set "run_db": "false" (default) to skip provisioning a local database when you already have a managed DB.
 
-      # Optional: write env file from a secret (env_name defaults from branch; can omit)
+      # Optional: write env file from the resolved secret (env_name defaults from branch; can omit)
       # - uses: uncoverthefuture-org/actions@master
       #   with:
       #     subaction: write-remote-env-file
@@ -47,6 +66,26 @@ jobs:
       #         "ssh_host": "${{ secrets.SSH_HOST }}",
       #         "ssh_user": "${{ secrets.SSH_USER }}",
       #         "ssh_key":  "${{ secrets.SSH_KEY }}",
-      #         "env_name": "${{ needs.build.outputs.env_name }}",
-      #         "env_b64":  "${{ secrets.API_ENV_B64 }}"
+      #         "env_name": "${{ steps.context.outputs.env_name }}",
+      #         "env_b64":  "${{ steps.env.outputs.env_b64 }}"
+      #       }
+
+      # Optional: manage multiple env files (e.g., API and worker)
+      # - name: Select worker env secret
+      #   id: worker_env
+      #   uses: ./.github/actions/common/select-env-secret
+      #   with:
+      #     env_name: ${{ steps.context.outputs.env_key }}
+      #     secret_prefix: 'WORKER_ENV_B64_'
+      #     required: 'false'
+      #
+      # - uses: uncoverthefuture-org/actions@master
+      #   with:
+      #     subaction: write-remote-env-file
+      #     params_json: |
+      #       {
+      #         "ssh_host": "${{ secrets.SSH_HOST }}",
+      #         "ssh_key":  "${{ secrets.SSH_KEY }}",
+      #         "env_name": "${{ steps.context.outputs.env_name }}-worker",
+      #         "env_b64":  "${{ steps.worker_env.outputs.env_b64 }}"
       #       }

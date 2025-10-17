@@ -16,6 +16,18 @@ inputs:
     description: 'Path to the script that sets environment context'
     required: false
     default: '.github/scripts/set-environment-context.sh'
+  env_name:
+    description: 'Override environment name (bypass auto detection if provided)'
+    required: false
+  env_key:
+    description: 'Override environment key (e.g., prod, staging, dev)'
+    required: false
+  deploy_enabled:
+    description: "Override deploy flag ('true' or 'false')"
+    required: false
+  image_tag:
+    description: 'Override image tag to publish'
+    required: false
 
 outputs:
   env_name:
@@ -43,49 +55,18 @@ runs:
 
     - name: Determine environment context
       id: environment
-      run: |
-        set -euo pipefail
-        SCRIPT='${{ inputs.environment_script }}'
-        if [ -f "$SCRIPT" ]; then
-          bash "$SCRIPT"
-        else
-          REF_NAME="${GITHUB_REF_NAME:-}"
-          SHA7="${GITHUB_SHA:-unknown}"
-          SHA7="${SHA7:0:7}"
-          case "$REF_NAME" in
-            main|master)
-              ENV_NAME='production'
-              ENV_KEY='prod'
-              DEPLOY='true'
-              ;;
-            stage|staging)
-              ENV_NAME='staging'
-              ENV_KEY='staging'
-              DEPLOY='true'
-              ;;
-            dev|develop|development)
-              ENV_NAME='dev'
-              ENV_KEY='dev'
-              DEPLOY='true'
-              ;;
-            refs/tags/*)
-              ENV_NAME='production'
-              ENV_KEY='prod'
-              DEPLOY='true'
-              ;;
-            *)
-              ENV_NAME='dev'
-              ENV_KEY='dev'
-              DEPLOY='false'
-              ;;
-          esac
-          IMAGE_TAG="${ENV_NAME}-${SHA7}"
-          echo "env_name=$ENV_NAME" >> "$GITHUB_OUTPUT"
-          echo "env_key=$ENV_KEY" >> "$GITHUB_OUTPUT"
-          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
-          echo "deploy_enabled=$DEPLOY" >> "$GITHUB_OUTPUT"
-        fi
-      shell: bash
+      uses: ./.github/actions/common/determine-env-context
+      with:
+        env_name: ${{ inputs.env_name }}
+        env_key: ${{ inputs.env_key }}
+        deploy_enabled: ${{ inputs.deploy_enabled }}
+        image_tag: ${{ inputs.image_tag }}
+        environment_script: ${{ inputs.environment_script }}
+
+    - name: Ensure runner has disk space
+      uses: ./.github/actions/common/cleanup-runner
+      with:
+        min_free_gb: '5'
 
     - name: Log in to registry
       uses: docker/login-action@v3

@@ -37,7 +37,7 @@ jobs:
         # the Apache vhost step is skipped automatically.
 
       # Optional: write env file from a secret (env_name defaults from branch; can omit)
-      # - uses: uncoverthefuture-org/actions/.github/actions/app/dispatch@master
+      # - uses: uncoverthefuture-org/actions@master
       #   with:
       #     subaction: write-remote-env-file
       #     params_json: |
@@ -46,4 +46,16 @@ jobs:
       #         "ssh_key":  "${{ secrets.SSH_KEY }}",
       #         "env_name": "${{ steps.build.outputs.env_name }}",
       #         "env_b64":  "${{ secrets.WEB_ENV_B64 }}"
+      #       }
+
+      # Optional: manage alternate env scopes (e.g., admin panel)
+      # - uses: uncoverthefuture-org/actions@master
+      #   with:
+      #     subaction: write-remote-env-file
+      #     params_json: |
+      #       {
+      #         "ssh_host": "${{ secrets.SSH_HOST }}",
+      #         "ssh_key":  "${{ secrets.SSH_KEY }}",
+      #         "env_name": "${{ steps.build.outputs.env_name }}-admin",
+      #         "env_b64":  "${{ secrets.ADMIN_ENV_B64 }}"
       #       }

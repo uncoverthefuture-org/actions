@@ -1,0 +1,53 @@
+name: 'common: cleanup-runner'
+description: 'Free disk space on GitHub-hosted runners by pruning Docker and system caches when space is low.'
+
+inputs:
+  min_free_gb:
+    description: 'Run cleanup when available disk space (in GiB) is below this threshold. Use 0 to always run.'
+    required: false
+    default: '5'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check and clean disk space
+      shell: bash
+      env:
+        MIN_FREE_GB: ${{ inputs.min_free_gb }}
+      run: |
+        set -euo pipefail
+
+        required_free="${MIN_FREE_GB:-10}"
+        if ! [[ "$required_free" =~ ^[0-9]+$ ]]; then
+          echo "Invalid min_free_gb '$required_free'; defaulting to 10" >&2
+          required_free=10
+        fi
+
+        echo "::group::Disk usage before cleanup"
+        df -h
+        echo "::endgroup::"
+
+        free_gb=$(df --output=avail -BG / | tail -n1 | tr -dc '0-9')
+        echo "Available GiB before cleanup: $free_gb"
+
+        if [ "$required_free" -gt 0 ] && [ "$free_gb" -ge "$required_free" ]; then
+          echo "Sufficient disk space ($free_gb GiB >= $required_free GiB); skipping cleanup."
+          exit 0
+        fi
+
+        echo "Running cleanup (threshold: ${required_free} GiB)."
+
+        echo "Pruning Docker system..."
+        docker system prune -af || true
+        docker volume prune -f || true
+
+        echo "Cleaning apt cache..."
+        sudo apt-get clean || true
+        sudo apt-get autoremove -y || true
+
+        echo "Removing temporary files..."
+        sudo rm -rf /tmp/* || true
+
+        echo "::group::Disk usage after cleanup"
+        df -h
+        echo "::endgroup::"

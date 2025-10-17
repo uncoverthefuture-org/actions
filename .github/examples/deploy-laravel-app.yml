@@ -47,3 +47,15 @@ jobs:
       #         "env_name": "${{ steps.build.outputs.env_name }}",
       #         "env_b64":  "${{ secrets.APP_ENV_B64 }}"
       #       }
+
+      # Optional: target additional env files (e.g., queue workers)
+      # - uses: uncoverthefuture-org/actions@master
+      #   with:
+      #     subaction: write-remote-env-file
+      #     params_json: |
+      #       {
+      #         "ssh_host": "${{ secrets.SSH_HOST }}",
+      #         "ssh_key":  "${{ secrets.SSH_KEY }}",
+      #         "env_name": "${{ steps.build.outputs.env_name }}-queue",
+      #         "env_b64":  "${{ secrets.QUEUE_ENV_B64 }}"
+      #       }

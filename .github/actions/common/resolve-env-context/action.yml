@@ -1,0 +1,120 @@
+name: 'common: resolve-env-context'
+description: 'Derive environment metadata (name, key, deploy flag, image tag) from the current branch or supplied inputs.'
+
+inputs:
+  ref_name:
+    description: 'Git ref name to evaluate (defaults to GITHUB_REF_NAME)'
+    required: false
+  sha:
+    description: 'Commit SHA used for image tag (defaults to GITHUB_SHA)'
+    required: false
+  fallback_env_name:
+    description: 'Env name to use for unrecognized refs'
+    required: false
+    default: 'dev'
+  fallback_env_key:
+    description: 'Env key to use for unrecognized refs'
+    required: false
+    default: 'dev'
+  fallback_deploy_enabled:
+    description: "Deploy flag to use for unrecognized refs ('true' or 'false')"
+    required: false
+    default: 'false'
+
+outputs:
+  env_name:
+    description: 'Resolved environment name (e.g., production, staging, dev)'
+    value: ${{ steps.resolve.outputs.env_name }}
+  env_key:
+    description: 'Resolved environment key (e.g., prod, staging, dev)'
+    value: ${{ steps.resolve.outputs.env_key }}
+  deploy_enabled:
+    description: "'true' when deployment should proceed for this ref"
+    value: ${{ steps.resolve.outputs.deploy_enabled }}
+  image_tag:
+    description: 'Suggested image tag combining env and short SHA'
+    value: ${{ steps.resolve.outputs.image_tag }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve environment context
+      id: resolve
+      shell: bash
+      env:
+        INPUT_REF_NAME: ${{ inputs.ref_name }}
+        INPUT_SHA: ${{ inputs.sha }}
+        FALLBACK_ENV_NAME: ${{ inputs.fallback_env_name }}
+        FALLBACK_ENV_KEY: ${{ inputs.fallback_env_key }}
+        FALLBACK_DEPLOY: ${{ inputs.fallback_deploy_enabled }}
+      run: |
+        set -euo pipefail
+
+        ref_name="${INPUT_REF_NAME}"
+        if [ -z "$ref_name" ]; then
+          ref_name="${GITHUB_REF_NAME:-}"
+        fi
+
+        sha="${INPUT_SHA}"
+        if [ -z "$sha" ]; then
+          sha="${GITHUB_SHA:-unknown}"
+        fi
+        sha7="${sha:0:7}"
+
+        env_name=''
+        env_key=''
+        deploy='false'
+
+        case "$ref_name" in
+          main|master)
+            env_name='production'
+            env_key='prod'
+            deploy='true'
+            ;;
+          stage|staging)
+            env_name='staging'
+            env_key='staging'
+            deploy='true'
+            ;;
+          dev|develop|development)
+            env_name='dev'
+            env_key='dev'
+            deploy='true'
+            ;;
+          refs/tags/*)
+            env_name='production'
+            env_key='prod'
+            deploy='true'
+            ;;
+        esac
+
+        if [ -z "$env_name" ]; then
+          env_name="${FALLBACK_ENV_NAME}"
+        fi
+        if [ -z "$env_key" ]; then
+          case "$env_name" in
+            production) env_key='prod' ;;
+            staging) env_key='staging' ;;
+            dev) env_key='dev' ;;
+            *) env_key="${FALLBACK_ENV_KEY}" ;;
+          esac
+        fi
+        if [ -z "$env_key" ]; then
+          env_key='dev'
+        fi
+
+        if [ "$deploy" = 'false' ]; then
+          deploy="${FALLBACK_DEPLOY}"
+        fi
+
+        case "$deploy" in
+          ''|false|FALSE|0) deploy='false' ;;
+          *) deploy='true' ;;
+        esac
+
+        image_tag="${env_name}-${sha7}"
+
+        printf 'env_name=%s\n' "$env_name" >>"$GITHUB_OUTPUT"
+        printf 'env_key=%s\n' "$env_key" >>"$GITHUB_OUTPUT"
+        printf 'deploy_enabled=%s\n' "$deploy" >>"$GITHUB_OUTPUT"
+        printf 'image_tag=%s\n' "$image_tag" >>"$GITHUB_OUTPUT"

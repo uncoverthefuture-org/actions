@@ -1,0 +1,159 @@
+name: 'common: determine-env-context'
+description: 'Compute environment metadata from overrides, optional scripts, or default branch conventions.'
+
+inputs:
+  env_name:
+    description: 'Explicit environment name override (e.g., production, staging, dev)'
+    required: false
+  env_key:
+    description: 'Explicit environment key override (e.g., prod, staging, dev)'
+    required: false
+  deploy_enabled:
+    description: "Explicit deploy flag override ('true' or 'false')"
+    required: false
+  image_tag:
+    description: 'Explicit image tag override'
+    required: false
+  environment_script:
+    description: 'Optional shell script to source for environment variables when overrides are absent'
+    required: false
+    default: '.github/scripts/set-environment-context.sh'
+  fallback_env_name:
+    description: 'Environment name to use when branch detection is unknown'
+    required: false
+    default: 'dev'
+  fallback_env_key:
+    description: 'Environment key to use when branch detection is unknown'
+    required: false
+    default: 'dev'
+  fallback_deploy_enabled:
+    description: "Deploy flag default when branch detection is unknown ('true' or 'false')"
+    required: false
+    default: 'false'
+
+outputs:
+  env_name:
+    description: 'Resolved environment name'
+    value: ${{ steps.compute.outputs.env_name }}
+  env_key:
+    description: 'Resolved environment key'
+    value: ${{ steps.compute.outputs.env_key }}
+  deploy_enabled:
+    description: 'Resolved deploy flag'
+    value: ${{ steps.compute.outputs.deploy_enabled }}
+  image_tag:
+    description: 'Resolved image tag'
+    value: ${{ steps.compute.outputs.image_tag }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve branch defaults
+      id: defaults
+      uses: ./.github/actions/common/resolve-env-context
+      with:
+        ref_name: ${{ github.ref_name }}
+        fallback_env_name: ${{ inputs.fallback_env_name }}
+        fallback_env_key: ${{ inputs.fallback_env_key }}
+        fallback_deploy_enabled: ${{ inputs.fallback_deploy_enabled }}
+
+    - name: Compute final environment context
+      id: compute
+      shell: bash
+      env:
+        INPUT_ENV_NAME: ${{ inputs.env_name }}
+        INPUT_ENV_KEY: ${{ inputs.env_key }}
+        INPUT_DEPLOY: ${{ inputs.deploy_enabled }}
+        INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+        INPUT_ENV_SCRIPT: ${{ inputs.environment_script }}
+        DEFAULT_ENV_NAME: ${{ steps.defaults.outputs.env_name }}
+        DEFAULT_ENV_KEY: ${{ steps.defaults.outputs.env_key }}
+        DEFAULT_DEPLOY: ${{ steps.defaults.outputs.deploy_enabled }}
+        DEFAULT_IMAGE_TAG: ${{ steps.defaults.outputs.image_tag }}
+      run: |
+        set -euo pipefail
+
+        override_env="${INPUT_ENV_NAME}"
+        override_key="${INPUT_ENV_KEY}"
+        override_deploy="${INPUT_DEPLOY}"
+        override_tag="${INPUT_IMAGE_TAG}"
+
+        emit_outputs() {
+          printf 'env_name=%s\n' "$1" >>"$GITHUB_OUTPUT"
+          printf 'env_key=%s\n' "$2" >>"$GITHUB_OUTPUT"
+          printf 'deploy_enabled=%s\n' "$3" >>"$GITHUB_OUTPUT"
+          printf 'image_tag=%s\n' "$4" >>"$GITHUB_OUTPUT"
+        }
+
+        normalize_deploy() {
+          case "$1" in
+            ''|false|FALSE|0) echo 'false' ;;
+            *) echo 'true' ;;
+          esac
+        }
+
+        if [ -n "$override_env" ] || [ -n "$override_key" ] || [ -n "$override_deploy" ] || [ -n "$override_tag" ]; then
+          env_name="$override_env"
+          if [ -z "$env_name" ]; then
+            env_name='dev'
+          fi
+
+          env_key="$override_key"
+          if [ -z "$env_key" ]; then
+            case "$env_name" in
+              production) env_key='prod' ;;
+              staging) env_key='staging' ;;
+              prod) env_key='prod' ;;
+              dev|development) env_key='dev' ;;
+              *) env_key='dev' ;;
+            esac
+          fi
+
+          deploy=$(normalize_deploy "$override_deploy")
+
+          image_tag="$override_tag"
+          if [ -z "$image_tag" ]; then
+            sha="${GITHUB_SHA:-unknown}"
+            sha7="${sha:0:7}"
+            image_tag="${env_name}-${sha7}"
+          fi
+
+          emit_outputs "$env_name" "$env_key" "$deploy" "$image_tag"
+          exit 0
+        fi
+
+        script_path="${INPUT_ENV_SCRIPT}"
+        if [ -n "$script_path" ] && [ -f "$script_path" ]; then
+          set +u
+          set -a
+          . "$script_path"
+          set +a
+          set -u
+
+          env_name="${ENV_NAME:-}"
+          env_key="${ENV_KEY:-}"
+          deploy="${DEPLOY_ENABLED:-${DEPLOY:-}}"
+          image_tag="${IMAGE_TAG:-}"
+
+          if [ -z "$env_name" ]; then env_name='dev'; fi
+          if [ -z "$env_key" ]; then
+            case "$env_name" in
+              production) env_key='prod' ;;
+              staging) env_key='staging' ;;
+              prod) env_key='prod' ;;
+              dev|development) env_key='dev' ;;
+              *) env_key='dev' ;;
+            esac
+          fi
+          deploy=$(normalize_deploy "$deploy")
+          if [ -z "$image_tag" ]; then
+            sha="${GITHUB_SHA:-unknown}"
+            sha7="${sha:0:7}"
+            image_tag="${env_name}-${sha7}"
+          fi
+
+          emit_outputs "$env_name" "$env_key" "$deploy" "$image_tag"
+          exit 0
+        fi
+
+        emit_outputs "${DEFAULT_ENV_NAME}" "${DEFAULT_ENV_KEY}" "$(normalize_deploy "${DEFAULT_DEPLOY}")" "${DEFAULT_IMAGE_TAG}"
