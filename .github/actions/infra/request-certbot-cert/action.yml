@@ -1,0 +1,88 @@
+name: 'infra: request-certbot-cert'
+description: 'Request or renew a Let’s Encrypt certificate using Certbot'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username (non-root)'
+    required: true
+  ssh_key:
+    description: 'SSH private key for non-root user'
+    required: true
+  root_ssh_key:
+    description: 'SSH private key for root (optional)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Server SSH host key fingerprint'
+    required: false
+  connect_mode:
+    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    required: false
+    default: 'auto'
+  domain:
+    description: 'Primary domain to secure'
+    required: true
+  email:
+    description: 'Email address for Certbot registration and renewal notices'
+    required: true
+  extra_domains:
+    description: 'Comma-separated list of additional domains'
+    required: false
+  staging:
+    description: 'Use Let’s Encrypt staging environment'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Request certificate
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: ${{ inputs.connect_mode }}
+        source_env: 'false'
+        fail_if_env_missing: 'false'
+        inline_script: |
+          set -euo pipefail
+          if ! command -v certbot >/dev/null 2>&1; then
+            echo 'Error: certbot is not installed. Run install-certbot first.' >&2
+            exit 1
+          fi
+          if ! systemctl status apache2 >/dev/null 2>&1; then
+            echo 'Error: apache2 service is required for the Apache plugin.' >&2
+            exit 1
+          fi
+
+          domain='${{ inputs.domain }}'
+          email='${{ inputs.email }}'
+          extra='${{ inputs.extra_domains }}'
+          staging='${{ inputs.staging }}'
+
+          args=(--apache --non-interactive --agree-tos --keep-until-expiring --redirect)
+          args+=(--email "$email")
+          args+=(--domain "$domain")
+          if [ -n "$extra" ]; then
+            IFS=',' read -ra more <<< "$extra"
+            for d in "${more[@]}"; do
+              d_trim=$(echo "$d" | xargs)
+              [ -n "$d_trim" ] && args+=(--domain "$d_trim")
+            done
+          fi
+          if [ "$staging" = 'true' ]; then
+            args+=(--staging)
+          fi
+
+          certbot --apache "${args[@]}"
+          systemctl reload apache2
