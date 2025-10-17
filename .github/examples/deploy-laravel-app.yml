@@ -12,14 +12,17 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - id: build
-        uses: uncoverthefuture-org/actions@
+        uses: uncoverthefuture-org/actions@master
         with:
           subaction: build-and-push
 
       - name: Deploy Laravel App
         if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
-        uses: uncoverthefuture-org/actions@
+        uses: uncoverthefuture-org/actions@master
         with:
           subaction: ssh-laravel-deploy
           params_json: |
@@ -34,7 +37,7 @@ jobs:
         # the Apache vhost step is skipped automatically.
 
       # Optional: write env file from a secret (env_name defaults from branch; can omit)
-      # - uses: uncoverthefuture-org/actions@
+      # - uses: uncoverthefuture-org/actions@master
       #   with:
       #     subaction: write-remote-env-file
       #     params_json: |

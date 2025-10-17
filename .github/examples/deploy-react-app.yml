@@ -12,6 +12,9 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - id: build
         uses: uncoverthefuture-org/actions/.github/actions/build/dispatch@master
         with:
