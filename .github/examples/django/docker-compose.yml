@@ -1,0 +1,8 @@
+version: '3.9'
+services:
+  api:
+    build: .
+    env_file: .env
+    ports:
+      - "${API_HOST_PORT:-8000}:${API_CONTAINER_PORT:-8000}"
+    restart: unless-stopped

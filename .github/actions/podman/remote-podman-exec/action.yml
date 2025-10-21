@@ -52,13 +52,13 @@ runs:
   steps:
     - name: Validate inputs
       run: |
-        if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
-        if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
-        if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
-        if [ -z "${{ inputs.inline_script }}" ]; then echo 'Error: inline_script is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_host }}" ]; then echo '::error title=Missing input::ssh_host is required'; echo 'Error: ssh_host is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_user }}" ]; then echo '::error title=Missing input::ssh_user is required'; echo 'Error: ssh_user is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_key }}" ]; then echo '::error title=Missing input::ssh_key is required'; echo 'Error: ssh_key is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.inline_script }}" ]; then echo '::error title=Missing input::inline_script is required'; echo 'Error: inline_script is required' ; exit 1 ; fi
         case "${{ inputs.connect_mode }}" in
           auto|root|user) :;;
-          *) echo 'Error: connect_mode must be auto|root|user' ; exit 1 ;;
+          *) echo '::error title=Invalid input::connect_mode must be auto|root|user'; echo 'Error: connect_mode must be auto|root|user' ; exit 1 ;;
         esac
       shell: bash
 
@@ -84,6 +84,7 @@ runs:
               set +a
             else
               if [ "${{ inputs.fail_if_env_missing }}" = "true" ]; then
+                echo "::error title=Missing env file::Environment file ${ENV_FILE} not found"
                 echo "Environment file ${ENV_FILE} not found" >&2
                 exit 1
               fi
@@ -99,6 +100,7 @@ runs:
           }
 
           if ! command -v podman >/dev/null 2>&1; then
+            echo '::error title=Podman missing::podman is not installed on the remote host'
             echo 'Error: podman is not installed on the remote host.' >&2
             echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
             exit 1
@@ -129,6 +131,7 @@ runs:
               set +a
             else
               if [ "${{ inputs.fail_if_env_missing }}" = "true" ]; then
+                echo "::error title=Missing env file::Environment file ${ENV_FILE} not found"
                 echo "Environment file ${ENV_FILE} not found" >&2
                 exit 1
               fi
@@ -144,6 +147,7 @@ runs:
           }
 
           if ! command -v podman >/dev/null 2>&1; then
+            echo '::error title=Podman missing::podman is not installed on the remote host'
             echo 'Error: podman is not installed on the remote host.' >&2
             echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
             exit 1
@@ -174,6 +178,7 @@ runs:
               set +a
             else
               if [ "${{ inputs.fail_if_env_missing }}" = "true" ]; then
+                echo "::error title=Missing env file::Environment file ${ENV_FILE} not found"
                 echo "Environment file ${ENV_FILE} not found" >&2
                 exit 1
               fi
@@ -189,6 +194,7 @@ runs:
           }
 
           if ! command -v podman >/dev/null 2>&1; then
+            echo '::error title=Podman missing::podman is not installed on the remote host'
             echo 'Error: podman is not installed on the remote host.' >&2
             echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
             exit 1

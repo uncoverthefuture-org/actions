@@ -43,7 +43,7 @@ runs:
       id: compute
       uses: ./.github/actions/version/compute-next
       with:
-        level: ${{ fromJSON(steps.pjson.outputs.json).level }}
+        level: ${{ fromJSON(steps.pjson.outputs.json).level || 'patch' }}
 
     - name: update-tags
       if: ${{ inputs.subaction == 'update-tags' }}
@@ -59,3 +59,4 @@ runs:
       uses: ./.github/actions/version/update-refs
       with:
         new_tag: ${{ fromJSON(steps.pjson.outputs.json).new_tag }}
+        force: ${{ fromJSON(steps.pjson.outputs.json).force }}

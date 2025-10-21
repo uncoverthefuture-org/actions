@@ -1,0 +1,28 @@
+name: Example — Deploy Django API
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Image tag to deploy
+        required: false
+        default: dev-latest
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy Django API over SSH (Podman)
+        uses: uncoverthefuture-org/actions@master
+        with:
+          subaction: ssh-django-api-deploy
+          params_json: |
+            {
+              "ssh_host": "${{ secrets.SSH_HOST }}",
+              "ssh_key": "${{ secrets.SSH_KEY }}",
+              "image_name": "${{ vars.IMAGE_NAME }}",
+              "image_tag": "${{ github.event.inputs.image_tag }}"
+            }

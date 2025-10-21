@@ -5,18 +5,22 @@ inputs:
   new_tag:
     description: 'New version tag (e.g., v1.2.3)'
     required: true
+  force:
+    description: 'Run on branch refs as well (override tag-only gating)'
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
   steps:
     - name: Skip on non-tag refs
-      if: ${{ github.ref_type != 'tag' }}
+      if: ${{ github.ref_type != 'tag' && inputs.force != 'true' }}
       shell: bash
       run: |
         echo "Skipping reference update because ref '${GITHUB_REF}' is not a tag."
 
     - name: Update action refs to new version
-      if: ${{ github.ref_type == 'tag' }}
+      if: ${{ github.ref_type == 'tag' || inputs.force == 'true' }}
       uses: ./.github/actions/common/replace-ref
       with:
         old_ref: '@master'
@@ -29,7 +33,7 @@ runs:
           .github/workflows/*.yaml
 
     - name: Commit version updates
-      if: ${{ github.ref_type == 'tag' }}
+      if: ${{ github.ref_type == 'tag' || inputs.force == 'true' }}
       shell: bash
       env:
         NEW_TAG: ${{ inputs.new_tag }}

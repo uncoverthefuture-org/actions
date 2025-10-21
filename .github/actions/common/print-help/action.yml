@@ -38,4 +38,4 @@ runs:
         echo "- app:    ${BASE_URL}/app"
         echo "- version: ${BASE_URL}/version"
         echo "Tip: pass 'subaction: help' to print this list."
-        exit 1
+        exit 0

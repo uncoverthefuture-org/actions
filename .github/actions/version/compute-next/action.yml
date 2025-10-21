@@ -28,7 +28,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        case "${{ inputs.level }}" in patch|minor|major) :;; *) echo 'Error: level must be patch|minor|major' >&2; exit 1;; esac
+        case "${{ inputs.level }}" in patch|minor|major) :;; *) echo '::error title=Invalid input::level must be patch|minor|major'; echo 'Error: level must be patch|minor|major' >&2; exit 1;; esac
 
     - name: Fetch tags
       shell: bash

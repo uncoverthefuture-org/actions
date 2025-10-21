@@ -144,7 +144,7 @@ runs:
         allowed: ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file
 
     - name: Validate base SSH for app subactions
-      if: ${{ inputs.subaction != 'write-remote-env-file' && inputs.subaction != 'ssh-django-api-deploy' && inputs.subaction != 'ssh-django-deploy' && inputs.subaction != 'ssh-nextjs-deploy' && inputs.subaction != 'ssh-react-deploy' && inputs.subaction != 'ssh-laravel-deploy' }}
+      if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-django-api-deploy' || inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-nextjs-deploy' || inputs.subaction == 'ssh-react-deploy' || inputs.subaction == 'ssh-laravel-deploy' }}
       uses: ./.github/actions/app/common/validate-base-ssh
       with:
         subaction: ${{ inputs.subaction }}
@@ -152,7 +152,7 @@ runs:
         ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
 
     - name: Validate subaction-specific inputs
-      if: ${{ inputs.subaction != 'write-remote-env-file' && inputs.subaction != 'ssh-django-api-deploy' && inputs.subaction != 'ssh-django-deploy' && inputs.subaction != 'ssh-nextjs-deploy' && inputs.subaction != 'ssh-react-deploy' && inputs.subaction != 'ssh-laravel-deploy' }}
+      if: ${{ inputs.subaction == 'write-remote-env-file' }}
       uses: ./.github/actions/app/common/validate-env-inputs
       with:
         subaction: ${{ inputs.subaction }}

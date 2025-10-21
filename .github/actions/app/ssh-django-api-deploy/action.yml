@@ -162,7 +162,7 @@ inputs:
   vhost_mode:
     description: "VHost mode: 'reverse_proxy' (default) or 'mod_wsgi'"
     required: false
-    default: 'mod_wsgi'
+    default: 'reverse_proxy'
   wsgi_script_path:
     description: 'Path to wsgi.py on server when vhost_mode=mod_wsgi'
     required: false

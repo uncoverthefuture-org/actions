@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   version:
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -49,7 +50,8 @@ jobs:
           subaction: update-refs
           params_json: |
             {
-              "new_tag": "${{ steps.ver.outputs.new }}"
+              "new_tag": "${{ steps.ver.outputs.new }}",
+              "force": "true"
             }
 
       - name: Create version tag and update aliases
