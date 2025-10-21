@@ -1,0 +1,8 @@
+version: '3.9'
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "${APP_HOST_PORT:-8000}:${APP_CONTAINER_PORT:-8000}"
+    restart: unless-stopped

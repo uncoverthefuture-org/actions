@@ -1,0 +1,8 @@
+version: '3.9'
+services:
+  web:
+    build: .
+    env_file: .env
+    ports:
+      - "${WEB_HOST_PORT:-3000}:${WEB_CONTAINER_PORT:-3000}"
+    restart: unless-stopped

@@ -126,7 +126,7 @@ runs:
       run: |
         set -euo pipefail
         SA='${{ inputs.subaction }}'
-        case "$SA" in remote-podman-exec|podman-login-pull|podman-stop-rm-container|podman-run-service|podman-run-db) :;; *) echo "Error: unsupported podman subaction '$SA'" >&2; exit 1;; esac
+        case "$SA" in remote-podman-exec|podman-login-pull|podman-stop-rm-container|podman-run-service|podman-run-db) :;; *) echo "::error title=Unsupported podman subaction::Unsupported podman subaction '$SA'"; echo "Error: unsupported podman subaction '$SA'" >&2; exit 1;; esac
       shell: bash
 
     - name: Validate base SSH for podman subactions
@@ -138,7 +138,7 @@ runs:
         set -euo pipefail
         case "${{ inputs.subaction }}" in
           remote-podman-exec|podman-login-pull|podman-stop-rm-container|podman-run-service|podman-run-db)
-            for n in J_SSH_HOST J_SSH_USER J_SSH_KEY; do v="${!n}"; if [ -z "$v" ]; then echo "Error: ${n#J_} is required" >&2; exit 1; fi; done
+            for n in J_SSH_HOST J_SSH_USER J_SSH_KEY; do v="${!n}"; if [ -z "$v" ]; then echo "::error title=Missing input::${n#J_} is required"; echo "Error: ${n#J_} is required" >&2; exit 1; fi; done
             ;;
         esac
       shell: bash
@@ -163,12 +163,12 @@ runs:
         set -euo pipefail
         case "${{ inputs.subaction }}" in
           remote-podman-exec)
-            if [ -z "${J_COMMAND}" ]; then echo 'Error: command is required for remote-podman-exec' >&2; exit 1; fi
+            if [ -z "${J_COMMAND}" ]; then echo '::error title=Missing input::command is required for remote-podman-exec'; echo 'Error: command is required for remote-podman-exec' >&2; exit 1; fi
             ;;
           podman-login-pull)
-            for v in J_REGISTRY J_IMAGE_NAME J_IMAGE_TAG; do vv="${!v}"; if [ -z "$vv" ]; then echo "Error: ${v#J_} is required for podman-login-pull" >&2; exit 1; fi; done
+            for v in J_REGISTRY J_IMAGE_NAME J_IMAGE_TAG; do vv="${!v}"; if [ -z "$vv" ]; then echo "::error title=Missing input::${v#J_} is required for podman-login-pull"; echo "Error: ${v#J_} is required for podman-login-pull" >&2; exit 1; fi; done
             if [ "${J_REGISTRY_LOGIN}" = "true" ]; then
-              for v in J_REGISTRY_USERNAME J_REGISTRY_TOKEN; do vv="${!v}"; if [ -z "$vv" ]; then echo "Error: ${v#J_} is required when registry_login=true" >&2; exit 1; fi; done
+              for v in J_REGISTRY_USERNAME J_REGISTRY_TOKEN; do vv="${!v}"; if [ -z "$vv" ]; then echo "::error title=Missing input::${v#J_} is required when registry_login=true"; echo "Error: ${v#J_} is required when registry_login=true" >&2; exit 1; fi; done
             fi
             ;;
           podman-stop-rm-container)
@@ -177,10 +177,10 @@ runs:
             fi
             ;;
           podman-run-service)
-            for v in J_SERVICE_NAME J_IMAGE; do vv="${!v}"; if [ -z "$vv" ]; then echo "Error: ${v#J_} is required for podman-run-service" >&2; exit 1; fi; done
+            for v in J_SERVICE_NAME J_IMAGE; do vv="${!v}"; if [ -z "$vv" ]; then echo "::error title=Missing input::${v#J_} is required for podman-run-service"; echo "Error: ${v#J_} is required for podman-run-service" >&2; exit 1; fi; done
             ;;
           podman-run-db)
-            for v in J_DB_SERVICE_NAME J_DB_NAME J_DB_USER J_DB_PASSWORD; do vv="${!v}"; if [ -z "$vv" ]; then echo "Error: ${v#J_} is required for podman-run-db" >&2; exit 1; fi; done
+            for v in J_DB_SERVICE_NAME J_DB_NAME J_DB_USER J_DB_PASSWORD; do vv="${!v}"; if [ -z "$vv" ]; then echo "::error title=Missing input::${v#J_} is required for podman-run-db"; echo "Error: ${v#J_} is required for podman-run-db" >&2; exit 1; fi; done
             ;;
         esac
       shell: bash

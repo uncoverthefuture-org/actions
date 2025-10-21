@@ -68,6 +68,7 @@ runs:
       uses: ./.github/actions/common/print-help
 
     - name: Determine category
+      if: ${{ inputs.subaction && inputs.subaction != 'help' }}
       id: route
       uses: ./.github/actions/common/route-category
       with:
@@ -76,28 +77,28 @@ runs:
 
     - name: Build dispatch
       id: bdisp
-      if: ${{ steps.route.outputs.category == 'build' }}
+      if: ${{ inputs.subaction && inputs.subaction != 'help' && steps.route.outputs.category == 'build' }}
       uses: ./.github/actions/build/dispatch
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: Podman dispatch
-      if: ${{ steps.route.outputs.category == 'podman' }}
+      if: ${{ inputs.subaction && inputs.subaction != 'help' && steps.route.outputs.category == 'podman' }}
       uses: ./.github/actions/podman/dispatch
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: Infra dispatch
-      if: ${{ steps.route.outputs.category == 'infra' }}
+      if: ${{ inputs.subaction && inputs.subaction != 'help' && steps.route.outputs.category == 'infra' }}
       uses: ./.github/actions/infra/dispatch
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
     - name: App dispatch
-      if: ${{ steps.route.outputs.category == 'app' }}
+      if: ${{ inputs.subaction && inputs.subaction != 'help' && steps.route.outputs.category == 'app' }}
       uses: ./.github/actions/app/dispatch
       with:
         subaction: ${{ inputs.subaction }}
@@ -105,7 +106,7 @@ runs:
 
     - name: Version dispatch
       id: vdisp
-      if: ${{ steps.route.outputs.category == 'version' }}
+      if: ${{ inputs.subaction && inputs.subaction != 'help' && steps.route.outputs.category == 'version' }}
       uses: ./.github/actions/version/dispatch
       with:
         subaction: ${{ inputs.subaction }}
