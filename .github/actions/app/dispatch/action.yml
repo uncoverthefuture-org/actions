@@ -127,6 +127,9 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Ensure bundled actions
+      uses: ./.github/actions/common/ensure-bundled-actions
+
     - name: Normalize params JSON
       id: params
       uses: ./.github/actions/app/common/normalize-params

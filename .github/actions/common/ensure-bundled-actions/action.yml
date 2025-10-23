@@ -1,0 +1,23 @@
+name: 'common: ensure bundled actions'
+description: 'Copies the bundled .github/actions directory from this repository into the current workspace.'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Restore bundled actions directory
+      shell: bash
+      run: |
+        set -euo pipefail
+        dest=".github/actions"
+        mkdir -p "$dest"
+
+        source_dir="$GITHUB_ACTION_PATH"
+        while [ "$source_dir" != "/" ] && [ ! -d "$source_dir/.github/actions" ]; do
+          source_dir="$(dirname "$source_dir")"
+        done
+        if [ ! -d "$source_dir/.github/actions" ]; then
+          echo "::error title=Bundled actions missing::Unable to locate bundled actions relative to $GITHUB_ACTION_PATH" >&2
+          exit 1
+        fi
+
+        cp -a "$source_dir/.github/actions/." "$dest/"
