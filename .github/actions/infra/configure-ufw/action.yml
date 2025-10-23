@@ -38,7 +38,7 @@ runs:
   using: 'composite'
   steps:
     - name: Configure UFW
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1.0.22
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1.0.23
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
