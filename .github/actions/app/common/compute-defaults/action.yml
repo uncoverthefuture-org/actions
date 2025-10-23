@@ -1,5 +1,29 @@
 name: 'app: compute defaults'
-description: 'Derive application defaults (slug, env paths, image name) from repository context.'
+description: 'Derive deployment defaults (slug, env paths, domain, image tags) from repository context.'
+
+inputs:
+  env_name:
+    description: 'Explicit environment name override.'
+    required: false
+  auto_detect_env:
+    description: 'Auto-detect environment name from branch or tag when true.'
+    required: false
+    default: 'true'
+  domain:
+    description: 'Explicit domain override.'
+    required: false
+  base_domain:
+    description: 'Base domain used when deriving domain automatically.'
+    required: false
+  domain_prefix_prod:
+    description: 'Domain prefix for production environment (default app).'
+    required: false
+  domain_prefix_staging:
+    description: 'Domain prefix for staging environment (default staging).'
+    required: false
+  domain_prefix_dev:
+    description: 'Domain prefix for development environment (default dev).'
+    required: false
 
 outputs:
   app_slug:
@@ -14,6 +38,18 @@ outputs:
   image_name:
     description: 'Default container image name derived from repository.'
     value: ${{ steps.defaults.outputs.image_name }}
+  env_name_default:
+    description: 'Canonical environment name after detection/normalization.'
+    value: ${{ steps.defaults.outputs.env_name_default }}
+  image_tag_default:
+    description: 'Default image tag composed of <env>-<sha7>.'
+    value: ${{ steps.defaults.outputs.image_tag_default }}
+  domain_default:
+    description: 'Derived domain when base/override provided.'
+    value: ${{ steps.defaults.outputs.domain_default }}
+  traefik_router:
+    description: 'Slug safe router/service identifier for Traefik labels.'
+    value: ${{ steps.defaults.outputs.traefik_router }}
 
 runs:
   using: 'composite'
@@ -23,15 +59,106 @@ runs:
       shell: bash
       env:
         GH_REPOSITORY: ${{ github.repository }}
+        INPUT_ENV_NAME: ${{ inputs.env_name }}
+        INPUT_AUTO_DETECT: ${{ inputs.auto_detect_env }}
+        INPUT_DOMAIN: ${{ inputs.domain }}
+        INPUT_BASE_DOMAIN: ${{ inputs.base_domain }}
+        INPUT_PREFIX_PROD: ${{ inputs.domain_prefix_prod }}
+        INPUT_PREFIX_STAGING: ${{ inputs.domain_prefix_staging }}
+        INPUT_PREFIX_DEV: ${{ inputs.domain_prefix_dev }}
       run: |
         set -euo pipefail
+
+        slugify() {
+          printf '%s' "$1" |
+            tr '[:upper:]' '[:lower:]' |
+            tr -cs 'a-z0-9-' '-' |
+            sed -e 's/^-*//' -e 's/-*$//' -e 's/--*/-/g'
+        }
+
+        normalize_env() {
+          local val
+          val=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+          case "$val" in
+            prod|production|main|master) echo 'production' ;;
+            stage|staging) echo 'staging' ;;
+            dev|develop|development) echo 'development' ;;
+            *) echo "$val" ;;
+          esac
+        }
+
+        derive_env_from_ref() {
+          local ref="${GITHUB_REF_NAME:-}"
+          case "$ref" in
+            main|master|production|refs/heads/main|refs/heads/master) echo 'production' ;;
+            stage|staging|refs/heads/stage|refs/heads/staging) echo 'staging' ;;
+            dev|develop|development|refs/heads/dev|refs/heads/develop|refs/heads/development) echo 'development' ;;
+            refs/tags/*) echo 'production' ;;
+            *) echo 'development' ;;
+          esac
+        }
+
         REPO="${GH_REPOSITORY##*/}"
-        SLUG=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-        APP_SLUG="$SLUG"
-        ENV_DIR="/var/deployments/development/${APP_SLUG}"
+        APP_SLUG=$(slugify "$REPO")
+        [ -n "$APP_SLUG" ] || APP_SLUG='app'
+
+        AUTO_DETECT=$(printf '%s' "${INPUT_AUTO_DETECT:-true}" | tr '[:upper:]' '[:lower:]')
+        ENV_INPUT="${INPUT_ENV_NAME:-}"
+
+        if [ -n "$ENV_INPUT" ]; then
+          ENV_NAME=$(normalize_env "$ENV_INPUT")
+        else
+          case "$AUTO_DETECT" in
+            false|"false"|0) ENV_NAME='development' ;;
+            *) ENV_NAME=$(normalize_env "$(derive_env_from_ref)") ;;
+          esac
+        fi
+        [ -n "$ENV_NAME" ] || ENV_NAME='development'
+
+        ENV_DIR="/var/deployments/${ENV_NAME}/${APP_SLUG}"
         ENV_FILE_PATH="/var/deployments"
-        IMG_NAME="${GH_REPOSITORY}"
-        echo "app_slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
-        echo "env_dir_path=$ENV_DIR" >> "$GITHUB_OUTPUT"
-        echo "env_file_path=$ENV_FILE_PATH" >> "$GITHUB_OUTPUT"
-        echo "image_name=$IMG_NAME" >> "$GITHUB_OUTPUT"
+
+        SHA="${GITHUB_SHA:-unknown}"
+        SHA7="${SHA:0:7}"
+        IMAGE_NAME="${GH_REPOSITORY}"
+        IMAGE_TAG="${ENV_NAME}-${SHA7}"
+
+        DOMAIN_EXPLICIT="${INPUT_DOMAIN:-}"
+        BASE_DOMAIN="${INPUT_BASE_DOMAIN:-}"
+        PREFIX_PROD="${INPUT_PREFIX_PROD:-}"
+        PREFIX_STAGING="${INPUT_PREFIX_STAGING:-}"
+        PREFIX_DEV="${INPUT_PREFIX_DEV:-}"
+
+        [ -n "$PREFIX_PROD" ] || PREFIX_PROD='app'
+        [ -n "$PREFIX_STAGING" ] || PREFIX_STAGING='staging'
+        [ -n "$PREFIX_DEV" ] || PREFIX_DEV='dev'
+
+        DOMAIN_DEFAULT=""
+        if [ -n "$DOMAIN_EXPLICIT" ]; then
+          DOMAIN_DEFAULT="$DOMAIN_EXPLICIT"
+        elif [ -n "$BASE_DOMAIN" ]; then
+          case "$ENV_NAME" in
+            production) PREFIX="$PREFIX_PROD" ;;
+            staging) PREFIX="$PREFIX_STAGING" ;;
+            *) PREFIX="$PREFIX_DEV" ;;
+          esac
+          if [ -n "$PREFIX" ]; then
+            DOMAIN_DEFAULT="${PREFIX}.${BASE_DOMAIN}"
+          else
+            DOMAIN_DEFAULT="$BASE_DOMAIN"
+          fi
+        fi
+
+        TRAEFIK_ROUTER=$(slugify "${APP_SLUG}-${ENV_NAME}")
+        [ -n "$TRAEFIK_ROUTER" ] || TRAEFIK_ROUTER='app'
+
+        {
+          echo "app_slug=$APP_SLUG"
+          echo "env_dir_path=$ENV_DIR"
+          echo "env_file_path=$ENV_FILE_PATH"
+          echo "image_name=$IMAGE_NAME"
+          echo "env_name_default=$ENV_NAME"
+          echo "image_tag_default=$IMAGE_TAG"
+          echo "domain_default=$DOMAIN_DEFAULT"
+          echo "traefik_router=$TRAEFIK_ROUTER"
+        } >> "$GITHUB_OUTPUT"

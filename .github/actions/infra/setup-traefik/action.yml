@@ -1,0 +1,113 @@
+name: 'infra: setup-traefik'
+description: 'Install Traefik reverse proxy with automatic Let\'s Encrypt certificates via Podman.'
+
+inputs:
+  ssh_host:
+    description: 'Remote host to connect to'
+    required: true
+  ssh_user:
+    description: 'SSH username'
+    required: true
+  ssh_key:
+    description: 'SSH private key for ssh_user'
+    required: true
+  root_ssh_key:
+    description: 'Optional SSH key for root (used when switching users)'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Optional server fingerprint verification'
+    required: false
+  podman_user:
+    description: 'Podman user on target host'
+    required: false
+    default: 'deployer'
+  connect_mode:
+    description: "Connection mode: auto | root | user"
+    required: false
+    default: 'auto'
+  traefik_email:
+    description: "Email used for Let's Encrypt certificates"
+    required: true
+  traefik_version:
+    description: 'Traefik image tag'
+    required: false
+    default: 'v3.1'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Prepare Traefik configuration
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        inline_script: |
+          set -euo pipefail
+
+          sudo mkdir -p /etc/traefik
+          sudo mkdir -p /var/lib/traefik
+
+          cat <<'EOF_TRAEFIK' | sudo tee /etc/traefik/traefik.yml >/dev/null
+          entryPoints:
+            web:
+              address: ":80"
+            websecure:
+              address: ":443"
+
+          providers:
+            docker:
+              endpoint: "unix:///var/run/podman/podman.sock"
+              exposedByDefault: false
+
+          certificatesResolvers:
+            letsencrypt:
+              acme:
+                email: "${{ inputs.traefik_email }}"
+                storage: /letsencrypt/acme.json
+                httpChallenge:
+                  entryPoint: web
+          EOF_TRAEFIK
+
+          sudo touch /var/lib/traefik/acme.json
+          sudo chmod 600 /var/lib/traefik/acme.json
+
+    - name: Run Traefik container
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user }}
+        connect_mode: ${{ inputs.connect_mode }}
+        inline_script: |
+          set -euo pipefail
+
+          if podman container exists traefik >/dev/null 2>&1; then
+            podman stop traefik >/dev/null 2>&1 || true
+            podman rm traefik >/dev/null 2>&1 || true
+          fi
+
+          podman run -d \
+            --name traefik \
+            --restart always \
+            -p 80:80 \
+            -p 443:443 \
+            -v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro \
+            -v /var/lib/traefik/acme.json:/letsencrypt/acme.json \
+            -v /var/run/podman/podman.sock:/var/run/docker.sock \
+            traefik:${{ inputs.traefik_version }}
+
+          podman ps --filter name=traefik

@@ -1,5 +1,5 @@
 name: 'SSH Next.js Deploy'
-description: 'Upload env (optional) and deploy a Next.js container via Podman over SSH, with optional Apache vhost reverse proxy.'
+description: 'Upload env (optional) and deploy a Next.js container via Podman over SSH with Traefik routing support.'
 
 inputs:
   # SSH / remote execution
@@ -45,6 +45,17 @@ inputs:
     description: 'Create podman_user if it does not exist during preparation'
     required: false
     default: 'false'
+  install_traefik:
+    description: 'Install Traefik when prepare_host runs'
+    required: false
+    default: 'true'
+  traefik_email:
+    description: "Email used for Traefik Let's Encrypt resolver (required if install_traefik=true)"
+    required: false
+  enable_traefik:
+    description: 'Attach Traefik routing labels when a domain is available'
+    required: false
+    default: 'true'
   env_dir_path:
     description: 'Directory to hold env files and app data on the server'
     required: false
@@ -57,6 +68,10 @@ inputs:
   env_name:
     description: 'Environment name used to build container and env file path'
     required: false
+  auto_detect_env:
+    description: 'Auto-detect environment name from branch when true'
+    required: false
+    default: 'true'
   env_file_path:
     description: 'Base directory on the server; the final file is <env_file_path>/<env_name>/.env'
     required: false
@@ -130,7 +145,7 @@ inputs:
 
   # Apache vhost management (optional)
   manage_vhost:
-    description: 'Create/update Apache vhost for the app domain'
+    description: '[Deprecated] Apache vhost management is disabled in favor of Traefik'
     required: false
     default: 'false'
   domain:
@@ -149,10 +164,6 @@ inputs:
   domain_prefix_dev:
     description: 'Domain prefix for dev env'
     required: false
-  vhost_mode:
-    description: "VHost mode: 'reverse_proxy' (default)"
-    required: false
-    default: 'reverse_proxy'
   require_dns_match:
     description: 'Require domain A-record match to server public IP before applying changes'
     required: false
@@ -163,33 +174,15 @@ runs:
   steps:
     - name: Compute derived defaults
       id: dfl
-      env:
-        GH_REPOSITORY: ${{ github.repository }}
-      run: |
-        set -euo pipefail
-        REPO="${GH_REPOSITORY##*/}"
-        SLUG=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-        APP_SLUG="$SLUG"
-        ENV_DIR="/var/deployments/development/${APP_SLUG}"
-        ENV_FILE_PATH="/var/deployments"
-        IMG_NAME="${GH_REPOSITORY}"
-        REF_NAME="${GITHUB_REF_NAME:-}"
-        SHA7="${GITHUB_SHA:-unknown}"; SHA7="${SHA7:0:7}"
-        case "$REF_NAME" in
-          main|master) ENV_NAME_DEF='production' ;;
-          stage|staging) ENV_NAME_DEF='staging' ;;
-          dev|develop|development) ENV_NAME_DEF='dev' ;;
-          refs/tags/*) ENV_NAME_DEF='production' ;;
-          *) ENV_NAME_DEF='development' ;;
-        esac
-        IMG_TAG_DEF="${ENV_NAME_DEF}-${SHA7}"
-        echo "app_slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
-        echo "env_dir_path=$ENV_DIR" >> "$GITHUB_OUTPUT"
-        echo "env_file_path=$ENV_FILE_PATH" >> "$GITHUB_OUTPUT"
-        echo "image_name=$IMG_NAME" >> "$GITHUB_OUTPUT"
-        echo "env_name_default=$ENV_NAME_DEF" >> "$GITHUB_OUTPUT"
-        echo "image_tag_default=$IMG_TAG_DEF" >> "$GITHUB_OUTPUT"
-      shell: bash
+      uses: ./.github/actions/app/common/compute-defaults
+      with:
+        env_name: ${{ inputs.env_name }}
+        auto_detect_env: ${{ inputs.auto_detect_env }}
+        domain: ${{ inputs.domain }}
+        base_domain: ${{ inputs.base_domain }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
 
     - name: Deploy preflight
       uses: ./.github/actions/app/common/deploy-preflight
@@ -205,6 +198,8 @@ runs:
         prepare_host: ${{ inputs.prepare_host }}
         install_podman: ${{ inputs.install_podman }}
         create_podman_user: ${{ inputs.create_podman_user }}
+        install_traefik: ${{ inputs.install_traefik }}
+        traefik_email: ${{ inputs.traefik_email }}
         env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages }}
         write_env_file: ${{ inputs.write_env_file }}
@@ -264,29 +259,30 @@ runs:
           run_podman rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
           EXTRA_ARGS="${{ inputs.extra_run_args }}"
+          TRAEFIK_ENABLED="${{ inputs.enable_traefik }}"
+          DOMAIN_INPUT="${{ inputs.domain }}"
+          DOMAIN_DEFAULT="${{ steps.dfl.outputs.domain_default }}"
+          DOMAIN="$DOMAIN_INPUT"
+          if [ -z "$DOMAIN" ]; then DOMAIN="$DOMAIN_DEFAULT"; fi
+          ROUTER="${{ steps.dfl.outputs.traefik_router }}"
+
+          declare -a PORT_ARGS=()
+          declare -a LABEL_ARGS=()
+
+          if [ "$TRAEFIK_ENABLED" = "true" ] && [ -n "$DOMAIN" ]; then
+            LABEL_ARGS+=(--label "traefik.enable=true")
+            LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER}.rule=Host(\`$DOMAIN\`)")
+            LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER}.entrypoints=websecure")
+            LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER}.tls.certresolver=letsencrypt")
+            LABEL_ARGS+=(--label "traefik.http.services.${ROUTER}.loadbalancer.server.port=$CONTAINER_PORT")
+          else
+            PORT_ARGS=(-p "$HOST_PORT:$CONTAINER_PORT")
+          fi
+
           run_podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
-            -p "$HOST_PORT:$CONTAINER_PORT" --restart=${{ inputs.restart_policy }} \
+            "${PORT_ARGS[@]}" \
+            --restart=${{ inputs.restart_policy }} \
             --memory='${{ inputs.memory_limit }}' --memory-swap='${{ inputs.memory_limit }}' \
             ${EXTRA_ARGS:+$EXTRA_ARGS} \
+            "${LABEL_ARGS[@]}" \
             "$IMAGE"
-
-    - name: Manage Apache vhost (optional)
-      if: ${{ inputs.manage_vhost == 'true' || (inputs.manage_vhost == '' && (inputs.base_domain != '' || inputs.domain != '')) }}
-      uses: ./.github/actions/infra/apache-manage-vhost
-      with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        connect_mode: 'root'
-        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
-        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
-        domain: ${{ inputs.domain }}
-        base_domain: ${{ inputs.base_domain }}
-        domain_prefix_prod: ${{ inputs.domain_prefix_prod }}
-        domain_prefix_staging: ${{ inputs.domain_prefix_staging }}
-        domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
-        require_dns_match: ${{ inputs.require_dns_match }}
-        mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || 'reverse_proxy' }}

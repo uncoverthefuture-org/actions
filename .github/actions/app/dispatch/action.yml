@@ -47,10 +47,19 @@ inputs:
   create_podman_user:
     required: false
     default: 'false'
+  install_traefik:
+    required: false
+    default: 'true'
+  traefik_email:
+    required: false
+    default: ''
 
   # Env
   env_name:
     required: false
+  auto_detect_env:
+    required: false
+    default: 'true'
   env_file_path:
     required: false
   env_b64:

@@ -4,7 +4,7 @@ A comprehensive, reusable collection of GitHub Actions for deploying application
 
 ## 🚀 Quick Start
 
-These actions handle the complete deployment pipeline from building images to running containers on remote servers. They support environment-based deployments with automatic directory structure creation and Apache vhost management.
+These actions handle the complete deployment pipeline from building images to running containers on remote servers. They support environment-based deployments with automatic directory structure creation and Traefik-managed routing (with Apache still available as an opt-in fallback).
 
 ## 📋 Available Actions
 
@@ -45,10 +45,10 @@ The actions are organized into categories. **Primary user-facing actions** are l
 
 ## 🔧 Key Features
 
-- **Environment-based deployments**: Automatic `/var/deployments/<env>/<app>/.env` structure
+- **Environment-based deployments**: Automatic `/var/deployments/<environment>/<app_slug>/.env` structure with branch-aware detection
 - **SSH-based execution**: Secure remote operations with user/key authentication
 - **Podman containerization**: Rootless container deployments
-- **Apache integration**: Automatic vhost configuration
+- **Traefik reverse proxy**: Automatic router/service labels with Let's Encrypt certificates (Apache vhosts remain optional)
 - **Database support**: MySQL/PostgreSQL container deployment
 - **Service management**: Background workers and schedulers
 
@@ -81,6 +81,12 @@ The actions are organized into categories. **Primary user-facing actions** are l
 ## 🔧 Usage
 
 Each action has its own detailed README with inputs, outputs, and examples. Start with the deployment action that matches your application type, then combine with infrastructure setup actions as needed.
+
+### Default behaviours to know
+
+- **Traefik by default**: When `prepare_host` is used, Traefik is installed and started automatically (`install_traefik=true`). App deploy actions emit Traefik labels whenever a domain can be derived or provided. Set `enable_traefik: false` (per app) to fall back to host port publishing, or `install_traefik: false` during host prep to skip provisioning entirely. Apache vhost actions are now opt-in only.
+- **Environment auto-detect**: Deployment actions accept `auto_detect_env` (default `true`) which maps Git refs (`main`, `staging`, `develop`, tags, etc.) to canonical environment folders (`production`, `staging`, `development`). Provide `env_name` to override.
+- **Derived domains**: Supplying `base_domain` (and optional `domain_prefix_*`) lets the actions compute a domain used for Traefik routing. A direct `domain` input always wins.
 
 ### Example Workflow
 

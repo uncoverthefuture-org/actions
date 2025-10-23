@@ -42,6 +42,14 @@ inputs:
     description: 'Create Podman user during preparation'
     required: false
     default: 'false'
+  install_traefik:
+    description: 'Install and configure Traefik reverse proxy when preparing host'
+    required: false
+    default: 'true'
+  traefik_email:
+    description: "Email for Let's Encrypt certificates (required when install_traefik=true)"
+    required: false
+    default: ''
   env_dir_path:
     description: 'Target environment directory path on host'
     required: false
@@ -106,6 +114,8 @@ runs:
         ENV_CONTENT: ${{ inputs.env_content }}
         IMAGE_NAME: ${{ inputs.image_name }}
         REQUIRE_IMAGE: ${{ inputs.require_image_name }}
+        INSTALL_TRAEFIK: ${{ inputs.install_traefik }}
+        TRAEFIK_EMAIL: ${{ inputs.traefik_email }}
       run: |
         set -euo pipefail
         if [ -z "$SSH_HOST" ]; then
@@ -136,6 +146,10 @@ runs:
             fi
             ;;
         esac
+        if [ "$INSTALL_TRAEFIK" = "true" ] && [ -z "$TRAEFIK_EMAIL" ]; then
+          echo 'Error: traefik_email is required when install_traefik=true' >&2
+          exit 1
+        fi
 
     - name: Prepare host (optional)
       if: ${{ inputs.prepare_host == 'true' }}
@@ -153,6 +167,8 @@ runs:
         create_podman_user: ${{ inputs.create_podman_user }}
         env_dir_path: ${{ inputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages }}
+        install_traefik: ${{ inputs.install_traefik }}
+        traefik_email: ${{ inputs.traefik_email }}
 
     - name: Write env file (optional)
       if: ${{ inputs.write_env_file == 'true' }}
