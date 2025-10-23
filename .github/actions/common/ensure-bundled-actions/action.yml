@@ -20,4 +20,12 @@ runs:
           exit 1
         fi
 
+        src_path="$(cd "$source_dir/.github/actions" && pwd)"
+        dest_path="$(cd "$dest" && pwd)"
+
+        if [ "$src_path" = "$dest_path" ]; then
+          echo "Bundled actions already present in workspace; skipping copy."
+          exit 0
+        fi
+
         cp -a "$source_dir/.github/actions/." "$dest/"
