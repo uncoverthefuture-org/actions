@@ -108,10 +108,6 @@ runs:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
-    - name: Restore bundled actions
-      if: ${{ inputs.subaction && inputs.subaction != 'help' }}
-      uses: ./.github/actions/common/ensure-bundled-actions
-
     - name: Operation Summary
       if: ${{ inputs.subaction && inputs.subaction != 'help' }}
       uses: ./.github/actions/common/operation-summary
