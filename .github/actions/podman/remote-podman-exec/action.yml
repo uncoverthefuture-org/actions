@@ -42,7 +42,7 @@ inputs:
   fail_if_env_missing:
     description: 'Fail if source_env is true and env file is missing'
     required: false
-    default: 'true'
+    default: 'false'
   inline_script:
     description: 'Inline script to run on the remote host; run_podman helper is available'
     required: true
@@ -62,13 +62,47 @@ runs:
         esac
       shell: bash
 
-    - name: Execute as root (with root_ssh_key)
-      if: ${{ (inputs.connect_mode == 'root' || (inputs.connect_mode == 'auto' && inputs.podman_user == 'root')) && inputs.root_ssh_key != '' }}
+    - name: Resolve connection
+      id: conn
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        PODMAN_USER="${{ inputs.podman_user }}"
+        CONNECT_MODE="${{ inputs.connect_mode }}"
+        SSH_USER="${{ inputs.ssh_user }}"
+        SSH_KEY="${{ inputs.ssh_key }}"
+        ROOT_KEY="${{ inputs.root_ssh_key }}"
+
+        USERNAME=""
+        KEY_VALUE=""
+
+        if [ "$CONNECT_MODE" = "root" ] || { [ "$CONNECT_MODE" = "auto" ] && [ "$PODMAN_USER" = "root" ]; }; then
+          USERNAME="root"
+          if [ -n "$ROOT_KEY" ]; then
+            KEY_VALUE="$ROOT_KEY"
+          else
+            KEY_VALUE="$SSH_KEY"
+          fi
+        else
+          USERNAME="$SSH_USER"
+          KEY_VALUE="$SSH_KEY"
+        fi
+
+        if [ -z "$USERNAME" ]; then
+          echo '::error title=Connection error::Unable to resolve SSH username' >&2
+          exit 1
+        fi
+
+        printf 'username=%s\n' "$USERNAME" >> "$GITHUB_OUTPUT"
+        printf 'key<<EOF\n%s\nEOF\n' "$KEY_VALUE" >> "$GITHUB_OUTPUT"
+
+    - name: Execute remote podman script
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ inputs.ssh_host }}
-        username: 'root'
-        key: ${{ inputs.root_ssh_key }}
+        username: ${{ steps.conn.outputs.username }}
+        key: ${{ steps.conn.outputs.key }}
         port: ${{ inputs.ssh_port }}
         fingerprint: ${{ inputs.ssh_fingerprint }}
         script: |
@@ -87,6 +121,8 @@ runs:
                 echo "::error title=Missing env file::Environment file ${ENV_FILE} not found"
                 echo "Environment file ${ENV_FILE} not found" >&2
                 exit 1
+              else
+                echo "::warning title=Env file missing::Environment file ${ENV_FILE} not found; continuing without sourcing"
               fi
             fi
           fi
@@ -106,106 +142,6 @@ runs:
             exit 1
           fi
 
-          cd /
-
-          # Begin inline script
-          ${{ inputs.inline_script }}
-
-    - name: Execute as root (fallback to user key)
-      if: ${{ (inputs.connect_mode == 'root' || (inputs.connect_mode == 'auto' && inputs.podman_user == 'root')) && inputs.root_ssh_key == '' }}
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ inputs.ssh_host }}
-        username: 'root'
-        key: ${{ inputs.ssh_key }}
-        port: ${{ inputs.ssh_port }}
-        fingerprint: ${{ inputs.ssh_fingerprint }}
-        script: |
-          set -euo pipefail
-
-          PODMAN_USER="${{ inputs.podman_user }}"
-          ENV_FILE="${{ inputs.env_file_path }}${{ inputs.env_name }}"
-
-          if [ "${{ inputs.source_env }}" = "true" ]; then
-            if [ -f "${ENV_FILE}" ]; then
-              set -a
-              . "${ENV_FILE}"
-              set +a
-            else
-              if [ "${{ inputs.fail_if_env_missing }}" = "true" ]; then
-                echo "::error title=Missing env file::Environment file ${ENV_FILE} not found"
-                echo "Environment file ${ENV_FILE} not found" >&2
-                exit 1
-              fi
-            fi
-          fi
-
-          run_podman() {
-            if [ "$(id -un)" = "$PODMAN_USER" ]; then
-              podman "$@"
-            else
-              sudo -H -u "$PODMAN_USER" podman "$@"
-            fi
-          }
-
-          if ! command -v podman >/dev/null 2>&1; then
-            echo '::error title=Podman missing::podman is not installed on the remote host'
-            echo 'Error: podman is not installed on the remote host.' >&2
-            echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
-            exit 1
-          fi
-
-          # Switch to a safe, world-accessible directory to avoid sudo chdir errors
-          cd /
-
-          # Begin inline script
-          ${{ inputs.inline_script }}
-
-    - name: Execute as user
-      if: ${{ inputs.connect_mode == 'user' || (inputs.connect_mode == 'auto' && inputs.podman_user != 'root') }}
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ inputs.ssh_host }}
-        username: ${{ inputs.ssh_user }}
-        key: ${{ inputs.ssh_key }}
-        port: ${{ inputs.ssh_port }}
-        fingerprint: ${{ inputs.ssh_fingerprint }}
-        script: |
-          set -euo pipefail
-
-          PODMAN_USER="${{ inputs.podman_user }}"
-          ENV_FILE="${{ inputs.env_file_path }}${{ inputs.env_name }}"
-
-          if [ "${{ inputs.source_env }}" = "true" ]; then
-            if [ -f "${ENV_FILE}" ]; then
-              set -a
-              . "${ENV_FILE}"
-              set +a
-            else
-              if [ "${{ inputs.fail_if_env_missing }}" = "true" ]; then
-                echo "::error title=Missing env file::Environment file ${ENV_FILE} not found"
-                echo "Environment file ${ENV_FILE} not found" >&2
-                exit 1
-              fi
-            fi
-          fi
-
-          run_podman() {
-            if [ "$(id -un)" = "$PODMAN_USER" ]; then
-              podman "$@"
-            else
-              sudo -H -u "$PODMAN_USER" podman "$@"
-            fi
-          }
-
-          if ! command -v podman >/dev/null 2>&1; then
-            echo '::error title=Podman missing::podman is not installed on the remote host'
-            echo 'Error: podman is not installed on the remote host.' >&2
-            echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
-            exit 1
-          fi
-
-          # Switch to a safe, world-accessible directory to avoid sudo chdir errors
           cd /
 
           # Begin inline script
