@@ -18,7 +18,7 @@ Run a long-lived container (service) on a remote host via Podman, with optional 
         "ssh_key":  "${{ secrets.SSH_KEY }}",
         "service_name": "django-api-worker",
         "image": "ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image_tag }}",
-        "env_file": "/opt/${{ github.event.repository.name }}/.env.${{ needs.build.outputs.env_name }}",
+        "env_file": "/var/deployments/${{ needs.build.outputs.env_name }}/${{ github.event.repository.name }}/.env",
         "command": "python manage.py rqworker default",
         "restart_policy": "unless-stopped",
         "memory_limit": "512m"

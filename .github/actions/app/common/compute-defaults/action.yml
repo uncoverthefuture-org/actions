@@ -28,8 +28,8 @@ runs:
         REPO="${GH_REPOSITORY##*/}"
         SLUG=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
         APP_SLUG="$SLUG"
-        ENV_DIR="/opt/${APP_SLUG}"
-        ENV_FILE_PATH="${ENV_DIR}/.env."
+        ENV_DIR="/var/deployments/development/${APP_SLUG}"
+        ENV_FILE_PATH="/var/deployments"
         IMG_NAME="${GH_REPOSITORY}"
         echo "app_slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
         echo "env_dir_path=$ENV_DIR" >> "$GITHUB_OUTPUT"

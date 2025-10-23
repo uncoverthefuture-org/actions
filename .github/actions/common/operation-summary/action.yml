@@ -1,0 +1,163 @@
+name: 'common: operation-summary'
+description: 'Generates a detailed summary of the operation, including results, failures, and where to find errors.'
+
+inputs:
+  subaction:
+    description: 'The subaction that was run'
+    required: true
+  category:
+    description: 'The category of the subaction'
+    required: true
+  build_outcome:
+    description: 'Outcome of the build dispatch step'
+    required: false
+    default: 'skipped'
+  build_env_name:
+    description: 'Environment name from build'
+    required: false
+  build_image_tag:
+    description: 'Image tag from build'
+    required: false
+  build_deploy_enabled:
+    description: 'Deploy enabled from build'
+    required: false
+  build_env_key:
+    description: 'Environment key from build'
+    required: false
+  podman_outcome:
+    description: 'Outcome of podman dispatch'
+    required: false
+    default: 'skipped'
+  infra_outcome:
+    description: 'Outcome of infra dispatch'
+    required: false
+    default: 'skipped'
+  app_outcome:
+    description: 'Outcome of app dispatch'
+    required: false
+    default: 'skipped'
+  version_outcome:
+    description: 'Outcome of version dispatch'
+    required: false
+    default: 'skipped'
+  version_new:
+    description: 'New version from version dispatch'
+    required: false
+  version_major:
+    description: 'Major version from version dispatch'
+    required: false
+  version_minor:
+    description: 'Minor version from version dispatch'
+    required: false
+  version_last:
+    description: 'Last version from version dispatch'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Build Summary
+      id: build_sum
+      if: ${{ inputs.category == 'build' }}
+      uses: ./.github/actions/common/operation-summary/build
+      with:
+        outcome: ${{ inputs.build_outcome }}
+        env_name: ${{ inputs.build_env_name }}
+        image_tag: ${{ inputs.build_image_tag }}
+        deploy_enabled: ${{ inputs.build_deploy_enabled }}
+        env_key: ${{ inputs.build_env_key }}
+
+    - name: Podman Summary
+      id: podman_sum
+      if: ${{ inputs.category == 'podman' }}
+      uses: ./.github/actions/common/operation-summary/podman
+      with:
+        outcome: ${{ inputs.podman_outcome }}
+
+    - name: Infra Summary
+      id: infra_sum
+      if: ${{ inputs.category == 'infra' }}
+      uses: ./.github/actions/common/operation-summary/infra
+      with:
+        outcome: ${{ inputs.infra_outcome }}
+
+    - name: App Summary
+      id: app_sum
+      if: ${{ inputs.category == 'app' }}
+      uses: ./.github/actions/common/operation-summary/app
+      with:
+        outcome: ${{ inputs.app_outcome }}
+
+    - name: Version Summary
+      id: version_sum
+      if: ${{ inputs.category == 'version' }}
+      uses: ./.github/actions/common/operation-summary/version
+      with:
+        outcome: ${{ inputs.version_outcome }}
+        new: ${{ inputs.version_new }}
+        major: ${{ inputs.version_major }}
+        minor: ${{ inputs.version_minor }}
+        last: ${{ inputs.version_last }}
+
+    - name: Generate Overall Summary
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        SUBACTION="${{ inputs.subaction }}"
+        CATEGORY="${{ inputs.category }}"
+        TIMESTAMP="$(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+
+        # Determine which summary to use
+        case "$CATEGORY" in
+          build)
+            SUMMARY="${{ steps.build_sum.outputs.summary }}"
+            SUCCESS="${{ steps.build_sum.outputs.success }}"
+            ;;
+          podman)
+            SUMMARY="${{ steps.podman_sum.outputs.summary }}"
+            SUCCESS="${{ steps.podman_sum.outputs.success }}"
+            ;;
+          infra)
+            SUMMARY="${{ steps.infra_sum.outputs.summary }}"
+            SUCCESS="${{ steps.infra_sum.outputs.success }}"
+            ;;
+          app)
+            SUMMARY="${{ steps.app_sum.outputs.summary }}"
+            SUCCESS="${{ steps.app_sum.outputs.success }}"
+            ;;
+          version)
+            SUMMARY="${{ steps.version_sum.outputs.summary }}"
+            SUCCESS="${{ steps.version_sum.outputs.success }}"
+            ;;
+          *)
+            SUMMARY="### ❓ Unknown Operation
+            **Status**: ⚠️ Unknown category"
+            SUCCESS="false"
+            ;;
+        esac
+
+        echo "## 🔍 Uncover Actions Detailed Summary"
+        echo ""
+        echo "### 📋 Operation Overview"
+        echo "- **Subaction**: $SUBACTION"
+        echo "- **Category**: $CATEGORY"
+        echo "- **Timestamp**: $TIMESTAMP"
+        echo "- **Workflow Run**: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        echo ""
+        echo "$SUMMARY"
+        echo ""
+
+        echo "### 📊 Overall Status"
+        if [ "$SUCCESS" = "true" ]; then
+          echo "**Result**: ✅ Operation completed successfully"
+          echo "**Next Steps**: Monitor the deployed application or proceed with related workflows."
+        else
+          echo "**Result**: ❌ Operation failed"
+          echo "**Troubleshooting**:"
+          echo "  - Review the job logs for the failed step"
+          echo "  - Check GitHub Actions run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          echo "  - Verify input parameters and secrets"
+          echo "  - Ensure remote hosts are accessible and properly configured"
+          exit 1
+        fi

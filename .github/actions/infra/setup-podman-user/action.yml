@@ -36,7 +36,7 @@ inputs:
   env_dir_path:
     description: 'Path to environment directory'
     required: false
-    default: '/opt/deployer/.env.'
+    default: '/var/deployments/development/deployer'
 
 runs:
   using: 'composite'

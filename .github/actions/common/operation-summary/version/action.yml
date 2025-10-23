@@ -1,0 +1,61 @@
+name: 'common: operation-summary/version'
+description: 'Generates summary for version operations.'
+
+inputs:
+  outcome:
+    description: 'Outcome of the version dispatch'
+    required: true
+  new:
+    description: 'New version'
+    required: false
+  major:
+    description: 'Major version'
+    required: false
+  minor:
+    description: 'Minor version'
+    required: false
+  last:
+    description: 'Last version'
+    required: false
+
+outputs:
+  summary:
+    description: 'Formatted summary string'
+    value: ${{ steps.generate.outputs.summary }}
+  success:
+    description: 'Whether the operation succeeded'
+    value: ${{ steps.generate.outputs.success }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate Version Summary
+      id: generate
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        SUMMARY=""
+        SUCCESS="true"
+
+        if [ "${{ inputs.outcome }}" = "success" ]; then
+          SUMMARY="### 🏷️ Version Operation
+          **Status**: ✅ Success
+          **Results**:
+            - New Version: ${{ inputs.new }}
+            - Major Version: ${{ inputs.major }}
+            - Minor Version: ${{ inputs.minor }}
+            - Last Version: ${{ inputs.last }}"
+                  else
+                    SUMMARY="### 🏷️ Version Operation
+          **Status**: ❌ Failed
+          **Failure Level**: Version Dispatch
+          **Where to Find Error**: Check the 'Version dispatch' step logs above in this job.
+          **Details**: Version dispatch failed. Check for Git tag parsing errors or semantic versioning issues."
+                    SUCCESS="false"
+                  fi
+
+                  echo "summary<<EOF" >> $GITHUB_OUTPUT
+                  echo "$SUMMARY" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+                  echo "success=$SUCCESS" >> $GITHUB_OUTPUT

@@ -4,8 +4,8 @@ Deploy a Django API to a remote Linux host over SSH. Optionally prepares the hos
 
 - **Derived defaults**
   - `app_slug` = slugified `${{ github.repository }}` name
-  - `env_dir_path` = `/opt/<app_slug>`
-  - `env_file_path` = `/opt/<app_slug>/.env.`
+  - `env_dir_path` = `/var/deployments/<env>/<app_slug>`
+  - `env_file_path` = `/var/deployments`
   - `image_name` = `<owner>/<repo>`
 
 ## Inputs (most relevant)

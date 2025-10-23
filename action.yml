@@ -84,6 +84,7 @@ runs:
         params_json: ${{ inputs.params_json }}
 
     - name: Podman dispatch
+      id: poddisp
       if: ${{ inputs.subaction && inputs.subaction != 'help' && steps.route.outputs.category == 'podman' }}
       uses: ./.github/actions/podman/dispatch
       with:
@@ -91,6 +92,7 @@ runs:
         params_json: ${{ inputs.params_json }}
 
     - name: Infra dispatch
+      id: infradisp
       if: ${{ inputs.subaction && inputs.subaction != 'help' && steps.route.outputs.category == 'infra' }}
       uses: ./.github/actions/infra/dispatch
       with:
@@ -98,6 +100,7 @@ runs:
         params_json: ${{ inputs.params_json }}
 
     - name: App dispatch
+      id: appdisp
       if: ${{ inputs.subaction && inputs.subaction != 'help' && steps.route.outputs.category == 'app' }}
       uses: ./.github/actions/app/dispatch
       with:
@@ -111,3 +114,23 @@ runs:
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
+
+    - name: Operation Summary
+      if: ${{ inputs.subaction && inputs.subaction != 'help' }}
+      uses: ./.github/actions/common/operation-summary
+      with:
+        subaction: ${{ inputs.subaction }}
+        category: ${{ steps.route.outputs.category }}
+        build_outcome: ${{ steps.bdisp.outcome }}
+        build_env_name: ${{ steps.bdisp.outputs.env_name }}
+        build_image_tag: ${{ steps.bdisp.outputs.image_tag }}
+        build_deploy_enabled: ${{ steps.bdisp.outputs.deploy_enabled }}
+        build_env_key: ${{ steps.bdisp.outputs.env_key }}
+        podman_outcome: ${{ steps.poddisp.outcome }}
+        infra_outcome: ${{ steps.infradisp.outcome }}
+        app_outcome: ${{ steps.appdisp.outcome }}
+        version_outcome: ${{ steps.vdisp.outcome }}
+        version_new: ${{ steps.vdisp.outputs.new }}
+        version_major: ${{ steps.vdisp.outputs.major }}
+        version_minor: ${{ steps.vdisp.outputs.minor }}
+        version_last: ${{ steps.vdisp.outputs.last }}
