@@ -46,16 +46,16 @@ runs:
             - Major Version: ${{ inputs.major }}
             - Minor Version: ${{ inputs.minor }}
             - Last Version: ${{ inputs.last }}"
-                  else
-                    SUMMARY="### 🏷️ Version Operation
+        else
+          SUMMARY="### 🏷️ Version Operation
           **Status**: ❌ Failed
           **Failure Level**: Version Dispatch
           **Where to Find Error**: Check the 'Version dispatch' step logs above in this job.
           **Details**: Version dispatch failed. Check for Git tag parsing errors or semantic versioning issues."
-                    SUCCESS="false"
-                  fi
+          SUCCESS="false"
+        fi
 
-                  echo "summary<<EOF" >> $GITHUB_OUTPUT
-                  echo "$SUMMARY" >> $GITHUB_OUTPUT
-                  echo "EOF" >> $GITHUB_OUTPUT
-                  echo "success=$SUCCESS" >> $GITHUB_OUTPUT
+        echo "summary<<EOF" >> $GITHUB_OUTPUT
+        echo "$SUMMARY" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        echo "success=$SUCCESS" >> $GITHUB_OUTPUT

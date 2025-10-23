@@ -30,16 +30,16 @@ runs:
           SUMMARY="### 🏗️ Infrastructure Operation
           **Status**: ✅ Success
           **Results**: Infrastructure setup completed successfully."
-                  else
-                    SUMMARY="### 🏗️ Infrastructure Operation
+        else
+          SUMMARY="### 🏗️ Infrastructure Operation
           **Status**: ❌ Failed
           **Failure Level**: Infrastructure Dispatch
           **Where to Find Error**: Check the 'Infra dispatch' step logs above in this job.
           **Details**: Infrastructure dispatch failed. Check for host preparation issues, permission errors, or service installation failures."
-                    SUCCESS="false"
-                  fi
+          SUCCESS="false"
+        fi
 
-                  echo "summary<<EOF" >> $GITHUB_OUTPUT
-                  echo "$SUMMARY" >> $GITHUB_OUTPUT
-                  echo "EOF" >> $GITHUB_OUTPUT
-                  echo "success=$SUCCESS" >> $GITHUB_OUTPUT
+        echo "summary<<EOF" >> $GITHUB_OUTPUT
+        echo "$SUMMARY" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        echo "success=$SUCCESS" >> $GITHUB_OUTPUT

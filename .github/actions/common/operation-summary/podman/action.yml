@@ -30,16 +30,16 @@ runs:
           SUMMARY="### 🐳 Podman Operation
           **Status**: ✅ Success
           **Results**: Podman commands executed successfully."
-                  else
-                    SUMMARY="### 🐳 Podman Operation
+        else
+          SUMMARY="### 🐳 Podman Operation
           **Status**: ❌ Failed
           **Failure Level**: Podman Dispatch
           **Where to Find Error**: Check the 'Podman dispatch' step logs above in this job.
           **Details**: Podman dispatch failed. Possible causes: SSH connection issues, Podman not installed, or command execution errors on the remote host."
-                    SUCCESS="false"
-                  fi
+          SUCCESS="false"
+        fi
 
-                  echo "summary<<EOF" >> $GITHUB_OUTPUT
-                  echo "$SUMMARY" >> $GITHUB_OUTPUT
-                  echo "EOF" >> $GITHUB_OUTPUT
-                  echo "success=$SUCCESS" >> $GITHUB_OUTPUT
+        echo "summary<<EOF" >> $GITHUB_OUTPUT
+        echo "$SUMMARY" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        echo "success=$SUCCESS" >> $GITHUB_OUTPUT

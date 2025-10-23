@@ -30,16 +30,16 @@ runs:
           SUMMARY="### 🚀 Application Deployment
           **Status**: ✅ Success
           **Results**: Application deployed successfully."
-                  else
-                    SUMMARY="### 🚀 Application Deployment
+        else
+          SUMMARY="### 🚀 Application Deployment
           **Status**: ❌ Failed
           **Failure Level**: Application Dispatch
           **Where to Find Error**: Check the 'App dispatch' step logs above in this job.
           **Details**: Application deployment failed. Common issues: environment file missing, container pull errors, or runtime configuration problems."
-                    SUCCESS="false"
-                  fi
+          SUCCESS="false"
+        fi
 
-                  echo "summary<<EOF" >> $GITHUB_OUTPUT
-                  echo "$SUMMARY" >> $GITHUB_OUTPUT
-                  echo "EOF" >> $GITHUB_OUTPUT
-                  echo "success=$SUCCESS" >> $GITHUB_OUTPUT
+        echo "summary<<EOF" >> $GITHUB_OUTPUT
+        echo "$SUMMARY" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        echo "success=$SUCCESS" >> $GITHUB_OUTPUT
