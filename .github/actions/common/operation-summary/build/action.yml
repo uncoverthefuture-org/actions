@@ -46,16 +46,16 @@ runs:
             - Image Tag: ${{ inputs.image_tag }}
             - Deploy Enabled: ${{ inputs.deploy_enabled }}
             - Environment Key: ${{ inputs.env_key }}"
-                  else
-                    SUMMARY="### 🏗️ Build Operation
+        else
+          SUMMARY="### 🏗️ Build Operation
           **Status**: ❌ Failed
           **Failure Level**: Build Dispatch
           **Where to Find Error**: Check the 'Build dispatch' step logs above in this job.
           **Details**: Build dispatch step failed. Review build logs for compilation errors, dependency issues, or registry authentication problems."
-                    SUCCESS="false"
-                  fi
+          SUCCESS="false"
+        fi
 
-                  echo "summary<<EOF" >> $GITHUB_OUTPUT
-                  echo "$SUMMARY" >> $GITHUB_OUTPUT
-                  echo "EOF" >> $GITHUB_OUTPUT
-                  echo "success=$SUCCESS" >> $GITHUB_OUTPUT
+        echo "summary<<EOF" >> $GITHUB_OUTPUT
+        echo "$SUMMARY" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        echo "success=$SUCCESS" >> $GITHUB_OUTPUT
