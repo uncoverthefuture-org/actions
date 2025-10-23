@@ -54,14 +54,7 @@ runs:
   using: 'composite'
   steps:
     - name: Prepare bundled actions
-      shell: bash
-      run: |
-        set -euo pipefail
-        dest=".github/actions"
-        if [ ! -d "$dest/common/route-category" ]; then
-          mkdir -p "$dest"
-          cp -a "$GITHUB_ACTION_PATH/.github/actions/." "$dest/"
-        fi
+      uses: ./.github/actions/common/ensure-bundled-actions
 
     - name: Help (list available actions)
       if: ${{ !inputs.subaction || inputs.subaction == 'help' }}
@@ -114,6 +107,10 @@ runs:
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
+
+    - name: Restore bundled actions
+      if: ${{ inputs.subaction && inputs.subaction != 'help' }}
+      uses: ./.github/actions/common/ensure-bundled-actions
 
     - name: Operation Summary
       if: ${{ inputs.subaction && inputs.subaction != 'help' }}

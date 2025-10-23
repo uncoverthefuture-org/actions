@@ -108,6 +108,7 @@ jobs:
 
 ### ⚠️ Important Notes
 
+- **Bundled Actions Auto-Restored**: The aggregator automatically rehydrates `.github/actions` via `common/ensure-bundled-actions`, so downstream steps continue to work after any `actions/checkout`
 - **Checkout Required**: When using these actions in workflows, ensure you have `actions/checkout` before using any local actions (`.github/actions/...`)
 - **Internal Actions**: Actions in `common/` and `version/` directories are internal utilities and should not be used directly
 - **SSH Access**: Ensure your deployment targets have SSH access configured with the specified users and keys

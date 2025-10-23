@@ -43,6 +43,9 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Ensure bundled actions
+      uses: ./.github/actions/common/ensure-bundled-actions
+
     - name: Normalize params JSON
       id: pjson
       uses: ./.github/actions/common/normalize-params
