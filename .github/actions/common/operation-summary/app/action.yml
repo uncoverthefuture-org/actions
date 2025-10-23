@@ -1,0 +1,45 @@
+name: 'common: operation-summary/app'
+description: 'Generates summary for application operations.'
+
+inputs:
+  outcome:
+    description: 'Outcome of the app dispatch'
+    required: true
+
+outputs:
+  summary:
+    description: 'Formatted summary string'
+    value: ${{ steps.generate.outputs.summary }}
+  success:
+    description: 'Whether the operation succeeded'
+    value: ${{ steps.generate.outputs.success }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate App Summary
+      id: generate
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        SUMMARY=""
+        SUCCESS="true"
+
+        if [ "${{ inputs.outcome }}" = "success" ]; then
+          SUMMARY="### 🚀 Application Deployment
+          **Status**: ✅ Success
+          **Results**: Application deployed successfully."
+                  else
+                    SUMMARY="### 🚀 Application Deployment
+          **Status**: ❌ Failed
+          **Failure Level**: Application Dispatch
+          **Where to Find Error**: Check the 'App dispatch' step logs above in this job.
+          **Details**: Application deployment failed. Common issues: environment file missing, container pull errors, or runtime configuration problems."
+                    SUCCESS="false"
+                  fi
+
+                  echo "summary<<EOF" >> $GITHUB_OUTPUT
+                  echo "$SUMMARY" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+                  echo "success=$SUCCESS" >> $GITHUB_OUTPUT

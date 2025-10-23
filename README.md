@@ -34,6 +34,8 @@ Note: Your workflow must grant `permissions: packages: write` for GHCR.
 
 Generic SSH runner that exposes a `run_podman` helper and supports root vs user execution.
 
+> ℹ️ Detailed usage, including how environment files are resolved on the remote host, lives in [`podman/remote-podman-exec/README.md`](.github/actions/podman/remote-podman-exec/README.md). Ensure the referenced env file is present (for example by running `write-remote-env-file`) before enabling `source_env` with `fail_if_env_missing: true`.
+
 ### Inputs
 
 - `ssh_host` (required)
@@ -42,7 +44,7 @@ Generic SSH runner that exposes a `run_podman` helper and supports root vs user 
 - `root_ssh_key` (optional)
 - `podman_user` (default: `deployer`)
 - `connect_mode` (`auto`|`root`|`user`, default: `auto`)
-- `env_file_path` (default: derived from repo slug, e.g. `/opt/<repo-slug>/.env.`)
+- `env_file_path` (default: derived from repo slug, e.g. `/var/deployments/<env>/<repo-slug>/.env`)
 - `env_name` (optional)
 - `source_env` (default: `false`)
 - `fail_if_env_missing` (default: `true`)
@@ -75,7 +77,7 @@ Prepares a fresh Ubuntu host for rootless Podman deployments.
 - `connect_mode` (default: `root`)
 - `podman_user` (default: `deployer`)
 - `create_podman_user` (default: `false`)
-- `env_dir_path` (default: derived from repo slug, e.g. `/opt/<repo-slug>`)
+- `env_dir_path` (default: derived from repo slug, e.g. `/var/deployments/<env>/<repo-slug>/.env`)
 - `install_podman` (default: `true`)
 - `additional_packages` (default: `jq curl ca-certificates`)
 
@@ -153,7 +155,7 @@ Writes a `.env` file to the remote host.
 - `ssh_host`, `ssh_user`, `ssh_key`, `env_name` (required)
 - `root_ssh_key` (optional)
 - `ssh_port` (default: `22`), `ssh_fingerprint` (optional)
-- `env_file_path` (default: derived from repo slug, e.g. `/opt/<repo-slug>/.env.`)
+- `env_file_path` (default: derived from repo slug, e.g. `/var/deployments/<env>/<repo-slug>/.env`)
 - `env_b64` or `env_content` (one required)
 - `podman_user` (default: `deployer`), `connect_mode` (default: `auto`)
 

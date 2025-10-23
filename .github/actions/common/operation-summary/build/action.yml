@@ -1,0 +1,61 @@
+name: 'common: operation-summary/build'
+description: 'Generates summary for build operations.'
+
+inputs:
+  outcome:
+    description: 'Outcome of the build dispatch step'
+    required: true
+  env_name:
+    description: 'Environment name from build'
+    required: false
+  image_tag:
+    description: 'Image tag from build'
+    required: false
+  deploy_enabled:
+    description: 'Deploy enabled from build'
+    required: false
+  env_key:
+    description: 'Environment key from build'
+    required: false
+
+outputs:
+  summary:
+    description: 'Formatted summary string'
+    value: ${{ steps.generate.outputs.summary }}
+  success:
+    description: 'Whether the operation succeeded'
+    value: ${{ steps.generate.outputs.success }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate Build Summary
+      id: generate
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        SUMMARY=""
+        SUCCESS="true"
+
+        if [ "${{ inputs.outcome }}" = "success" ]; then
+          SUMMARY="### 🏗️ Build Operation
+          **Status**: ✅ Success
+          **Results**:
+            - Environment: ${{ inputs.env_name }}
+            - Image Tag: ${{ inputs.image_tag }}
+            - Deploy Enabled: ${{ inputs.deploy_enabled }}
+            - Environment Key: ${{ inputs.env_key }}"
+                  else
+                    SUMMARY="### 🏗️ Build Operation
+          **Status**: ❌ Failed
+          **Failure Level**: Build Dispatch
+          **Where to Find Error**: Check the 'Build dispatch' step logs above in this job.
+          **Details**: Build dispatch step failed. Review build logs for compilation errors, dependency issues, or registry authentication problems."
+                    SUCCESS="false"
+                  fi
+
+                  echo "summary<<EOF" >> $GITHUB_OUTPUT
+                  echo "$SUMMARY" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+                  echo "success=$SUCCESS" >> $GITHUB_OUTPUT

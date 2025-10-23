@@ -1,0 +1,45 @@
+name: 'common: operation-summary/podman'
+description: 'Generates summary for podman operations.'
+
+inputs:
+  outcome:
+    description: 'Outcome of the podman dispatch'
+    required: true
+
+outputs:
+  summary:
+    description: 'Formatted summary string'
+    value: ${{ steps.generate.outputs.summary }}
+  success:
+    description: 'Whether the operation succeeded'
+    value: ${{ steps.generate.outputs.success }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate Podman Summary
+      id: generate
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        SUMMARY=""
+        SUCCESS="true"
+
+        if [ "${{ inputs.outcome }}" = "success" ]; then
+          SUMMARY="### 🐳 Podman Operation
+          **Status**: ✅ Success
+          **Results**: Podman commands executed successfully."
+                  else
+                    SUMMARY="### 🐳 Podman Operation
+          **Status**: ❌ Failed
+          **Failure Level**: Podman Dispatch
+          **Where to Find Error**: Check the 'Podman dispatch' step logs above in this job.
+          **Details**: Podman dispatch failed. Possible causes: SSH connection issues, Podman not installed, or command execution errors on the remote host."
+                    SUCCESS="false"
+                  fi
+
+                  echo "summary<<EOF" >> $GITHUB_OUTPUT
+                  echo "$SUMMARY" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+                  echo "success=$SUCCESS" >> $GITHUB_OUTPUT

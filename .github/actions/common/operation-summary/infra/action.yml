@@ -1,0 +1,45 @@
+name: 'common: operation-summary/infra'
+description: 'Generates summary for infrastructure operations.'
+
+inputs:
+  outcome:
+    description: 'Outcome of the infra dispatch'
+    required: true
+
+outputs:
+  summary:
+    description: 'Formatted summary string'
+    value: ${{ steps.generate.outputs.summary }}
+  success:
+    description: 'Whether the operation succeeded'
+    value: ${{ steps.generate.outputs.success }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate Infra Summary
+      id: generate
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        SUMMARY=""
+        SUCCESS="true"
+
+        if [ "${{ inputs.outcome }}" = "success" ]; then
+          SUMMARY="### 🏗️ Infrastructure Operation
+          **Status**: ✅ Success
+          **Results**: Infrastructure setup completed successfully."
+                  else
+                    SUMMARY="### 🏗️ Infrastructure Operation
+          **Status**: ❌ Failed
+          **Failure Level**: Infrastructure Dispatch
+          **Where to Find Error**: Check the 'Infra dispatch' step logs above in this job.
+          **Details**: Infrastructure dispatch failed. Check for host preparation issues, permission errors, or service installation failures."
+                    SUCCESS="false"
+                  fi
+
+                  echo "summary<<EOF" >> $GITHUB_OUTPUT
+                  echo "$SUMMARY" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+                  echo "success=$SUCCESS" >> $GITHUB_OUTPUT

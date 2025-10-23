@@ -2,7 +2,7 @@
 
 Write a `.env` file on a remote host via SSH. Uses the same SSH connection and user model as other actions.
 
-- **Derived fallback**: If `env_file_path` is not provided, the dispatcher computes `/opt/<slug>/.env.` from the calling repo name.
+- **Derived fallback**: If `env_file_path` is not provided, the dispatcher computes `/var/deployments` from the calling repo name.
 
 ## Inputs
 - `ssh_host`, `ssh_user`, `ssh_key`, `root_ssh_key?`, `ssh_port?`, `ssh_fingerprint?`

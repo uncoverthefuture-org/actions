@@ -58,7 +58,7 @@ inputs:
     description: 'Environment name used to build container and env file path'
     required: false
   env_file_path:
-    description: 'Base path to the environment file on the server (prefix); final path is ${env_file_path}${env_name}'
+    description: 'Base directory on the server; the final file is <env_file_path>/<env_name>/.env'
     required: false
   write_env_file:
     description: 'If true, write the env file on the server before deploy'
@@ -170,8 +170,8 @@ runs:
         REPO="${GH_REPOSITORY##*/}"
         SLUG=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
         APP_SLUG="$SLUG"
-        ENV_DIR="/opt/${APP_SLUG}"
-        ENV_FILE_PATH="${ENV_DIR}/.env."
+        ENV_DIR="/var/deployments/development/${APP_SLUG}"
+        ENV_FILE_PATH="/var/deployments"
         IMG_NAME="${GH_REPOSITORY}"
         REF_NAME="${GITHUB_REF_NAME:-}"
         SHA7="${GITHUB_SHA:-unknown}"; SHA7="${SHA7:0:7}"
@@ -180,7 +180,7 @@ runs:
           stage|staging) ENV_NAME_DEF='staging' ;;
           dev|develop|development) ENV_NAME_DEF='dev' ;;
           refs/tags/*) ENV_NAME_DEF='production' ;;
-          *) ENV_NAME_DEF='dev' ;;
+          *) ENV_NAME_DEF='development' ;;
         esac
         IMG_TAG_DEF="${ENV_NAME_DEF}-${SHA7}"
         echo "app_slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
@@ -237,7 +237,10 @@ runs:
         inline_script: |
           set -euo pipefail
 
-          ENV_FILE="${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}"
+          ENV_BASE="${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}"
+          ENV_NAME="${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}"
+          ENV_DIR="${ENV_BASE%/}/$ENV_NAME"
+          ENV_FILE="${REMOTE_ENV_FILE:-${ENV_DIR}/.env}"
           IMAGE="${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}"
 
           CN_IN="${{ inputs.container_name }}"
