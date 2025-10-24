@@ -23,7 +23,7 @@ runs:
       if: ${{ github.ref_type == 'tag' || inputs.force == 'true' }}
       uses: ./.github/actions/common/replace-ref
       with:
-        old_ref: '@v1.0.37'
+        old_ref: '@v1.0.38'
         new_ref: ${{ format('@{0}', inputs.new_tag) }}
         patterns: |
           *.yml
