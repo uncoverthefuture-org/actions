@@ -53,7 +53,7 @@ runs:
   steps:
     - name: Compute host port
       id: compute
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1.0.34
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1.0.35
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
