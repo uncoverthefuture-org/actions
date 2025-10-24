@@ -36,7 +36,7 @@ outputs:
     description: 'Previous version tag reported by compute-next.'
     value: ${{ steps.vdisp.outputs.last }}
 name: 'Uncover Actions'
-description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@v1.0.28'
+description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@v1.0.29'
 
 inputs:
   subaction:
