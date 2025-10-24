@@ -182,7 +182,7 @@ runs:
 
         if [ "$INSTALL_TRAEFIK" = "true" ]; then
           if [ -z "$RESOLVED_EMAIL" ]; then
-            local apex="$TRAEFIK_DOMAIN_APEX"
+            apex="$TRAEFIK_DOMAIN_APEX"
             if [ -z "$apex" ]; then
               apex=$(derive_apex "$TRAEFIK_DOMAIN")
             fi

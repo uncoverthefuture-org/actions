@@ -132,7 +132,7 @@ runs:
         PREFIX_STAGING="${INPUT_PREFIX_STAGING:-}"
         PREFIX_DEV="${INPUT_PREFIX_DEV:-}"
 
-        [ -n "$PREFIX_PROD" ] || PREFIX_PROD='app'
+        [ -n "$PREFIX_PROD" ] || PREFIX_PROD=''
         [ -n "$PREFIX_STAGING" ] || PREFIX_STAGING='staging'
         [ -n "$PREFIX_DEV" ] || PREFIX_DEV='dev'
 
