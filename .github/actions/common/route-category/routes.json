@@ -39,6 +39,7 @@
     "update-refs"
   ],
   "common": [
-    "select-env-secret"
+    "select-env-secret",
+    "prepare-app-env"
   ]
 }

@@ -1,0 +1,142 @@
+name: 'common: prepare-app-env'
+description: 'Determines environment context, resolves the matching secret, and prepares an env file for container builds.'
+
+inputs:
+  env_name:
+    description: 'Explicit environment name override (e.g., production, staging, dev)'
+    required: false
+  env_key:
+    description: 'Explicit environment key override (e.g., prod, staging, dev)'
+    required: false
+  deploy_enabled:
+    description: "Override deploy flag ('true' or 'false')"
+    required: false
+  image_tag:
+    description: 'Override image tag (passed through to determine-env-context)'
+    required: false
+  environment_script:
+    description: 'Optional script sourced by determine-env-context when overrides are absent'
+    required: false
+    default: '.github/scripts/set-environment-context.sh'
+  fallback_env_name:
+    description: 'Environment name to use when branch detection is unknown'
+    required: false
+    default: 'dev'
+  fallback_env_key:
+    description: 'Environment key to use when branch detection is unknown'
+    required: false
+    default: 'dev'
+  fallback_deploy_enabled:
+    description: "Deploy flag default when branch detection is unknown ('true' or 'false')"
+    required: false
+    default: 'false'
+  secret_prefix:
+    description: "Secret name prefix. Final secret is <prefix><UPPERCASE env key>.<suffix>"
+    required: false
+    default: ''
+  secret_suffix:
+    description: 'Secret name suffix appended after the upper-cased environment key.'
+    required: false
+    default: '_ENV_B64'
+  secret_required:
+    description: "Set to 'true' to fail when the secret is empty/missing"
+    required: false
+    default: 'true'
+  env_file:
+    description: 'Path (relative to workspace) where the decoded env file should be written'
+    required: false
+    default: '.env.production'
+  export_to_github_env:
+    description: "Append the decoded env file to $GITHUB_ENV so future steps inherit the variables"
+    required: false
+    default: 'true'
+
+outputs:
+  env_name:
+    description: 'Resolved environment name'
+    value: ${{ steps.context.outputs.env_name }}
+  env_key:
+    description: 'Resolved environment key'
+    value: ${{ steps.context.outputs.env_key }}
+  deploy_enabled:
+    description: 'Resolved deploy flag'
+    value: ${{ steps.context.outputs.deploy_enabled }}
+  image_tag:
+    description: 'Resolved image tag'
+    value: ${{ steps.context.outputs.image_tag }}
+  env_b64:
+    description: 'Resolved base64-encoded secret value'
+    value: ${{ steps.secret.outputs.env_b64 }}
+  secret_name:
+    description: 'Secret name that was inspected'
+    value: ${{ steps.secret.outputs.secret_name }}
+  secret_found:
+    description: "'true' when the secret existed and was non-empty"
+    value: ${{ steps.secret.outputs.found }}
+  env_file:
+    description: 'Absolute path to the decoded env file (empty when secret missing and not required)'
+    value: ${{ steps.write.outputs.env_file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Ensure bundled actions
+      uses: ./.github/actions/common/ensure-bundled-actions
+
+    - name: Determine environment context
+      id: context
+      uses: ./.github/actions/common/determine-env-context
+      with:
+        env_name: ${{ inputs.env_name }}
+        env_key: ${{ inputs.env_key }}
+        deploy_enabled: ${{ inputs.deploy_enabled }}
+        image_tag: ${{ inputs.image_tag }}
+        environment_script: ${{ inputs.environment_script }}
+        fallback_env_name: ${{ inputs.fallback_env_name }}
+        fallback_env_key: ${{ inputs.fallback_env_key }}
+        fallback_deploy_enabled: ${{ inputs.fallback_deploy_enabled }}
+
+    - name: Resolve env secret
+      id: secret
+      uses: ./.github/actions/common/select-env-secret
+      with:
+        env_name: ${{ steps.context.outputs.env_key }}
+        secret_prefix: ${{ inputs.secret_prefix }}
+        secret_suffix: ${{ inputs.secret_suffix }}
+        required: ${{ inputs.secret_required }}
+
+    - name: Write env file
+      id: write
+      shell: bash
+      env:
+        SECRET_B64: ${{ steps.secret.outputs.env_b64 }}
+        SECRET_FOUND: ${{ steps.secret.outputs.found }}
+        REQUIRED: ${{ inputs.secret_required }}
+        DEST_PATH: ${{ inputs.env_file }}
+        EXPORT_TO_ENV: ${{ inputs.export_to_github_env }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${SECRET_B64}" ]; then
+          if [ "${REQUIRED}" = "true" ]; then
+            echo "::error title=Missing env secret::Secret payload is empty but required" >&2
+            exit 1
+          fi
+          printf 'env_file=\n' >>"$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        dest="${DEST_PATH}"
+        if [ -z "$dest" ]; then
+          dest='.env.production'
+        fi
+
+        mkdir -p "$(dirname "$dest")"
+        printf '%s' "${SECRET_B64}" | base64 --decode >"$dest"
+
+        if [ "${EXPORT_TO_ENV}" = "true" ]; then
+          # Append the decoded file so future steps inherit the variables
+          cat "$dest" >>"$GITHUB_ENV"
+        fi
+
+        printf 'env_file=%s\n' "$(cd "$(dirname "$dest")" && pwd)/$(basename "$dest")" >>"$GITHUB_OUTPUT"

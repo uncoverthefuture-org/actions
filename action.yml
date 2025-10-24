@@ -20,6 +20,21 @@ outputs:
   secret_found:
     description: 'Whether the secret existed (from common dispatch)'
     value: ${{ steps.cdisp.outputs.found }}
+  common_env_name:
+    description: 'Environment name from common dispatch (prepare-app-env)'
+    value: ${{ steps.cdisp.outputs.env_name }}
+  common_env_key:
+    description: 'Environment key from common dispatch (prepare-app-env)'
+    value: ${{ steps.cdisp.outputs.env_key }}
+  common_deploy_enabled:
+    description: 'Deploy flag from common dispatch (prepare-app-env)'
+    value: ${{ steps.cdisp.outputs.deploy_enabled }}
+  common_image_tag:
+    description: 'Image tag from common dispatch (prepare-app-env)'
+    value: ${{ steps.cdisp.outputs.image_tag }}
+  common_env_file:
+    description: 'Path to decoded env file from common dispatch'
+    value: ${{ steps.cdisp.outputs.env_file }}
   new:
     description: 'New semantic version computed by version dispatch.'
     value: ${{ steps.vdisp.outputs.new }}
@@ -164,3 +179,8 @@ runs:
         common_env_b64: ${{ steps.cdisp.outputs.env_b64 }}
         common_secret_name: ${{ steps.cdisp.outputs.secret_name }}
         common_secret_found: ${{ steps.cdisp.outputs.found }}
+        common_env_name: ${{ steps.cdisp.outputs.env_name }}
+        common_env_key: ${{ steps.cdisp.outputs.env_key }}
+        common_deploy_enabled: ${{ steps.cdisp.outputs.deploy_enabled }}
+        common_image_tag: ${{ steps.cdisp.outputs.image_tag }}
+        common_env_file: ${{ steps.cdisp.outputs.env_file }}

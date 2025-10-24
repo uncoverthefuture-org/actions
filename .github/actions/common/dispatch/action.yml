@@ -17,17 +17,36 @@ inputs:
   required:
     description: "When 'true', fail if the secret is missing"
     required: false
+  env_file:
+    required: false
+  export_to_github_env:
+    required: false
 
 outputs:
   env_b64:
-    description: 'Base64 payload resolved by select-env-secret'
-    value: ${{ steps.call.outputs.env_b64 }}
+    description: 'Base64 payload resolved by select-env-secret or prepare-app-env'
+    value: ${{ steps.call.outputs.env_b64 || steps.prepare.outputs.env_b64 }}
   secret_name:
     description: 'Secret key that was inspected'
-    value: ${{ steps.call.outputs.secret_name }}
+    value: ${{ steps.call.outputs.secret_name || steps.prepare.outputs.secret_name }}
   found:
     description: 'Whether the secret existed and was non-empty'
-    value: ${{ steps.call.outputs.found }}
+    value: ${{ steps.call.outputs.found || steps.prepare.outputs.secret_found }}
+  env_name:
+    description: 'Environment name resolved by prepare-app-env'
+    value: ${{ steps.prepare.outputs.env_name }}
+  env_key:
+    description: 'Environment key resolved by prepare-app-env'
+    value: ${{ steps.prepare.outputs.env_key }}
+  deploy_enabled:
+    description: 'Deploy flag resolved by prepare-app-env'
+    value: ${{ steps.prepare.outputs.deploy_enabled }}
+  image_tag:
+    description: 'Image tag resolved by prepare-app-env'
+    value: ${{ steps.prepare.outputs.image_tag }}
+  env_file:
+    description: 'Absolute path to decoded env file when using prepare-app-env'
+    value: ${{ steps.prepare.outputs.env_file }}
 
 runs:
   using: 'composite'
@@ -45,7 +64,7 @@ runs:
       uses: ./.github/actions/common/validate-subaction
       with:
         subaction: ${{ inputs.subaction }}
-        allowed: select-env-secret
+        allowed: select-env-secret|prepare-app-env
 
     - name: select-env-secret
       id: call
@@ -53,6 +72,25 @@ runs:
       uses: ./.github/actions/common/select-env-secret
       with:
         env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
-        secret_prefix: ${{ inputs.secret_prefix != '' && inputs.secret_prefix || (fromJSON(steps.pjson.outputs.json).secret_prefix != '' && fromJSON(steps.pjson.outputs.json).secret_prefix || 'ENV_B64_') }}
+        secret_prefix: ${{ inputs.secret_prefix != '' && inputs.secret_prefix || fromJSON(steps.pjson.outputs.json).secret_prefix }}
         secret_suffix: ${{ inputs.secret_suffix != '' && inputs.secret_suffix || fromJSON(steps.pjson.outputs.json).secret_suffix }}
         required: ${{ inputs.required != '' && inputs.required || (fromJSON(steps.pjson.outputs.json).required != '' && fromJSON(steps.pjson.outputs.json).required || 'false') }}
+
+    - name: prepare-app-env
+      id: prepare
+      if: ${{ inputs.subaction == 'prepare-app-env' }}
+      uses: ./.github/actions/common/prepare-app-env
+      with:
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        env_key: ${{ inputs.env_key != '' && inputs.env_key || fromJSON(steps.pjson.outputs.json).env_key }}
+        deploy_enabled: ${{ inputs.deploy_enabled != '' && inputs.deploy_enabled || fromJSON(steps.pjson.outputs.json).deploy_enabled }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.pjson.outputs.json).image_tag }}
+        environment_script: ${{ inputs.environment_script != '' && inputs.environment_script || fromJSON(steps.pjson.outputs.json).environment_script }}
+        fallback_env_name: ${{ inputs.fallback_env_name != '' && inputs.fallback_env_name || fromJSON(steps.pjson.outputs.json).fallback_env_name }}
+        fallback_env_key: ${{ inputs.fallback_env_key != '' && inputs.fallback_env_key || fromJSON(steps.pjson.outputs.json).fallback_env_key }}
+        fallback_deploy_enabled: ${{ inputs.fallback_deploy_enabled != '' && inputs.fallback_deploy_enabled || fromJSON(steps.pjson.outputs.json).fallback_deploy_enabled }}
+        secret_prefix: ${{ inputs.secret_prefix != '' && inputs.secret_prefix || fromJSON(steps.pjson.outputs.json).secret_prefix }}
+        secret_suffix: ${{ inputs.secret_suffix != '' && inputs.secret_suffix || fromJSON(steps.pjson.outputs.json).secret_suffix }}
+        secret_required: ${{ inputs.required != '' && inputs.required || fromJSON(steps.pjson.outputs.json).required }}
+        env_file: ${{ inputs.env_file != '' && inputs.env_file || fromJSON(steps.pjson.outputs.json).env_file }}
+        export_to_github_env: ${{ inputs.export_to_github_env != '' && inputs.export_to_github_env || fromJSON(steps.pjson.outputs.json).export_to_github_env }}
