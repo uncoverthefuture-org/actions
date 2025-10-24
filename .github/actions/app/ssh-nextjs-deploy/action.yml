@@ -155,9 +155,9 @@ inputs:
     description: 'Base domain used to compute domain if domain is not provided'
     required: false
   domain_prefix_prod:
-    description: 'Domain prefix for production/main env'
+    description: 'Domain prefix for production env'
     required: false
-    default: 'app'
+    default: ''
   domain_prefix_staging:
     description: 'Domain prefix for staging env'
     required: false

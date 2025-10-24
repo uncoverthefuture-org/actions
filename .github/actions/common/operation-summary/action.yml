@@ -62,6 +62,9 @@ inputs:
   common_secret_found:
     description: 'Whether the secret existed (true/false)'
     required: false
+  common_env_b64:
+    description: 'Base64-encoded env payload from common dispatch (not displayed)'
+    required: false
   common_env_name:
     description: 'Environment name from common dispatch'
     required: false
@@ -133,6 +136,7 @@ runs:
         COMMON_OUTCOME: ${{ inputs.common_outcome }}
         COMMON_SECRET_NAME: ${{ inputs.common_secret_name }}
         COMMON_SECRET_FOUND: ${{ inputs.common_secret_found }}
+        COMMON_ENV_B64: ${{ inputs.common_env_b64 }}
         COMMON_ENV_NAME: ${{ inputs.common_env_name }}
         COMMON_ENV_KEY: ${{ inputs.common_env_key }}
         COMMON_DEPLOY_ENABLED: ${{ inputs.common_deploy_enabled }}

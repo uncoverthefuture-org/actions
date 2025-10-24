@@ -137,7 +137,12 @@ runs:
 
           APP_SLUG_INPUT="${{ inputs.app_slug }}"
           if [ -z "$APP_SLUG_INPUT" ]; then
-            REPO_NAME="${GITHUB_REPOSITORY##*/}"
+            REPO_NAME_RAW="${GITHUB_REPOSITORY:-}"
+            if [ -n "$REPO_NAME_RAW" ]; then
+              REPO_NAME="${REPO_NAME_RAW##*/}"
+            else
+              REPO_NAME='app'
+            fi
             APP_SLUG_INPUT=$(printf '%s' "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
           fi
 
