@@ -25,6 +25,10 @@ inputs:
     description: 'User on remote host to execute podman commands as'
     required: false
     default: 'deployer'
+  app_slug:
+    description: 'Application slug used to derive default paths and names'
+    required: false
+    default: ''
   connect_mode:
     description: "How to connect: 'auto' (default), 'root', or 'user'"
     required: false
@@ -52,16 +56,23 @@ runs:
   using: 'composite'
   steps:
     - name: Validate inputs
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        INLINE_SCRIPT: ${{ inputs.inline_script }}
+        CONNECT_MODE: ${{ inputs.connect_mode }}
       run: |
-        if [ -z "${{ inputs.ssh_host }}" ]; then echo '::error::ssh_host is required'; exit 1 ; fi
-        if [ -z "${{ inputs.ssh_user }}" ]; then echo '::error::ssh_user is required'; exit 1 ; fi
-        if [ -z "${{ inputs.ssh_key }}" ]; then echo '::error::ssh_key is required'; exit 1 ; fi
-        if [ -z "${{ inputs.inline_script }}" ]; then echo '::error::inline_script is required'; exit 1 ; fi
-        case "${{ inputs.connect_mode }}" in
+        set -euo pipefail
+        if [ -z "${SSH_HOST}" ]; then echo '::error::ssh_host is required'; exit 1 ; fi
+        if [ -z "${SSH_USER}" ]; then echo '::error::ssh_user is required'; exit 1 ; fi
+        if [ -z "${SSH_KEY}" ]; then echo '::error::ssh_key is required'; exit 1 ; fi
+        if [ -z "${INLINE_SCRIPT}" ]; then echo '::error::inline_script is required'; exit 1 ; fi
+        case "${CONNECT_MODE}" in
           auto|root|user) :;;
           *) echo '::error::connect_mode must be auto|root|user'; exit 1 ;;
         esac
-      shell: bash
 
     - name: Resolve connection
       id: conn
@@ -107,6 +118,9 @@ runs:
         port: ${{ inputs.ssh_port }}
         fingerprint: ${{ inputs.ssh_fingerprint }}
         script: |
+          set -eu
+
+          bash -s <<'BASH_EOF'
           set -euo pipefail
 
           PODMAN_USER="${{ inputs.podman_user }}"
@@ -206,3 +220,4 @@ runs:
 
           # Begin inline script
           ${{ inputs.inline_script }}
+          BASH_EOF
