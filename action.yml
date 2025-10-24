@@ -11,6 +11,15 @@ outputs:
   deploy_enabled:
     description: 'Whether deployment is enabled (from build dispatch)'
     value: ${{ steps.bdisp.outputs.deploy_enabled }}
+  env_b64:
+    description: 'Resolved environment secret payload (from common dispatch)'
+    value: ${{ steps.cdisp.outputs.env_b64 }}
+  secret_name:
+    description: 'Secret inspected by common dispatch'
+    value: ${{ steps.cdisp.outputs.secret_name }}
+  secret_found:
+    description: 'Whether the secret existed (from common dispatch)'
+    value: ${{ steps.cdisp.outputs.found }}
   new:
     description: 'New semantic version computed by version dispatch.'
     value: ${{ steps.vdisp.outputs.new }}
@@ -91,6 +100,14 @@ runs:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
+    - name: Common dispatch
+      id: cdisp
+      if: ${{ inputs.subaction && inputs.subaction != 'help' && steps.route.outputs.category == 'common' }}
+      uses: ./.github/actions/common/dispatch
+      with:
+        subaction: ${{ inputs.subaction }}
+        params_json: ${{ inputs.params_json }}
+
     - name: Infra dispatch
       id: infradisp
       if: ${{ inputs.subaction && inputs.subaction != 'help' && steps.route.outputs.category == 'infra' }}
@@ -143,3 +160,7 @@ runs:
         version_major: ${{ steps.vdisp.outputs.major }}
         version_minor: ${{ steps.vdisp.outputs.minor }}
         version_last: ${{ steps.vdisp.outputs.last }}
+        common_outcome: ${{ steps.cdisp.outcome }}
+        common_env_b64: ${{ steps.cdisp.outputs.env_b64 }}
+        common_secret_name: ${{ steps.cdisp.outputs.secret_name }}
+        common_secret_found: ${{ steps.cdisp.outputs.found }}

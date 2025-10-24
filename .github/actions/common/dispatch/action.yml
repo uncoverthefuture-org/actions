@@ -1,0 +1,55 @@
+name: 'dispatch: common'
+description: 'Common dispatch: route short calls to common utility actions'
+
+inputs:
+  subaction:
+    description: "select-env-secret"
+    required: true
+  params_json:
+    description: 'JSON blob of parameters to pass to the selected subaction'
+    required: false
+  env_name:
+    required: false
+  secret_prefix:
+    required: false
+  required:
+    description: "When 'true', fail if the secret is missing"
+    required: false
+
+outputs:
+  env_b64:
+    description: 'Base64 payload resolved by select-env-secret'
+    value: ${{ steps.call.outputs.env_b64 }}
+  secret_name:
+    description: 'Secret key that was inspected'
+    value: ${{ steps.call.outputs.secret_name }}
+  found:
+    description: 'Whether the secret existed and was non-empty'
+    value: ${{ steps.call.outputs.found }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Ensure bundled actions
+      uses: ./.github/actions/common/ensure-bundled-actions
+
+    - name: Normalize params JSON
+      id: pjson
+      uses: ./.github/actions/common/normalize-params
+      with:
+        params_json: ${{ inputs.params_json }}
+
+    - name: Validate common subaction
+      uses: ./.github/actions/common/validate-subaction
+      with:
+        subaction: ${{ inputs.subaction }}
+        allowed: select-env-secret
+
+    - name: select-env-secret
+      id: call
+      if: ${{ inputs.subaction == 'select-env-secret' }}
+      uses: ./.github/actions/common/select-env-secret
+      with:
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        secret_prefix: ${{ inputs.secret_prefix != '' && inputs.secret_prefix || fromJSON(steps.pjson.outputs.json).secret_prefix }}
+        required: ${{ inputs.required != '' && inputs.required || fromJSON(steps.pjson.outputs.json).required }}
