@@ -78,7 +78,7 @@ runs:
       shell: bash
 
     - name: Run service
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1.0.27
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1.0.28
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
