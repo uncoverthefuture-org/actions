@@ -77,7 +77,7 @@ runs:
             deploy='true'
             ;;
           dev|develop|development)
-            env_name='dev'
+            env_name='development'
             env_key='dev'
             deploy='true'
             ;;
