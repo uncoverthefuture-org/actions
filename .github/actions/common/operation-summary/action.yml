@@ -52,6 +52,16 @@ inputs:
   version_last:
     description: 'Last version from version dispatch'
     required: false
+  common_outcome:
+    description: 'Outcome of common dispatch'
+    required: false
+    default: 'skipped'
+  common_secret_name:
+    description: 'Secret resolved by common dispatch'
+    required: false
+  common_secret_found:
+    description: 'Whether the secret existed (true/false)'
+    required: false
 
 runs:
   using: 'composite'
@@ -104,6 +114,10 @@ runs:
 
     - name: Generate Overall Summary
       shell: bash
+      env:
+        COMMON_OUTCOME: ${{ inputs.common_outcome }}
+        COMMON_SECRET_NAME: ${{ inputs.common_secret_name }}
+        COMMON_SECRET_FOUND: ${{ inputs.common_secret_found }}
       run: |
         set -euo pipefail
 
@@ -132,6 +146,18 @@ runs:
           version)
             SUMMARY="${{ steps.version_sum.outputs.summary }}"
             SUCCESS="${{ steps.version_sum.outputs.success }}"
+            ;;
+          common)
+            SECRET_NAME="${COMMON_SECRET_NAME:-n/a}"
+            SECRET_FOUND="${COMMON_SECRET_FOUND:-unknown}"
+            SUMMARY="### 🧩 Common Utility
+            - **Secret key**: ${SECRET_NAME}
+            - **Secret found**: ${SECRET_FOUND}"
+            if [ "${COMMON_OUTCOME}" = "success" ]; then
+              SUCCESS="true"
+            else
+              SUCCESS="false"
+            fi
             ;;
           *)
             SUMMARY="### ❓ Unknown Operation

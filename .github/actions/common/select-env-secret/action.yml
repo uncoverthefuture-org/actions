@@ -9,6 +9,10 @@ inputs:
     description: "Secret name prefix. Final secret is <prefix><UPPERCASE env name>."
     required: false
     default: 'ENV_B64_'
+  secret_suffix:
+    description: "Secret name suffix appended after the upper-cased env name."
+    required: false
+    default: ''
   required:
     description: 'Set to true to fail when the resolved secret is empty/missing'
     required: false
@@ -33,6 +37,7 @@ runs:
       shell: bash
       env:
         SECRET_PREFIX: ${{ inputs.secret_prefix }}
+        SECRET_SUFFIX: ${{ inputs.secret_suffix }}
         ENV_NAME_RAW: ${{ inputs.env_name }}
         REQUIRED: ${{ inputs.required }}
       run: |
@@ -45,7 +50,7 @@ runs:
         fi
 
         env_upper=$(echo "${env_name}" | tr '[:lower:]' '[:upper:]')
-        secret_name="${SECRET_PREFIX}${env_upper}"
+        secret_name="${SECRET_PREFIX}${env_upper}${SECRET_SUFFIX}"
         secret_value="$(printenv "${secret_name}" 2>/dev/null || true)"
 
         if [ -z "${secret_value}" ]; then

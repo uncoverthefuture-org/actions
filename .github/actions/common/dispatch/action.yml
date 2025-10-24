@@ -12,6 +12,8 @@ inputs:
     required: false
   secret_prefix:
     required: false
+  secret_suffix:
+    required: false
   required:
     description: "When 'true', fail if the secret is missing"
     required: false
@@ -51,5 +53,6 @@ runs:
       uses: ./.github/actions/common/select-env-secret
       with:
         env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
-        secret_prefix: ${{ inputs.secret_prefix != '' && inputs.secret_prefix || fromJSON(steps.pjson.outputs.json).secret_prefix }}
-        required: ${{ inputs.required != '' && inputs.required || fromJSON(steps.pjson.outputs.json).required }}
+        secret_prefix: ${{ inputs.secret_prefix != '' && inputs.secret_prefix || (fromJSON(steps.pjson.outputs.json).secret_prefix != '' && fromJSON(steps.pjson.outputs.json).secret_prefix || 'ENV_B64_') }}
+        secret_suffix: ${{ inputs.secret_suffix != '' && inputs.secret_suffix || fromJSON(steps.pjson.outputs.json).secret_suffix }}
+        required: ${{ inputs.required != '' && inputs.required || (fromJSON(steps.pjson.outputs.json).required != '' && fromJSON(steps.pjson.outputs.json).required || 'false') }}
