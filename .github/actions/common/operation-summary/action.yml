@@ -62,6 +62,21 @@ inputs:
   common_secret_found:
     description: 'Whether the secret existed (true/false)'
     required: false
+  common_env_name:
+    description: 'Environment name from common dispatch'
+    required: false
+  common_env_key:
+    description: 'Environment key from common dispatch'
+    required: false
+  common_deploy_enabled:
+    description: "Deploy flag from common dispatch ('true' or 'false')"
+    required: false
+  common_image_tag:
+    description: 'Image tag from common dispatch'
+    required: false
+  common_env_file:
+    description: 'Path to decoded env file written by common dispatch'
+    required: false
 
 runs:
   using: 'composite'
@@ -118,6 +133,11 @@ runs:
         COMMON_OUTCOME: ${{ inputs.common_outcome }}
         COMMON_SECRET_NAME: ${{ inputs.common_secret_name }}
         COMMON_SECRET_FOUND: ${{ inputs.common_secret_found }}
+        COMMON_ENV_NAME: ${{ inputs.common_env_name }}
+        COMMON_ENV_KEY: ${{ inputs.common_env_key }}
+        COMMON_DEPLOY_ENABLED: ${{ inputs.common_deploy_enabled }}
+        COMMON_IMAGE_TAG: ${{ inputs.common_image_tag }}
+        COMMON_ENV_FILE: ${{ inputs.common_env_file }}
       run: |
         set -euo pipefail
 
@@ -150,9 +170,19 @@ runs:
           common)
             SECRET_NAME="${COMMON_SECRET_NAME:-n/a}"
             SECRET_FOUND="${COMMON_SECRET_FOUND:-unknown}"
+            ENV_NAME_VAL="${COMMON_ENV_NAME:-n/a}"
+            ENV_KEY_VAL="${COMMON_ENV_KEY:-n/a}"
+            DEPLOY_VAL="${COMMON_DEPLOY_ENABLED:-unknown}"
+            IMAGE_TAG_VAL="${COMMON_IMAGE_TAG:-n/a}"
+            ENV_FILE_VAL="${COMMON_ENV_FILE:-n/a}"
             SUMMARY="### 🧩 Common Utility
+            - **Env name**: ${ENV_NAME_VAL}
+            - **Env key**: ${ENV_KEY_VAL}
+            - **Deploy enabled**: ${DEPLOY_VAL}
+            - **Image tag**: ${IMAGE_TAG_VAL}
             - **Secret key**: ${SECRET_NAME}
-            - **Secret found**: ${SECRET_FOUND}"
+            - **Secret found**: ${SECRET_FOUND}
+            - **Env file**: ${ENV_FILE_VAL}"
             if [ "${COMMON_OUTCOME}" = "success" ]; then
               SUCCESS="true"
             else
