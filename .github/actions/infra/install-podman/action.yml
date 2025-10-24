@@ -37,7 +37,7 @@ runs:
   using: 'composite'
   steps:
     - name: Install Podman
-      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1.0.36
+      uses: uncoverthefuture-org/actions/.github/actions/podman/remote-podman-exec@v1.0.37
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
