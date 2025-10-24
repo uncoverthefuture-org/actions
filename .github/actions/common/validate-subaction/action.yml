@@ -21,7 +21,7 @@ runs:
         SA="${SA_INPUT}"
         ALLOWED="${ALLOWED_LIST}"
         if [ -z "$SA" ]; then
-          echo '::error title=Missing subaction::subaction input is required'
+          echo '::error::subaction input is required'
           echo 'Error: subaction is required' >&2
           exit 1
         fi
@@ -36,7 +36,7 @@ runs:
         done
         IFS="$OLD_IFS"
         if [ "$MATCHED" != 'true' ]; then
-          echo "::error title=Unsupported subaction::Unsupported subaction '$SA' (allowed: $ALLOWED)"
+          echo "::error::Unsupported subaction '$SA' (allowed: $ALLOWED)"
           echo "Error: unsupported subaction '$SA' (allowed: $ALLOWED)" >&2
           exit 1
         fi

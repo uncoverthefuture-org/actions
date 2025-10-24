@@ -53,13 +53,13 @@ runs:
   steps:
     - name: Validate inputs
       run: |
-        if [ -z "${{ inputs.ssh_host }}" ]; then echo '::error title=Missing input::ssh_host is required'; echo 'Error: ssh_host is required' ; exit 1 ; fi
-        if [ -z "${{ inputs.ssh_user }}" ]; then echo '::error title=Missing input::ssh_user is required'; echo 'Error: ssh_user is required' ; exit 1 ; fi
-        if [ -z "${{ inputs.ssh_key }}" ]; then echo '::error title=Missing input::ssh_key is required'; echo 'Error: ssh_key is required' ; exit 1 ; fi
-        if [ -z "${{ inputs.inline_script }}" ]; then echo '::error title=Missing input::inline_script is required'; echo 'Error: inline_script is required' ; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_host }}" ]; then echo '::error::ssh_host is required'; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_user }}" ]; then echo '::error::ssh_user is required'; exit 1 ; fi
+        if [ -z "${{ inputs.ssh_key }}" ]; then echo '::error::ssh_key is required'; exit 1 ; fi
+        if [ -z "${{ inputs.inline_script }}" ]; then echo '::error::inline_script is required'; exit 1 ; fi
         case "${{ inputs.connect_mode }}" in
           auto|root|user) :;;
-          *) echo '::error title=Invalid input::connect_mode must be auto|root|user'; echo 'Error: connect_mode must be auto|root|user' ; exit 1 ;;
+          *) echo '::error::connect_mode must be auto|root|user'; exit 1 ;;
         esac
       shell: bash
 
@@ -91,7 +91,7 @@ runs:
         fi
 
         if [ -z "$USERNAME" ]; then
-          echo '::error title=Connection error::Unable to resolve SSH username' >&2
+          echo '::error::Unable to resolve SSH username' >&2
           exit 1
         fi
 
@@ -149,7 +149,7 @@ runs:
           ENV_DIR="${ENV_ROOT}/${ENV_NAME_INPUT}/${APP_SLUG_INPUT}"
 
           if ! mkdir -p "$ENV_DIR"; then
-            echo "::error title=Env directory error::Unable to create env directory $ENV_DIR" >&2
+            echo "::error::Unable to create env directory $ENV_DIR" >&2
             exit 1
           fi
 
@@ -165,7 +165,7 @@ runs:
 
           if [ "${{ inputs.source_env }}" = "true" ]; then
             if [ -z "$ENV_FILE" ]; then
-              echo '::error title=Missing env configuration::env_file_path must be provided when source_env=true'
+              echo '::error::env_file_path must be provided when source_env=true'
               exit 1
             fi
 
@@ -175,11 +175,11 @@ runs:
               set +a
             else
               if [ "${{ inputs.fail_if_env_missing }}" = "true" ]; then
-                echo "::error title=Missing env file::Environment file ${ENV_FILE} not found"
+                echo "::error::Environment file ${ENV_FILE} not found"
                 echo "Environment file ${ENV_FILE} not found" >&2
                 exit 1
               else
-                echo "::warning title=Env file missing::Environment file ${ENV_FILE} not found; continuing without sourcing"
+                echo "::warning::Environment file ${ENV_FILE} not found; continuing without sourcing"
               fi
             fi
           fi
@@ -196,7 +196,7 @@ runs:
           }
 
           if ! command -v podman >/dev/null 2>&1; then
-            echo '::error title=Podman missing::podman is not installed on the remote host'
+            echo '::error::podman is not installed on the remote host'
             echo 'Error: podman is not installed on the remote host.' >&2
             echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
             exit 1

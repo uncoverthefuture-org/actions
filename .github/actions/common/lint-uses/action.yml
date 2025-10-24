@@ -23,7 +23,7 @@ runs:
           | grep -v "version/compute-next" \
           | grep -v "version/update-tags" || true)
         if [ -n "$REL_FILES" ]; then
-          echo "::error title=Forbidden relative uses::Found relative uses in: $REL_FILES"
+          echo "::error::Found relative uses in: $REL_FILES"
           echo "Error: Found relative uses in: $REL_FILES" >&2
           exit 1
         fi
@@ -36,7 +36,7 @@ runs:
             | grep -v "\.github/actions/version/dispatch/action.yml" \
             | xargs grep -lE "^[[:space:]]*uses:[[:space:]]+uncoverthefuture-org/actions/\\.github/actions/" || true)
           if [ -n "$DEEP_FILES" ]; then
-            echo "::error title=Forbidden deep repo uses::Found deep repo uses in: $DEEP_FILES"
+            echo "::error::Found deep repo uses in: $DEEP_FILES"
             echo "Error: Found deep repo uses in: $DEEP_FILES" >&2
             exit 1
           fi

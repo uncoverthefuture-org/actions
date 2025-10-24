@@ -55,7 +55,7 @@ runs:
       run: |
         set -euo pipefail
         SA='${{ inputs.subaction }}'
-        case "$SA" in build-and-push) :;; *) echo "::error title=Unsupported build subaction::Unsupported build subaction '$SA'"; echo "Error: unsupported build subaction '$SA'" >&2; exit 1;; esac
+        case "$SA" in build-and-push) :;; *) echo "::error::Unsupported build subaction '$SA'"; echo "Error: unsupported build subaction '$SA'" >&2; exit 1;; esac
       shell: bash
 
     - name: Determine environment context

@@ -30,12 +30,12 @@ runs:
         case "$SUBACTION" in
           write-remote-env-file)
             if [ -z "$ENV_NAME" ]; then
-              echo '::error title=Missing input::env_name is required for write-remote-env-file'
+              echo '::error::env_name is required for write-remote-env-file'
               echo 'Error: env_name is required for write-remote-env-file' >&2
               exit 1
             fi
             if [ -z "$ENV_B64" ] && [ -z "$ENV_CONTENT" ]; then
-              echo '::error title=Missing input::env_b64 or env_content must be provided for write-remote-env-file'
+              echo '::error::env_b64 or env_content must be provided for write-remote-env-file'
               echo 'Error: env_b64 or env_content must be provided for write-remote-env-file' >&2
               exit 1
             fi

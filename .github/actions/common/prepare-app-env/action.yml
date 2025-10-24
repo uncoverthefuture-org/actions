@@ -119,7 +119,7 @@ runs:
 
         if [ -z "${SECRET_B64}" ]; then
           if [ "${REQUIRED}" = "true" ]; then
-            echo "::error title=Missing env secret::Secret payload is empty but required" >&2
+            echo "::error::Secret payload is empty but required" >&2
             exit 1
           fi
           printf 'env_file=\n' >>"$GITHUB_OUTPUT"

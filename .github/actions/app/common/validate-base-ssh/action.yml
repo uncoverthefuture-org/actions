@@ -26,12 +26,12 @@ runs:
         case "$SUBACTION" in
           ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file)
             if [ -z "$SSH_HOST" ]; then
-              echo '::error title=Missing input::ssh_host is required for app deployment subactions'
+              echo '::error::ssh_host is required for app deployment subactions'
               echo 'Error: ssh_host is required for app deployment subactions' >&2
               exit 1
             fi
             if [ -z "$SSH_KEY" ]; then
-              echo '::error title=Missing input::ssh_key is required for app deployment subactions'
+              echo '::error::ssh_key is required for app deployment subactions'
               echo 'Error: ssh_key is required for app deployment subactions' >&2
               exit 1
             fi

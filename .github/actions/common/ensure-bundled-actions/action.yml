@@ -16,7 +16,7 @@ runs:
           source_dir="$(dirname "$source_dir")"
         done
         if [ ! -d "$source_dir/.github/actions" ]; then
-          echo "::error title=Bundled actions missing::Unable to locate bundled actions relative to $GITHUB_ACTION_PATH" >&2
+          echo "::error::Unable to locate bundled actions relative to $GITHUB_ACTION_PATH" >&2
           exit 1
         fi
 
