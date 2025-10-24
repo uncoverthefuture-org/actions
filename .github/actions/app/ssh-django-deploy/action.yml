@@ -300,6 +300,13 @@ runs:
             echo 'Error: write_env_file=true but neither env_b64 nor env_content provided' ; exit 1
           fi
         fi
+
+        if [ "${{ inputs.install_traefik }}" = "true" ]; then
+          TRAEFIK_EMAIL="${{ inputs.traefik_email != '' && inputs.traefik_email || (steps.dfl.outputs.domain_apex != '' && format('traefik@{0}', steps.dfl.outputs.domain_apex)) || '' }}"
+          if [ -z "$TRAEFIK_EMAIL" ]; then
+            echo 'Error: install_traefik=true but no traefik_email provided and no domain-derived default available.' ; exit 1
+          fi
+        fi
       shell: bash
 
     - name: Prepare host (optional)
@@ -317,7 +324,7 @@ runs:
         install_podman: ${{ inputs.install_podman }}
         create_podman_user: ${{ inputs.create_podman_user }}
         install_traefik: ${{ inputs.install_traefik }}
-        traefik_email: ${{ inputs.traefik_email }}
+        traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || (steps.dfl.outputs.domain_apex != '' && format('traefik@{0}', steps.dfl.outputs.domain_apex)) || '' }}
         env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages }}
 

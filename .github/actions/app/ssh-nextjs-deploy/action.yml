@@ -200,6 +200,8 @@ runs:
         create_podman_user: ${{ inputs.create_podman_user }}
         install_traefik: ${{ inputs.install_traefik }}
         traefik_email: ${{ inputs.traefik_email }}
+        traefik_domain: ${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }}
+        traefik_domain_apex: ${{ steps.dfl.outputs.domain_apex }}
         env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages }}
         write_env_file: ${{ inputs.write_env_file }}

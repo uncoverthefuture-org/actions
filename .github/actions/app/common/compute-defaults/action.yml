@@ -47,6 +47,9 @@ outputs:
   domain_default:
     description: 'Derived domain when base/override provided.'
     value: ${{ steps.defaults.outputs.domain_default }}
+  domain_apex:
+    description: 'Registrable apex domain derived from domain_default.'
+    value: ${{ steps.defaults.outputs.domain_apex }}
   traefik_router:
     description: 'Slug safe router/service identifier for Traefik labels.'
     value: ${{ steps.defaults.outputs.traefik_router }}
@@ -149,6 +152,28 @@ runs:
           fi
         fi
 
+        derive_apex() {
+          local fqdn="$1"
+          if [ -z "$fqdn" ]; then
+            echo ""
+            return
+          fi
+          local lower
+          lower=$(printf '%s' "$fqdn" | tr '[:upper:]' '[:lower:]')
+          local without_www
+          without_www=${lower#www.}
+          # handle multi-level subdomains by using last two labels when available
+          IFS='.' read -r -a parts <<< "$without_www"
+          local count=${#parts[@]}
+          if [ "$count" -le 2 ]; then
+            echo "$without_www"
+            return
+          fi
+          echo "${parts[count-2]}.${parts[count-1]}"
+        }
+
+        DOMAIN_APEX="$(derive_apex "$DOMAIN_DEFAULT")"
+
         TRAEFIK_ROUTER=$(slugify "${APP_SLUG}-${ENV_NAME}")
         [ -n "$TRAEFIK_ROUTER" ] || TRAEFIK_ROUTER='app'
 
@@ -160,5 +185,6 @@ runs:
           echo "env_name_default=$ENV_NAME"
           echo "image_tag_default=$IMAGE_TAG"
           echo "domain_default=$DOMAIN_DEFAULT"
+          echo "domain_apex=$DOMAIN_APEX"
           echo "traefik_router=$TRAEFIK_ROUTER"
         } >> "$GITHUB_OUTPUT"

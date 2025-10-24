@@ -124,11 +124,6 @@ inputs:
   domain_prefix_dev:
     required: false
     default: 'api-dev'
-  vhost_mode:
-    required: false
-    default: 'mod_wsgi'
-  wsgi_script_path:
-    required: false
   require_dns_match:
     required: false
     default: 'true'
@@ -219,6 +214,9 @@ runs:
         prepare_host: ${{ inputs.prepare_host != '' && inputs.prepare_host || fromJSON(steps.params.outputs.json).prepare_host }}
         install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.params.outputs.json).install_podman }}
         create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.params.outputs.json).create_podman_user }}
+        install_traefik: ${{ inputs.install_traefik != '' && inputs.install_traefik || fromJSON(steps.params.outputs.json).install_traefik || 'true' }}
+        traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || fromJSON(steps.params.outputs.json).traefik_email }}
+        enable_traefik: ${{ inputs.enable_traefik != '' && inputs.enable_traefik || fromJSON(steps.params.outputs.json).enable_traefik || 'true' }}
         env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.params.outputs.json).additional_packages }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
@@ -241,15 +239,13 @@ runs:
         migrate_cmd: ${{ inputs.migrate_cmd != '' && inputs.migrate_cmd || fromJSON(steps.params.outputs.json).migrate_cmd }}
         extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
         memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit }}
-        manage_vhost: ${{ inputs.manage_vhost != '' && inputs.manage_vhost || fromJSON(steps.params.outputs.json).manage_vhost }}
-        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+        manage_vhost: 'false'
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain || steps.defaults.outputs.domain_default }}
         base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
-        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
-        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
-        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev }}
-        vhost_mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.params.outputs.json).vhost_mode }}
-        wsgi_script_path: ${{ inputs.wsgi_script_path != '' && inputs.wsgi_script_path || fromJSON(steps.params.outputs.json).wsgi_script_path }}
-        require_dns_match: ${{ inputs.require_dns_match != '' && inputs.require_dns_match || fromJSON(steps.params.outputs.json).require_dns_match }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod || steps.defaults.outputs.domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging || steps.defaults.outputs.domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
+        require_dns_match: ${{ inputs.require_dns_match != '' && inputs.require_dns_match || fromJSON(steps.params.outputs.json).require_dns_match || 'true' }}
 
     - name: ssh-django-deploy
       if: ${{ inputs.subaction == 'ssh-django-deploy' }}
@@ -421,10 +417,9 @@ runs:
         migrate_cmd: ${{ inputs.migrate_cmd != '' && inputs.migrate_cmd || fromJSON(steps.params.outputs.json).migrate_cmd }}
         extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
         memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit || steps.defaults.outputs.memory_limit }}
-        manage_vhost: ${{ inputs.manage_vhost != '' && inputs.manage_vhost || fromJSON(steps.params.outputs.json).manage_vhost }}
-        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+        manage_vhost: 'false'
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain || steps.defaults.outputs.domain_default }}
         base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
         domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod || steps.defaults.outputs.domain_prefix_prod }}
         domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging || steps.defaults.outputs.domain_prefix_staging }}
         domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
-        vhost_mode: ${{ inputs.vhost_mode != '' && inputs.vhost_mode || fromJSON(steps.params.outputs.json).vhost_mode || steps.defaults.outputs.vhost_mode }}

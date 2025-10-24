@@ -1,6 +1,11 @@
 name: 'app: deploy preflight'
 description: 'Common preflight for SSH-based Podman deployments (validation, optional host prep, env sync, registry login).'
 
+outputs:
+  traefik_email:
+    description: 'Resolved Traefik email used for setup.'
+    value: ${{ steps.validate.outputs.traefik_email_resolved }}
+
 inputs:
   ssh_host:
     description: 'SSH host'
@@ -50,6 +55,12 @@ inputs:
     description: "Email for Let's Encrypt certificates (required when install_traefik=true)"
     required: false
     default: ''
+  traefik_domain:
+    description: 'Full domain considered for Traefik routing (used to derive email).'
+    required: false
+  traefik_domain_apex:
+    description: 'Registrable apex domain (fallback for email derivation).'
+    required: false
   env_dir_path:
     description: 'Target environment directory path on host'
     required: false
@@ -101,6 +112,7 @@ runs:
   using: 'composite'
   steps:
     - name: Validate deploy inputs
+      id: validate
       shell: bash
       env:
         SSH_HOST: ${{ inputs.ssh_host }}
@@ -116,6 +128,8 @@ runs:
         REQUIRE_IMAGE: ${{ inputs.require_image_name }}
         INSTALL_TRAEFIK: ${{ inputs.install_traefik }}
         TRAEFIK_EMAIL: ${{ inputs.traefik_email }}
+        TRAEFIK_DOMAIN: ${{ inputs.traefik_domain }}
+        TRAEFIK_DOMAIN_APEX: ${{ inputs.traefik_domain_apex }}
       run: |
         set -euo pipefail
         if [ -z "$SSH_HOST" ]; then
@@ -146,10 +160,43 @@ runs:
             fi
             ;;
         esac
-        if [ "$INSTALL_TRAEFIK" = "true" ] && [ -z "$TRAEFIK_EMAIL" ]; then
-          echo 'Error: traefik_email is required when install_traefik=true' >&2
-          exit 1
+        RESOLVED_EMAIL="$TRAEFIK_EMAIL"
+
+        derive_apex() {
+          local fqdn="$1"
+          if [ -z "$fqdn" ]; then
+            echo ""
+            return
+          fi
+          local lower
+          lower=$(printf '%s' "$fqdn" | tr '[:upper:]' '[:lower:]')
+          local trimmed=${lower#www.}
+          IFS='.' read -r -a parts <<< "$trimmed"
+          local count=${#parts[@]}
+          if [ "$count" -le 2 ]; then
+            echo "$trimmed"
+          else
+            echo "${parts[count-2]}.${parts[count-1]}"
+          fi
+        }
+
+        if [ "$INSTALL_TRAEFIK" = "true" ]; then
+          if [ -z "$RESOLVED_EMAIL" ]; then
+            local apex="$TRAEFIK_DOMAIN_APEX"
+            if [ -z "$apex" ]; then
+              apex=$(derive_apex "$TRAEFIK_DOMAIN")
+            fi
+            if [ -n "$apex" ]; then
+              RESOLVED_EMAIL="traefik@${apex}"
+            fi
+          fi
+          if [ -z "$RESOLVED_EMAIL" ]; then
+            echo 'Error: traefik_email is required when install_traefik=true (provide traefik_email or domain).' >&2
+            exit 1
+          fi
         fi
+
+        printf 'traefik_email_resolved=%s\n' "$RESOLVED_EMAIL" >> "$GITHUB_OUTPUT"
 
     - name: Prepare host (optional)
       if: ${{ inputs.prepare_host == 'true' }}
@@ -168,7 +215,7 @@ runs:
         env_dir_path: ${{ inputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages }}
         install_traefik: ${{ inputs.install_traefik }}
-        traefik_email: ${{ inputs.traefik_email }}
+        traefik_email: ${{ steps.validate.outputs.traefik_email_resolved }}
 
     - name: Write env file (optional)
       if: ${{ inputs.write_env_file == 'true' }}
