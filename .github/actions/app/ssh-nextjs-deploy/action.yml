@@ -195,6 +195,7 @@ runs:
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || 'deployer' }}
         connect_mode: ${{ inputs.connect_mode }}
+        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}
         prepare_host: ${{ inputs.prepare_host }}
         install_podman: ${{ inputs.install_podman }}
         create_podman_user: ${{ inputs.create_podman_user }}
@@ -227,6 +228,7 @@ runs:
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
+        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
         source_env: ${{ inputs.source_env }}

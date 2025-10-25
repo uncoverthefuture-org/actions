@@ -5,6 +5,9 @@ outputs:
   traefik_email:
     description: 'Resolved Traefik email used for setup.'
     value: ${{ steps.validate.outputs.traefik_email_resolved }}
+  write_env_file_effective:
+    description: 'Whether the env file should be written based on inputs.'
+    value: ${{ steps.validate.outputs.write_env_file_effective }}
 
 inputs:
   ssh_host:
@@ -198,6 +201,13 @@ runs:
 
         printf 'traefik_email_resolved=%s\n' "$RESOLVED_EMAIL" >> "$GITHUB_OUTPUT"
 
+        # Decide if we should write the env file automatically
+        SHOULD_WRITE="false"
+        if [ "$WRITE_ENV_FILE" = "true" ] || [ -n "$ENV_B64" ] || [ -n "$ENV_CONTENT" ]; then
+          SHOULD_WRITE="true"
+        fi
+        printf 'write_env_file_effective=%s\n' "$SHOULD_WRITE" >> "$GITHUB_OUTPUT"
+
     - name: Prepare host (optional)
       if: ${{ inputs.prepare_host == 'true' }}
       uses: ./.github/actions/infra/prepare-ubuntu-host
@@ -218,7 +228,7 @@ runs:
         traefik_email: ${{ steps.validate.outputs.traefik_email_resolved }}
 
     - name: Write env file (optional)
-      if: ${{ inputs.write_env_file == 'true' }}
+      if: ${{ steps.validate.outputs.write_env_file_effective == 'true' }}
       uses: ./.github/actions/app/write-remote-env-file
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -231,6 +241,7 @@ runs:
         connect_mode: ${{ inputs.connect_mode }}
         env_name: ${{ inputs.env_name }}
         env_file_path: ${{ inputs.env_file_path }}
+        app_slug: ${{ inputs.app_slug }}
         env_b64: ${{ inputs.env_b64 }}
         env_content: ${{ inputs.env_content }}
 

@@ -134,3 +134,55 @@ runs:
             traefik:${{ inputs.traefik_version }}
 
           podman ps --filter name=traefik
+
+    - name: Traefik status summary
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        chmod 600 "$KEY_FILE"
+
+        run_remote() {
+          ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "$@"
+        }
+
+        TRAEFIK_PS="$(run_remote 'sudo podman ps --filter name=traefik --format "{{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}" || true')"
+        APACHE_STATE="$(run_remote 'systemctl is-active apache2 || true')"
+        NGINX_STATE="$(run_remote 'systemctl is-active nginx || true')"
+        PORTS_LISTEN="$(run_remote 'ss -ltnp | egrep ":80|:443" || true')"
+        TRAEFIK_LOGS="$(run_remote 'sudo podman logs traefik --tail=80 2>/dev/null | tail -n 80 || true')"
+
+        {
+          echo '# Traefik Setup Summary'
+          echo
+          echo '## Container'
+          echo
+          echo '```'
+          if [ -n "$TRAEFIK_PS" ]; then echo "$TRAEFIK_PS"; else echo '<not running>'; fi
+          echo '```'
+          echo
+          echo '## Ports (80/443 listeners)'
+          echo
+          echo '```'
+          if [ -n "$PORTS_LISTEN" ]; then echo "$PORTS_LISTEN"; else echo '<no listeners>'; fi
+          echo '```'
+          echo
+          echo '## Apache/Nginx status'
+          echo
+          echo "- Apache: ${APACHE_STATE:-unknown}"
+          echo "- Nginx: ${NGINX_STATE:-unknown}"
+          echo
+          echo '## Recent Traefik logs'
+          echo
+          echo '```'
+          if [ -n "$TRAEFIK_LOGS" ]; then echo "$TRAEFIK_LOGS"; else echo '<no logs>'; fi
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        rm -f "$KEY_FILE"

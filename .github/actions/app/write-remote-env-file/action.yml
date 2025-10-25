@@ -35,6 +35,9 @@ inputs:
   env_file_path:
     description: 'Base path to the environment file on the server (prefix); final path is ${env_file_path}${env_name}'
     required: false
+  app_slug:
+    description: 'Application slug; if omitted it will be derived from repo'
+    required: false
   env_b64:
     description: 'Base64-encoded contents of the .env file'
     required: false
@@ -73,13 +76,15 @@ runs:
         connect_mode: ${{ inputs.connect_mode }}
         env_name: ${{ inputs.env_name }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
+        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}
         source_env: 'false'
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
           ENV_BASE="${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}"
           ENV_NAME="${{ inputs.env_name }}"
-          ENV_DIR="${ENV_BASE%/}/$ENV_NAME"
+          APP_SLUG="${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}"
+          ENV_DIR="${ENV_BASE%/}/$ENV_NAME/$APP_SLUG"
           ENV_FILE="${ENV_DIR}/.env"
 
           mkdir -p "$ENV_DIR"
