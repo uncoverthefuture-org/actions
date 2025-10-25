@@ -136,6 +136,7 @@ runs:
           podman ps --filter name=traefik
 
     - name: Traefik status summary
+      if: always()
       shell: bash
       env:
         SSH_HOST: ${{ inputs.ssh_host }}
@@ -145,18 +146,28 @@ runs:
       run: |
         set -euo pipefail
         KEY_FILE="$(mktemp)"
-        printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        # Normalize newline-escaped keys to real newlines if needed
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          python3 - <<'PY' || true
+          import os
+          key=os.environ.get('SSH_KEY','')
+          fn=os.environ.get('KEY_FILE','/tmp/key')
+          open(fn,'w').write(key.replace('\\n','\n'))
+          PY
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
         chmod 600 "$KEY_FILE"
 
         run_remote() {
           ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "$@"
         }
 
-        TRAEFIK_PS="$(run_remote 'sudo podman ps --filter name=traefik --format "{{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}" || true')"
+        TRAEFIK_PS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman ps --filter name=traefik --format "{{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}" || true')"
         APACHE_STATE="$(run_remote 'systemctl is-active apache2 || true')"
         NGINX_STATE="$(run_remote 'systemctl is-active nginx || true')"
         PORTS_LISTEN="$(run_remote 'ss -ltnp | egrep ":80|:443" || true')"
-        TRAEFIK_LOGS="$(run_remote 'sudo podman logs traefik --tail=80 2>/dev/null | tail -n 80 || true')"
+        TRAEFIK_LOGS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman logs traefik --tail=80 2>/dev/null | tail -n 80 || true')"
 
         {
           echo '# Traefik Setup Summary'

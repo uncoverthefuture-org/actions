@@ -100,6 +100,9 @@ inputs:
     description: 'Whether to log in to the registry before pulling'
     required: false
     default: 'true'
+  app_slug:
+    description: 'Application slug used for default paths and names'
+    required: false
   image_name:
     description: 'Resolved image name'
     required: false
