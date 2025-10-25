@@ -1,5 +1,5 @@
 name: 'infra: setup-traefik'
-description: 'Install Traefik reverse proxy with automatic Let\'s Encrypt certificates via Podman.'
+description: 'Install Traefik reverse proxy with automatic Let''s Encrypt certificates via Podman.'
 
 inputs:
   ssh_host:
@@ -54,6 +54,10 @@ runs:
         inline_script: |
           set -euo pipefail
 
+          # Stop legacy reverse proxies to free ports 80/443
+          sudo systemctl stop apache2 nginx || true
+          sudo systemctl disable apache2 nginx || true
+
           sudo mkdir -p /etc/traefik
           sudo mkdir -p /var/lib/traefik
 
@@ -66,7 +70,8 @@ runs:
 
           providers:
             docker:
-              endpoint: "unix:///var/run/podman/podman.sock"
+              # Inside container we'll mount the host podman socket at /var/run/docker.sock
+              endpoint: "unix:///var/run/docker.sock"
               exposedByDefault: false
 
           certificatesResolvers:
@@ -91,23 +96,41 @@ runs:
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
+        connect_mode: root
         inline_script: |
           set -euo pipefail
 
-          if podman container exists traefik >/dev/null 2>&1; then
-            podman stop traefik >/dev/null 2>&1 || true
-            podman rm traefik >/dev/null 2>&1 || true
+          # Ensure legacy proxies are not competing for 80/443
+          systemctl stop apache2 nginx || true
+          systemctl disable apache2 nginx || true
+
+          # Determine the Podman socket to mount. Prefer the rootless socket of the podman_user
+          PUSER='${{ inputs.podman_user }}'
+          PUID=$(id -u "$PUSER" 2>/dev/null || echo 1000)
+          # Ensure the user's Podman API socket is running so Traefik can discover rootless containers
+          loginctl enable-linger "$PUSER" || true
+          runuser -l "$PUSER" -c "XDG_RUNTIME_DIR=/run/user/$PUID systemctl --user enable --now podman.socket" || true
+          USER_RUNTIME_DIR="/run/user/$PUID"
+          SOCK_USER="$USER_RUNTIME_DIR/podman/podman.sock"
+          SOCK_ROOT="/var/run/podman/podman.sock"
+          if [ -S "$SOCK_USER" ]; then
+            HOST_SOCK="$SOCK_USER"
+          else
+            HOST_SOCK="$SOCK_ROOT"
           fi
+
+          # Restart Traefik
+          podman container exists traefik >/dev/null 2>&1 && podman stop traefik >/dev/null 2>&1 || true
+          podman container exists traefik >/dev/null 2>&1 && podman rm traefik >/dev/null 2>&1 || true
 
           podman run -d \
             --name traefik \
-            --restart always \
+            --restart unless-stopped \
             -p 80:80 \
             -p 443:443 \
             -v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro \
             -v /var/lib/traefik/acme.json:/letsencrypt/acme.json \
-            -v /var/run/podman/podman.sock:/var/run/docker.sock \
+            -v "$HOST_SOCK":/var/run/docker.sock \
             traefik:${{ inputs.traefik_version }}
 
           podman ps --filter name=traefik
