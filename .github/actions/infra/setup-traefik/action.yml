@@ -55,8 +55,8 @@ runs:
           set -euo pipefail
 
           # Stop legacy reverse proxies to free ports 80/443
-          sudo systemctl stop apache2 nginx || true
-          sudo systemctl disable apache2 nginx || true
+          sudo systemctl stop apache2 nginx >/dev/null 2>&1 || true
+          sudo systemctl disable apache2 nginx >/dev/null 2>&1 || true
 
           sudo mkdir -p /etc/traefik
           sudo mkdir -p /var/lib/traefik
@@ -101,8 +101,8 @@ runs:
           set -euo pipefail
 
           # Ensure legacy proxies are not competing for 80/443
-          systemctl stop apache2 nginx || true
-          systemctl disable apache2 nginx || true
+          systemctl stop apache2 nginx >/dev/null 2>&1 || true
+          systemctl disable apache2 nginx >/dev/null 2>&1 || true
 
           # Determine the Podman socket to mount. Prefer the rootless socket of the podman_user
           PUSER='${{ inputs.podman_user }}'
@@ -181,9 +181,9 @@ runs:
 
         # Generate GitHub step summary with formatted output
         cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
-        # 🚀 Traefik Setup Summary
+        ### 🚀 Traefik Setup Summary
         
-        ## ✅ Container Status
+        #### ✅ Container Status
         
         ```
         SUMMARY_EOF
@@ -197,7 +197,7 @@ runs:
         cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
         ```
         
-        ## 📊 Container Resource Usage
+        #### 📊 Container Resource Usage
         
         ```
         SUMMARY_EOF
@@ -211,7 +211,7 @@ runs:
         cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
         ```
         
-        ## 🔌 Network Ports (80/443)
+        #### 🔌 Network Ports (80/443)
         
         ```
         SUMMARY_EOF
@@ -225,7 +225,7 @@ runs:
         cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
         ```
         
-        ## 🛑 Legacy Proxies (Apache/Nginx)
+        #### 🛑 Legacy Proxies (Apache/Nginx)
         
         | Service | Status |
         |---------|--------|
@@ -241,7 +241,7 @@ runs:
         
         cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
         
-        ## 📋 Recent Traefik Logs (Last 50 lines)
+        #### 📋 Recent Traefik Logs (Last 50 lines)
         
         ```log
         SUMMARY_EOF
