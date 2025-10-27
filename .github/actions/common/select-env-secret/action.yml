@@ -84,6 +84,9 @@ runs:
 
         prefix="${SECRET_PREFIX}"
         suffix="${SECRET_SUFFIX}"
+        
+        # Only apply default prefix if BOTH prefix and suffix are empty
+        # This allows explicit suffix-only naming (e.g., PROD_ENV_B64 with prefix='' suffix='_ENV_B64')
         if [ -z "${prefix}" ] && [ -z "${suffix}" ]; then
           prefix='ENV_B64_'
         fi
