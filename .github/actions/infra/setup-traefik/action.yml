@@ -131,7 +131,7 @@ runs:
             -v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro \
             -v /var/lib/traefik/acme.json:/letsencrypt/acme.json \
             -v "$HOST_SOCK":/var/run/docker.sock \
-            traefik:${{ inputs.traefik_version }}
+            docker.io/traefik:${{ inputs.traefik_version }}
 
           podman ps --filter name=traefik
 
