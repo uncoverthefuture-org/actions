@@ -123,7 +123,7 @@ runs:
           podman container exists traefik >/dev/null 2>&1 && podman stop traefik >/dev/null 2>&1 || true
           podman container exists traefik >/dev/null 2>&1 && podman rm traefik >/dev/null 2>&1 || true
 
-          podman run -d \
+          if ! podman run -d \
             --name traefik \
             --restart unless-stopped \
             -p 80:80 \
@@ -131,8 +131,13 @@ runs:
             -v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro \
             -v /var/lib/traefik/acme.json:/letsencrypt/acme.json \
             -v "$HOST_SOCK":/var/run/docker.sock \
-            docker.io/traefik:${{ inputs.traefik_version }}
+            docker.io/traefik:${{ inputs.traefik_version }}; then
+            echo "::error::Failed to start Traefik container" >&2
+            podman logs traefik 2>&1 || echo "No logs available"
+            exit 1
+          fi
 
+          echo "✅ Traefik container started successfully"
           podman ps --filter name=traefik
 
     - name: Traefik status summary
