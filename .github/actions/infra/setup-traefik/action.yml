@@ -148,12 +148,12 @@ runs:
         KEY_FILE="$(mktemp)"
         # Normalize newline-escaped keys to real newlines if needed
         if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
-          python3 - <<'PY' || true
+          python3 << 'PYTHON_EOF' || true
           import os
           key=os.environ.get('SSH_KEY','')
           fn=os.environ.get('KEY_FILE','/tmp/key')
           open(fn,'w').write(key.replace('\\n','\n'))
-          PY
+          PYTHON_EOF
         else
           printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
         fi
@@ -163,37 +163,75 @@ runs:
           ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "$@"
         }
 
-        TRAEFIK_PS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman ps --filter name=traefik --format "{{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}" || true')"
-        APACHE_STATE="$(run_remote 'systemctl is-active apache2 || true')"
-        NGINX_STATE="$(run_remote 'systemctl is-active nginx || true')"
-        PORTS_LISTEN="$(run_remote 'ss -ltnp | egrep ":80|:443" || true')"
-        TRAEFIK_LOGS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman logs traefik --tail=80 2>/dev/null | tail -n 80 || true')"
+        # Fetch Traefik container status
+        TRAEFIK_PS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman ps --filter name=traefik --format "table {{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}" || echo "podman not available"' 2>/dev/null || true)"
+        
+        # Fetch Traefik container stats (CPU, memory, I/O)
+        TRAEFIK_STATS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman stats traefik --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}" 2>/dev/null || echo "stats unavailable"' 2>/dev/null || true)"
+        
+        # Fetch recent Traefik logs (last 50 lines)
+        TRAEFIK_LOGS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman logs traefik --tail=50 2>/dev/null || echo "logs unavailable"' 2>/dev/null || true)"
+        
+        # Fetch port listeners
+        PORTS_LISTEN="$(run_remote 'ss -ltnp 2>/dev/null | grep -E ":80|:443" || echo "no listeners"' 2>/dev/null || true)"
+        
+        # Fetch legacy proxy status
+        APACHE_STATE="$(run_remote 'systemctl is-active apache2 2>/dev/null || echo "inactive"' 2>/dev/null || true)"
+        NGINX_STATE="$(run_remote 'systemctl is-active nginx 2>/dev/null || echo "inactive"' 2>/dev/null || true)"
 
+        # Generate GitHub step summary with formatted output
         {
-          echo '# Traefik Setup Summary'
+          echo "# 🚀 Traefik Setup Summary"
           echo
-          echo '## Container'
+          echo "## ✅ Container Status"
           echo
-          echo '```'
-          if [ -n "$TRAEFIK_PS" ]; then echo "$TRAEFIK_PS"; else echo '<not running>'; fi
-          echo '```'
+          echo "\`\`\`"
+          if [ -n "$TRAEFIK_PS" ]; then 
+            echo "$TRAEFIK_PS"
+          else 
+            echo "⚠️  Container status unavailable"
+          fi
+          echo "\`\`\`"
           echo
-          echo '## Ports (80/443 listeners)'
+          echo "## 📊 Container Resource Usage"
           echo
-          echo '```'
-          if [ -n "$PORTS_LISTEN" ]; then echo "$PORTS_LISTEN"; else echo '<no listeners>'; fi
-          echo '```'
+          echo "\`\`\`"
+          if [ -n "$TRAEFIK_STATS" ]; then 
+            echo "$TRAEFIK_STATS"
+          else 
+            echo "⚠️  Stats unavailable"
+          fi
+          echo "\`\`\`"
           echo
-          echo '## Apache/Nginx status'
+          echo "## 🔌 Network Ports (80/443)"
           echo
-          echo "- Apache: ${APACHE_STATE:-unknown}"
-          echo "- Nginx: ${NGINX_STATE:-unknown}"
+          echo "\`\`\`"
+          if [ -n "$PORTS_LISTEN" ]; then 
+            echo "$PORTS_LISTEN"
+          else 
+            echo "⚠️  No listeners on 80/443"
+          fi
+          echo "\`\`\`"
           echo
-          echo '## Recent Traefik logs'
+          echo "## 🛑 Legacy Proxies (Apache/Nginx)"
           echo
-          echo '```'
-          if [ -n "$TRAEFIK_LOGS" ]; then echo "$TRAEFIK_LOGS"; else echo '<no logs>'; fi
-          echo '```'
+          echo "| Service | Status |"
+          echo "|---------|--------|"
+          echo "| Apache  | \`${APACHE_STATE:-unknown}\` |"
+          echo "| Nginx   | \`${NGINX_STATE:-unknown}\` |"
+          echo
+          echo "## 📋 Recent Traefik Logs (Last 50 lines)"
+          echo
+          echo "\`\`\`log"
+          if [ -n "$TRAEFIK_LOGS" ]; then 
+            echo "$TRAEFIK_LOGS" | head -50
+          else 
+            echo "⚠️  Logs unavailable"
+          fi
+          echo "\`\`\`"
+          echo
+          echo "---"
+          echo "**Generated at:** \`$(date -u +'%Y-%m-%d %H:%M:%S UTC')\`"
         } >> "$GITHUB_STEP_SUMMARY"
 
         rm -f "$KEY_FILE"
