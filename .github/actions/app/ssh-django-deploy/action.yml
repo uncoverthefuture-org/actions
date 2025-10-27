@@ -1,275 +1,356 @@
+# ============================================================================
+# ACTION: SSH Django Deploy
+# ============================================================================
+# PURPOSE:
+# Deploys a Django API application to a remote server via SSH using Podman.
+# Handles server preparation, environment configuration, database setup, and
+# background workers/schedulers.
+#
+# WHAT IT DOES:
+# 1. Optionally prepares a fresh Ubuntu host (Podman, Traefik, directories)
+# 2. Writes environment file to remote server
+# 3. Logs in to container registry and pulls image
+# 4. Runs Django migrations
+# 5. Starts Django container with Traefik routing
+# 6. Optionally starts database, worker, and scheduler containers
+#
+# WHEN TO USE:
+# - Deploy Django API applications
+# - Deploy to production, staging, or development environments
+# - First deployment to a new server (set prepare_host: true)
+# - Subsequent deployments (prepare_host: false)
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'SSH Django Deploy'
 description: 'Optionally prepare a fresh Ubuntu host, upload env, and deploy a Django container via Podman over SSH with Traefik routing support.'
 
+# ============================================================================
+# INPUTS - Organized by category
+# ============================================================================
 inputs:
-  # SSH / remote execution
+  # ========================================================================
+  # SSH / REMOTE EXECUTION
+  # ========================================================================
+  # Parameters for SSH connection to the remote server
   ssh_host:
-    description: 'SSH host'
+    description: 'SSH host (IP or hostname). Required. Example: 192.168.1.100 or deploy.example.com'
     required: true
   ssh_user:
-    description: 'SSH username (non-root)'
+    description: 'SSH username (non-root). Default: root. Use for non-root user deployments'
     required: false
     default: 'root'
   ssh_key:
-    description: 'SSH private key for non-root user'
+    description: 'SSH private key for authentication. Required. Should be stored as GitHub secret'
     required: true
   root_ssh_key:
-    description: 'SSH private key for root (optional)'
+    description: 'SSH private key for root (optional). Use if ssh_user is non-root but root access needed'
     required: false
   ssh_port:
-    description: 'SSH port'
+    description: 'SSH port. Default: 22. Change if using non-standard SSH port'
     required: false
     default: '22'
   ssh_fingerprint:
-    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
   podman_user:
-    description: 'User on remote host to execute podman commands as'
+    description: 'User on remote host to execute podman commands as. Default: deployer'
     required: false
     default: 'deployer'
   connect_mode:
-    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md for details"
     required: false
     default: 'auto'
 
-  # Prepare host (optional)
+  # ========================================================================
+  # HOST PREPARATION (OPTIONAL)
+  # ========================================================================
+  # Parameters for preparing a fresh Ubuntu host. Set prepare_host=true on first deployment
   prepare_host:
-    description: 'Install Podman and prepare directories/users on a fresh Ubuntu host'
+    description: 'Install Podman and prepare directories/users on a fresh Ubuntu host. Default: false'
     required: false
     default: 'false'
   install_podman:
-    description: 'Install Podman when preparing host'
+    description: 'Install Podman when preparing host. Default: true'
     required: false
     default: 'true'
   create_podman_user:
-    description: 'Create podman_user if it does not exist during preparation'
+    description: 'Create podman_user if it does not exist during preparation. Default: false'
     required: false
     default: 'false'
   install_traefik:
-    description: 'Install Traefik when prepare_host runs'
+    description: 'Install Traefik when prepare_host runs. Default: true. Provides automatic HTTPS with Let''s Encrypt'
     required: false
     default: 'true'
   traefik_email:
-    description: "Email used for Traefik Let's Encrypt resolver (required if install_traefik=true)"
+    description: "Email for Traefik Let's Encrypt resolver. Required if install_traefik=true. Example: admin@example.com"
     required: false
   enable_traefik:
-    description: 'Attach Traefik routing labels when a domain is available'
+    description: 'Attach Traefik routing labels when a domain is available. Default: true'
     required: false
     default: 'true'
   env_dir_path:
-    description: 'Directory to hold env files and app data on the server'
+    description: 'Directory to hold env files and app data on the server. Default: /var/deployments'
     required: false
   additional_packages:
-    description: 'Space-separated additional apt packages for host preparation'
+    description: 'Space-separated additional apt packages for host preparation. Default: jq curl ca-certificates'
     required: false
     default: 'jq curl ca-certificates'
 
-  # Environment file
+  # ========================================================================
+  # ENVIRONMENT CONFIGURATION
+  # ========================================================================
+  # Parameters for environment file management and detection
   env_name:
-    description: 'Environment name used to build container and env file path'
+    description: 'Environment name (production, staging, development). Auto-detected from branch if not provided'
     required: false
   auto_detect_env:
-    description: 'Auto-detect environment name from branch when true'
+    description: 'Auto-detect environment name from branch when true. Default: true. See docs/ARCHITECTURE.md for rules'
     required: false
     default: 'true'
   env_file_path:
-    description: 'Base directory on the server; the final file is <env_file_path>/<env_name>/.env'
+    description: 'Base directory on the server for env files. Final path: <env_file_path>/<env_name>/.env. Default: /var/deployments'
     required: false
   write_env_file:
-    description: 'If true, write the env file on the server before deploy'
+    description: 'Write the env file on the server before deploy. Default: false. Set true to upload .env'
     required: false
     default: 'false'
   env_b64:
-    description: 'Base64-encoded contents of the .env file to write on the server'
+    description: 'Base64-encoded contents of the .env file. Create with: cat .env | base64'
     required: false
   env_content:
-    description: 'Raw contents of the .env file to write on the server (use env_b64 instead when possible)'
+    description: 'Raw contents of the .env file. Use env_b64 instead when possible for security'
     required: false
 
-  # Image/registry
+  # ========================================================================
+  # CONTAINER REGISTRY
+  # ========================================================================
+  # Parameters for Docker image registry and authentication
   registry:
-    description: 'Container registry hostname'
+    description: 'Container registry hostname. Default: ghcr.io (GitHub Container Registry)'
     required: false
     default: 'ghcr.io'
   image_name:
-    description: 'Image name (e.g., org/app)'
+    description: 'Docker image name in org/repo format. Required. Example: myorg/myapp'
     required: true
   image_tag:
-    description: 'Image tag to deploy'
+    description: 'Docker image tag to deploy. Auto-generated from commit SHA if not provided'
     required: false
   registry_username:
-    description: 'Registry username (for ghcr.io use your GH username)'
+    description: 'Registry username. For ghcr.io use your GitHub username'
     required: false
   registry_token:
-    description: 'Registry token/password (for ghcr.io can be a PAT or GitHub token with package:write)'
+    description: 'Registry token/password. For ghcr.io can be PAT or GitHub token with package:write scope'
     required: false
   registry_login:
-    description: 'Log in to registry before pulling image'
+    description: 'Log in to registry before pulling image. Default: true'
     required: false
     default: 'true'
 
-  # Runtime
+  # ========================================================================
+  # CONTAINER RUNTIME
+  # ========================================================================
+  # Parameters for container execution and configuration
   app_slug:
-    description: 'Slug used in default container name'
+    description: 'Slug used in default container name. Auto-derived from image_name if not provided'
     required: false
   container_name:
-    description: 'Override container name (defaults to ${app_slug}-${env_name})'
+    description: 'Override container name. Default: ${app_slug}-${env_name}. Example: myapp-production'
     required: false
   host_port:
-    description: 'Override host port (default is derived from env file: API_HOST_PORT or PORT, else 8000)'
+    description: 'Override host port. Default: from env file (API_HOST_PORT or PORT) or 8000'
     required: false
   container_port:
-    description: 'Override container port (default derived from env file: API_CONTAINER_PORT or TARGET_PORT, else 8000)'
+    description: 'Override container port. Default: from env file (API_CONTAINER_PORT or TARGET_PORT) or 8000'
     required: false
   restart_policy:
-    description: 'Container restart policy'
+    description: 'Container restart policy. Default: unless-stopped. Options: no, always, on-failure, unless-stopped'
     required: false
     default: 'unless-stopped'
   migrate:
-    description: 'Run Django migrations before starting the container'
+    description: 'Run Django migrations before starting container. Default: true'
     required: false
     default: 'true'
   migrate_cmd:
-    description: 'Command to run migrations'
+    description: 'Command to run migrations. Default: python manage.py migrate --noinput'
     required: false
     default: 'python manage.py migrate --noinput'
   extra_run_args:
-    description: 'Additional args passed to podman run'
+    description: 'Additional arguments passed to podman run. Example: --cap-add NET_ADMIN'
     required: false
   memory_limit:
-    description: 'Container memory limit, e.g., 512m'
+    description: 'Container memory limit. Default: 512m. Examples: 256m, 1g, 2g'
     required: false
     default: '512m'
 
-  # Env sourcing for deployment
+  # ========================================================================
+  # ENVIRONMENT SOURCING
+  # ========================================================================
+  # Parameters for environment file handling during deployment
   source_env:
-    description: 'Source ENV_FILE prior to deploy commands'
+    description: 'Source ENV_FILE prior to deploy commands. Default: true'
     required: false
     default: 'true'
   fail_if_env_missing:
-    description: 'Fail if source_env is true and env file is missing'
+    description: 'Fail if source_env is true and env file is missing. Default: true'
     required: false
     default: 'true'
 
-  # Apache vhost management (optional)
+  # ========================================================================
+  # DOMAIN & ROUTING (TRAEFIK)
+  # ========================================================================
+  # Parameters for domain configuration and Traefik routing
   manage_vhost:
-    description: '[Deprecated] Apache vhost management is disabled in favor of Traefik'
+    description: '[Deprecated] Apache vhost management. Use Traefik instead. Default: false'
     required: false
     default: 'false'
   domain:
-    description: 'Full domain to configure (optional)'
+    description: 'Full domain to configure. Example: api.example.com. Overrides base_domain + prefix'
     required: false
   base_domain:
-    description: 'Base domain used to compute domain if domain is not provided'
+    description: 'Base domain used to compute domain. Example: example.com. Combined with prefix to create full domain'
     required: false
   domain_prefix_prod:
-    description: 'Domain prefix for production/main env'
+    description: 'Domain prefix for production environment. Default: api. Results in: api.example.com'
     required: false
     default: 'api'
   domain_prefix_staging:
-    description: 'Domain prefix for staging env'
+    description: 'Domain prefix for staging environment. Default: api-staging. Results in: api-staging.example.com'
     required: false
     default: 'api-staging'
   domain_prefix_dev:
-    description: 'Domain prefix for dev env'
+    description: 'Domain prefix for development environment. Default: api-dev. Results in: api-dev.example.com'
     required: false
     default: 'api-dev'
   vhost_mode:
-    description: "VHost mode: 'reverse_proxy' (default) or 'mod_wsgi'"
+    description: "[Deprecated] VHost mode: 'reverse_proxy' or 'mod_wsgi'. Default: mod_wsgi. Use Traefik instead"
     required: false
     default: 'mod_wsgi'
   wsgi_script_path:
-    description: 'Path to wsgi.py on server when vhost_mode=mod_wsgi'
+    description: '[Deprecated] Path to wsgi.py on server when vhost_mode=mod_wsgi'
     required: false
   require_dns_match:
-    description: 'Require domain A-record match to server public IP before applying changes'
+    description: '[Deprecated] Require domain A-record match to server public IP. Default: true'
     required: false
     default: 'true'
 
-  # Optional DB container
+  # ========================================================================
+  # DATABASE CONTAINER (OPTIONAL)
+  # ========================================================================
+  # Parameters for optional database container (PostgreSQL or MySQL)
   run_db:
-    description: 'Run a database container before deploying the API'
+    description: 'Run a database container before deploying the API. Default: false'
     required: false
     default: 'false'
   db_type:
-    description: "Database type: 'postgres' or 'mysql'"
+    description: "Database type: 'postgres' or 'mysql'. Default: mysql"
     required: false
     default: 'mysql'
   db_service_name:
-    description: 'Container name for DB service (default: db-<app_slug>-<env_name>)'
+    description: 'Container name for DB service. Default: db-<app_slug>-<env_name>'
     required: false
   db_name:
-    description: 'Database name'
+    description: 'Database name. Example: myapp_db'
     required: false
   db_user:
-    description: 'Database user'
+    description: 'Database user. Example: myapp'
     required: false
   db_password:
-    description: 'Database password'
+    description: 'Database password. Should be stored as GitHub secret'
     required: false
   db_root_password:
-    description: 'Root password (MySQL only)'
+    description: 'Root password (MySQL only). Should be stored as GitHub secret'
     required: false
   db_host_port:
-    description: 'Host port to expose DB (optional)'
+    description: 'Host port to expose DB (optional). Example: 5432'
     required: false
   db_data_volume:
-    description: 'Podman volume name or host path for DB data'
+    description: 'Podman volume name or host path for DB data. Example: myapp-db-data'
     required: false
   db_image_tag:
-    description: 'DB image tag (postgres default 16, mysql default 8)'
+    description: 'DB image tag. Default: postgres 16, mysql 8. Example: 15 or 5.7'
     required: false
   db_memory_limit:
-    description: 'DB memory limit, e.g., 512m'
+    description: 'DB memory limit. Default: 512m. Examples: 256m, 1g'
     required: false
     default: '512m'
 
-  # Optional worker and scheduler services
+  # ========================================================================
+  # BACKGROUND WORKER (OPTIONAL)
+  # ========================================================================
+  # Parameters for optional background worker container (e.g., Celery)
   run_worker:
-    description: 'Run a background worker container'
+    description: 'Run a background worker container. Default: false. Example: Celery worker'
     required: false
     default: 'false'
   worker_service_name:
-    description: 'Worker container name (default: worker-<app_slug>-<env_name>)'
+    description: 'Worker container name. Default: worker-<app_slug>-<env_name>'
     required: false
   worker_command:
-    description: 'Worker command to run inside the app image (e.g., celery -A app worker -l info)'
+    description: 'Worker command to run inside the app image. Example: celery -A app worker -l info'
     required: false
   worker_image:
-    description: 'Alternate image for worker (defaults to API image)'
+    description: 'Alternate image for worker. Default: uses API image'
     required: false
   worker_memory_limit:
-    description: 'Worker memory limit, e.g., 512m'
+    description: 'Worker memory limit. Default: 512m'
     required: false
     default: '512m'
   worker_volumes:
     description: 'Newline-separated list of volumes for the worker container'
     required: false
 
+  # ========================================================================
+  # SCHEDULER/CRON (OPTIONAL)
+  # ========================================================================
+  # Parameters for optional scheduler container (e.g., Celery Beat)
   run_scheduler:
-    description: 'Run a scheduler/cron container'
+    description: 'Run a scheduler/cron container. Default: false. Example: Celery Beat'
     required: false
     default: 'false'
   scheduler_service_name:
-    description: 'Scheduler container name (default: scheduler-<app_slug>-<env_name>)'
+    description: 'Scheduler container name. Default: scheduler-<app_slug>-<env_name>'
     required: false
   scheduler_command:
-    description: 'Scheduler command to run inside the app image (e.g., celery -A app beat -l info)'
+    description: 'Scheduler command to run inside the app image. Example: celery -A app beat -l info'
     required: false
   scheduler_image:
-    description: 'Alternate image for scheduler (defaults to API image)'
+    description: 'Alternate image for scheduler. Default: uses API image'
     required: false
   scheduler_memory_limit:
-    description: 'Scheduler memory limit, e.g., 512m'
+    description: 'Scheduler memory limit. Default: 512m'
     required: false
     default: '512m'
   scheduler_volumes:
     description: 'Newline-separated list of volumes for the scheduler container'
     required: false
 
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
+# The deployment follows these steps:
+# 1. Compute defaults - Calculate derived values (env_name, domain, etc.)
+# 2. Validate inputs - Check required parameters
+# 3. Prepare host (optional) - Install Podman, Traefik, create directories
+# 4. Write env file (optional) - Upload .env to remote server
+# 5. Login and pull image - Authenticate with registry and pull Docker image
+# 6. Deploy Django App - Run migrations and start container
+# 7. Run worker (optional) - Start background worker if enabled
+# 8. Run scheduler (optional) - Start scheduler if enabled
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for detailed step explanations
+# ============================================================================
+
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Compute derived defaults
+    # ========================================================================
+    # Calculates values that are derived from inputs (env_name, domain, etc.)
+    # This step runs before validation to provide defaults for validation
+    # ========================================================================
     - name: Compute derived defaults
       id: dfl
       uses: ./.github/actions/app/common/compute-defaults

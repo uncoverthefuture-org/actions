@@ -1,23 +1,54 @@
+# ============================================================================
+# ACTION: Select Environment Secret
+# ============================================================================
+# PURPOSE:
+# Resolves environment-specific secrets using naming conventions.
+# Retrieves base64-encoded environment files from GitHub secrets.
+#
+# WHAT IT DOES:
+# 1. Constructs secret name from prefix, env name, and suffix
+# 2. Retrieves secret from GitHub Actions secrets
+# 3. Returns secret value and metadata
+# 4. Optionally fails if secret is missing
+#
+# WHEN TO USE:
+# - Retrieve environment-specific secrets
+# - Load environment files
+# - Part of deployment pipeline
+#
+# NAMING CONVENTION:
+# <prefix><UPPERCASE env_name><suffix>
+# Example: PROD_ENV_B64, STAGING_ENV_B64, DEV_ENV_B64
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'common: select-env-secret'
 description: 'Resolve an environment-specific base64 secret using a naming convention (e.g., ENV_B64_PROD)'
 
+# ============================================================================
+# INPUTS
+# ============================================================================
 inputs:
   env_name:
-    description: 'Environment name (e.g., prod, staging, dev)'
+    description: 'Environment name. Required. Example: prod, staging, dev'
     required: true
   secret_prefix:
-    description: "Secret name prefix. Final secret is <prefix><UPPERCASE env name>."
+    description: "Secret name prefix. Default: empty. Final secret: <prefix><UPPERCASE env_name><suffix>"
     required: false
     default: ''
   secret_suffix:
-    description: "Secret name suffix appended after the upper-cased env name."
+    description: "Secret name suffix. Default: _ENV_B64. Final secret: <prefix><UPPERCASE env_name><suffix>"
     required: false
     default: '_ENV_B64'
   required:
-    description: 'Set to true to fail when the resolved secret is empty/missing'
+    description: 'Fail if secret is missing/empty. Default: false. Set true to require secret'
     required: false
     default: 'false'
 
+# ============================================================================
+# OUTPUTS
+# ============================================================================
 outputs:
   env_b64:
     description: 'Resolved base64-encoded secret value (may be empty when not required)'

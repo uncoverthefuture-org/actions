@@ -1,72 +1,135 @@
+# ============================================================================
+# ACTION: Podman Run Service
+# ============================================================================
+# PURPOSE:
+# Runs a long-lived container service on a remote host via Podman over SSH.
+# Used for background workers, schedulers, databases, and other services.
+#
+# WHAT IT DOES:
+# 1. Validates all required inputs
+# 2. Connects to remote server via SSH
+# 3. Starts container with specified image and command
+# 4. Configures restart policy, memory limits, volumes
+# 5. Optionally publishes ports
+#
+# WHEN TO USE:
+# - Run background worker containers (Celery, etc.)
+# - Run scheduler containers (Celery Beat, etc.)
+# - Run database containers (PostgreSQL, MySQL, etc.)
+# - Run any long-lived service container
+#
+# EXAMPLES:
+# - Background worker: celery -A app worker -l info
+# - Scheduler: celery -A app beat -l info
+# - Database: PostgreSQL or MySQL container
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'Podman Run Service'
 description: 'Runs a long-lived container (service) via Podman on a remote host with optional memory limit and env file.'
 
+# ============================================================================
+# INPUTS - Organized by category
+# ============================================================================
 inputs:
+  # ========================================================================
+  # SSH / REMOTE EXECUTION
+  # ========================================================================
   ssh_host:
-    description: 'SSH host'
+    description: 'SSH host (IP or hostname). Required. Example: 192.168.1.100'
     required: true
   ssh_user:
-    description: 'SSH username (non-root)'
+    description: 'SSH username (non-root). Required. Used for authentication'
     required: true
   ssh_key:
-    description: 'SSH private key for non-root user'
+    description: 'SSH private key for authentication. Required. Should be stored as GitHub secret'
     required: true
   root_ssh_key:
-    description: 'SSH private key for root (optional)'
+    description: 'SSH private key for root (optional). Use if ssh_user cannot escalate to root'
     required: false
   ssh_port:
-    description: 'SSH port'
+    description: 'SSH port. Default: 22. Change if using non-standard SSH port'
     required: false
     default: '22'
   ssh_fingerprint:
-    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
   podman_user:
-    description: 'User on remote host to execute podman commands as'
+    description: 'User on remote host to execute podman commands as. Default: deployer'
     required: false
     default: 'deployer'
   connect_mode:
-    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md"
     required: false
     default: 'auto'
 
-  # Container runtime
+  # ========================================================================
+  # CONTAINER CONFIGURATION
+  # ========================================================================
   service_name:
-    description: 'Container name for the service'
+    description: 'Container name for the service. Required. Example: myapp-worker or db-postgres'
     required: true
   image:
-    description: 'Container image to run'
+    description: 'Docker image to run. Required. Example: ghcr.io/myorg/myapp:v1.0.0'
     required: true
-  env_file:
-    description: 'Path to env file on remote host'
-    required: false
   command:
-    description: 'Command to run in container'
+    description: 'Command to run in container. Optional. Example: celery -A app worker -l info'
     required: false
+  env_file:
+    description: 'Path to .env file on remote host. Optional. Example: /var/deployments/production/myapp/.env'
+    required: false
+
+  # ========================================================================
+  # PORT PUBLISHING
+  # ========================================================================
   host_port:
-    description: 'Host port to publish (optional)'
+    description: 'Host port to publish. Optional. Example: 5432 for database'
     required: false
   container_port:
-    description: 'Container port (used with host_port)'
+    description: 'Container port (used with host_port). Optional. Example: 5432'
     required: false
+
+  # ========================================================================
+  # CONTAINER RUNTIME OPTIONS
+  # ========================================================================
   restart_policy:
-    description: 'Restart policy'
+    description: 'Restart policy. Default: unless-stopped. Options: no, always, on-failure, unless-stopped'
     required: false
     default: 'unless-stopped'
   memory_limit:
-    description: 'Memory limit, e.g., 512m (applies to container)'
+    description: 'Memory limit for container. Default: 512m. Examples: 256m, 1g, 2g'
     required: false
     default: '512m'
   extra_run_args:
-    description: 'Additional podman run args'
+    description: 'Additional podman run arguments. Optional. Example: --cap-add NET_ADMIN'
     required: false
+
+  # ========================================================================
+  # STORAGE CONFIGURATION
+  # ========================================================================
   volumes:
-    description: 'Newline-separated list of volume/Mount specs (e.g., myvol:/var/lib/data or /host:/container)'
+    description: 'Newline-separated list of volume/mount specs. Optional. Examples: myvol:/data or /host:/container'
     required: false
+
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
+# The service startup follows these steps:
+# 1. Validate inputs - Check required parameters
+# 2. Run service - Start container on remote host
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for detailed step explanations
+# ============================================================================
 
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Validate inputs
+    # ========================================================================
+    # Checks that all required parameters are provided
+    # ========================================================================
     - name: Validate inputs
       run: |
         set -euo pipefail

@@ -1,8 +1,36 @@
+# ============================================================================
+# ACTION: SSH Next.js Deploy
+# ============================================================================
+# PURPOSE:
+# Deploys a Next.js application to a remote server via SSH using Podman.
+# Optimized for static and server-side rendered Next.js applications.
+#
+# WHAT IT DOES:
+# 1. Optionally prepares a fresh Ubuntu host (Podman, Traefik, directories)
+# 2. Writes environment file to remote server
+# 3. Logs in to container registry and pulls image
+# 4. Starts Next.js container with Traefik routing
+# 5. Optionally starts database container
+#
+# WHEN TO USE:
+# - Deploy Next.js applications (SSR, SSG, or hybrid)
+# - Deploy to production, staging, or development environments
+# - First deployment to a new server (set prepare_host: true)
+# - Subsequent deployments (prepare_host: false)
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'SSH Next.js Deploy'
 description: 'Upload env (optional) and deploy a Next.js container via Podman over SSH with Traefik routing support.'
 
+# ============================================================================
+# INPUTS - Organized by category
+# ============================================================================
 inputs:
-  # SSH / remote execution
+  # ========================================================================
+  # SSH / REMOTE EXECUTION
+  # ========================================================================
   ssh_host:
     description: 'SSH host'
     required: true
@@ -63,6 +91,12 @@ inputs:
     description: 'Space-separated additional apt packages for host preparation'
     required: false
     default: 'jq curl ca-certificates'
+
+  # Firewall
+  ufw_allow_ports:
+    description: 'Space-separated TCP ports to allow in UFW when prepare_host runs'
+    required: false
+    default: ''
 
   # Environment file
   env_name:
@@ -205,6 +239,7 @@ runs:
         traefik_domain_apex: ${{ steps.dfl.outputs.domain_apex }}
         env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages }}
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports }}
         write_env_file: ${{ inputs.write_env_file }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
@@ -256,7 +291,7 @@ runs:
           if [ -n "$CP_IN" ]; then
             CONTAINER_PORT="$CP_IN"
           else
-            CONTAINER_PORT="${WEB_CONTAINER_PORT:-${TARGET_PORT:-3000}}"
+            CONTAINER_PORT="${WEB_CONTAINER_PORT:-${TARGET_PORT:-${PORT:-3000}}}"
           fi
 
           run_podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true

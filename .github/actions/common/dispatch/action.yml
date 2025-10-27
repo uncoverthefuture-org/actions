@@ -1,12 +1,46 @@
+# ============================================================================
+# ACTION: Common Dispatcher
+# ============================================================================
+# PURPOSE:
+# Internal router that dispatches to common utility actions.
+# Routes utility requests to appropriate handlers.
+#
+# WHAT IT DOES:
+# 1. Receives subaction name and parameters
+# 2. Routes to appropriate common action (select-env-secret, prepare-app-env, etc.)
+# 3. Passes all parameters to the selected action
+# 4. Returns outputs from the selected action
+#
+# WHEN TO USE:
+# - Internal action used by main aggregator
+# - Routes common utility requests
+# - Part of the aggregator pattern
+#
+# SUPPORTED SUBACTIONS:
+# - select-env-secret: Select environment-specific secrets
+# - prepare-app-env: Prepare application environment
+# - And other common utilities
+#
+# REFERENCE: See docs/ARCHITECTURE.md for dispatcher pattern explanation
+# ============================================================================
+
 name: 'dispatch: common'
 description: 'Common dispatch: route short calls to common utility actions'
 
+# ============================================================================
+# INPUTS - Pass-through parameters
+# ============================================================================
+# All inputs are passed through to the selected subaction
+# ============================================================================
 inputs:
+  # ========================================================================
+  # ROUTING
+  # ========================================================================
   subaction:
-    description: "select-env-secret"
+    description: "Subaction to route to. Required. Options: select-env-secret, prepare-app-env, and other common utilities"
     required: true
   params_json:
-    description: 'JSON blob of parameters to pass to the selected subaction'
+    description: 'JSON blob of parameters to pass to the selected subaction. Optional. Used for complex parameter passing'
     required: false
   env_name:
     required: false

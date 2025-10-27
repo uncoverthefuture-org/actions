@@ -1,29 +1,70 @@
+# ============================================================================
+# ACTION: Compute Next Version
+# ============================================================================
+# PURPOSE:
+# Calculates the next semantic version based on existing git tags.
+# Supports patch, minor, and major version bumps.
+#
+# WHAT IT DOES:
+# 1. Fetches all git tags
+# 2. Finds the latest semantic version tag
+# 3. Bumps version based on level (patch|minor|major)
+# 4. Returns new version and version aliases
+#
+# WHEN TO USE:
+# - Automatic version bumping in CI/CD
+# - Semantic versioning workflows
+# - Release automation
+#
+# OUTPUTS:
+# - new: Full new version (e.g., v1.0.1)
+# - major: Major alias (e.g., v1)
+# - minor: Minor alias (e.g., v1.0)
+# - last: Previous version (e.g., v1.0.0)
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'version: compute-next'
 description: 'Compute next semver (vX.Y.Z) from existing tags, with bump level (patch|minor|major). Outputs new, major alias vX, minor alias vX.Y, and last.'
 
+# ============================================================================
+# INPUTS
+# ============================================================================
 inputs:
   level:
-    description: 'Bump level: patch|minor|major'
+    description: 'Bump level for semantic versioning. Default: patch. Options: patch (1.0.0→1.0.1), minor (1.0.0→1.1.0), major (1.0.0→2.0.0)'
     required: false
     default: 'patch'
 
+# ============================================================================
+# OUTPUTS
+# ============================================================================
 outputs:
   new:
-    description: 'New tag (e.g., v1.0.1)'
+    description: 'New computed semantic version tag. Example: v1.0.1'
     value: ${{ steps.calc.outputs.new }}
   major:
-    description: 'Major alias (e.g., v1)'
+    description: 'Major version alias for tagging. Example: v1'
     value: ${{ steps.calc.outputs.major }}
   minor:
-    description: 'Minor alias (e.g., v1.0)'
+    description: 'Minor version alias for tagging. Example: v1.0'
     value: ${{ steps.calc.outputs.minor }}
   last:
-    description: 'Previous full tag (e.g., v1.0.0), empty if none'
+    description: 'Previous full version tag. Example: v1.0.0. Empty if no previous tags'
     value: ${{ steps.calc.outputs.last }}
 
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Validate level
+    # ========================================================================
+    # Ensures bump level is one of: patch, minor, major
+    # ========================================================================
     - name: Validate level
       shell: bash
       run: |

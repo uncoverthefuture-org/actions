@@ -1,56 +1,123 @@
+# ============================================================================
+# ACTION: Write Remote Env File
+# ============================================================================
+# PURPOSE:
+# Securely writes a .env file to a remote server via SSH.
+# Handles base64-encoded or raw environment file contents.
+#
+# WHAT IT DOES:
+# 1. Validates inputs (env_name, env_b64 or env_content)
+# 2. Computes derived defaults (paths, app_slug)
+# 3. Creates directory structure on remote server
+# 4. Decodes base64 or writes raw content
+# 5. Sets correct permissions (600) and ownership
+#
+# WHEN TO USE:
+# - Upload environment files to remote server
+# - Part of deployment pipeline (called by deployment actions)
+# - Manage multiple environment files (dev, staging, prod)
+# - Update .env files without redeploying
+#
+# SECURITY:
+# - Supports base64-encoded content (preferred)
+# - Sets file permissions to 600 (read/write owner only)
+# - Supports SSH host key verification
+# - Handles sensitive data securely
+#
+# REFERENCE: See docs/GETTING_STARTED.md Step 2 and docs/ACTION_FILES_GUIDE.md
+# ============================================================================
+
 name: 'Write Remote Env File'
 description: 'Securely writes a .env file to the remote host via SSH.'
 
+# ============================================================================
+# INPUTS - Organized by category
+# ============================================================================
 inputs:
+  # ========================================================================
+  # SSH / REMOTE EXECUTION
+  # ========================================================================
   ssh_host:
-    description: 'SSH host'
+    description: 'SSH host (IP or hostname). Required. Example: 192.168.1.100'
     required: true
   ssh_user:
-    description: 'SSH username (non-root)'
+    description: 'SSH username (non-root). Required. Used for authentication'
     required: true
   ssh_key:
-    description: 'SSH private key for non-root user'
+    description: 'SSH private key for authentication. Required. Should be stored as GitHub secret'
     required: true
   root_ssh_key:
-    description: 'SSH private key for root (optional)'
+    description: 'SSH private key for root (optional). Use if ssh_user cannot escalate to root'
     required: false
   ssh_port:
-    description: 'SSH port'
+    description: 'SSH port. Default: 22. Change if using non-standard SSH port'
     required: false
     default: '22'
   ssh_fingerprint:
-    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
   podman_user:
-    description: 'User on remote host related to file ownership'
+    description: 'User on remote host for file ownership. Default: deployer. Example: appuser'
     required: false
     default: 'deployer'
   connect_mode:
-    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md"
     required: false
     default: 'auto'
+
+  # ========================================================================
+  # ENVIRONMENT FILE CONFIGURATION
+  # ========================================================================
   env_name:
-    description: 'Environment name (suffix for env file path)'
+    description: 'Environment name (production, staging, development). Required. Used in file path'
     required: true
   env_file_path:
-    description: 'Base path to the environment file on the server (prefix); final path is ${env_file_path}${env_name}'
+    description: 'Base directory for env files. Default: /var/deployments. Final path: <env_file_path>/<env_name>/<app_slug>/.env'
     required: false
   app_slug:
-    description: 'Application slug; if omitted it will be derived from repo'
+    description: 'Application slug for directory structure. Auto-derived from repo if not provided. Example: myapp'
     required: false
+
+  # ========================================================================
+  # ENVIRONMENT FILE CONTENT
+  # ========================================================================
   env_b64:
-    description: 'Base64-encoded contents of the .env file'
+    description: 'Base64-encoded .env file contents. Preferred for security. Create with: cat .env | base64'
     required: false
   env_content:
-    description: 'Raw contents of the .env file (prefer env_b64)'
+    description: 'Raw .env file contents. Use env_b64 instead when possible for security'
     required: false
+
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
+# The file writing follows these steps:
+# 1. Compute defaults - Calculate derived values
+# 2. Validate inputs - Check required parameters
+# 3. Write env file - Create directory and write file
+# 4. Set permissions - chmod 600 and chown to podman_user
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for detailed step explanations
+# ============================================================================
 
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Compute derived defaults
+    # ========================================================================
+    # Calculates values like env_file_path and app_slug if not provided
+    # ========================================================================
     - name: Compute derived defaults
       id: dfl
       uses: ./.github/actions/app/common/compute-defaults
+    
+    # ========================================================================
+    # STEP 2: Validate inputs
+    # ========================================================================
+    # Checks that required parameters are provided
+    # Ensures either env_b64 or env_content is provided
+    # ========================================================================
     - name: Validate inputs
       run: |
         set -euo pipefail

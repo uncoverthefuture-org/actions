@@ -1,18 +1,50 @@
+# ============================================================================
+# ACTION: Update References
+# ============================================================================
+# PURPOSE:
+# Updates all @version references in YAML files to the new version tag.
+# Used to update action references after releasing a new version.
+#
+# WHAT IT DOES:
+# 1. Validates new version tag format
+# 2. Finds all YAML files with @version references
+# 3. Replaces old version with new version
+# 4. Commits changes to repository
+#
+# WHEN TO USE:
+# - After computing new version
+# - Update action references in workflows
+# - Part of release automation
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'version: update-refs'
 description: 'Update @ references to the new version tag in YAML files and commit the changes.'
 
+# ============================================================================
+# INPUTS
+# ============================================================================
 inputs:
   new_tag:
-    description: 'New version tag (e.g., v1.2.3)'
+    description: 'New version tag to update references to. Required. Example: v1.2.3'
     required: true
   force:
-    description: 'Run on branch refs as well (override tag-only gating)'
+    description: 'Run on branch refs as well. Default: false. Set true to override tag-only gating'
     required: false
     default: 'false'
 
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Skip on non-tag refs
+    # ========================================================================
+    # Only runs on tag refs unless force=true
+    # ========================================================================
     - name: Skip on non-tag refs
       if: ${{ github.ref_type != 'tag' && inputs.force != 'true' }}
       shell: bash

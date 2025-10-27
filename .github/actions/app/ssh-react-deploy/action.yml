@@ -1,6 +1,32 @@
+# ============================================================================
+# ACTION: SSH React Deploy
+# ============================================================================
+# PURPOSE:
+# Deploys a React application to a remote server via SSH using Podman.
+# Optimized for client-side rendered React applications.
+#
+# WHAT IT DOES:
+# 1. Optionally prepares a fresh Ubuntu host (Podman, Traefik, directories)
+# 2. Writes environment file to remote server
+# 3. Logs in to container registry and pulls image
+# 4. Starts React container with Traefik routing
+# 5. Optionally starts database container
+#
+# WHEN TO USE:
+# - Deploy React applications (SPA or static)
+# - Deploy to production, staging, or development environments
+# - First deployment to a new server (set prepare_host: true)
+# - Subsequent deployments (prepare_host: false)
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'SSH React Deploy'
 description: 'Upload env (optional) and deploy a React container via Podman over SSH with Traefik routing support.'
 
+# ============================================================================
+# INPUTS - Organized by category
+# ============================================================================
 inputs:
   ssh_host:
     description: 'SSH host'

@@ -1,12 +1,49 @@
+# ============================================================================
+# ACTION: App Dispatcher
+# ============================================================================
+# PURPOSE:
+# Internal router that dispatches to specific application deployment actions.
+# Routes based on subaction name to the correct deployment handler.
+#
+# WHAT IT DOES:
+# 1. Receives subaction name and parameters
+# 2. Routes to appropriate deployment action (Django, Laravel, Next.js, React)
+# 3. Passes all parameters to the selected action
+# 4. Returns outputs from the selected action
+#
+# WHEN TO USE:
+# - Internal action used by main aggregator
+# - Routes app deployment requests to specific handlers
+# - Part of the aggregator pattern
+#
+# SUPPORTED SUBACTIONS:
+# - ssh-django-deploy: Deploy Django API applications
+# - ssh-django-api-deploy: Deploy Django with Apache (deprecated)
+# - ssh-nextjs-deploy: Deploy Next.js applications
+# - ssh-react-deploy: Deploy React applications
+# - ssh-laravel-deploy: Deploy Laravel applications
+# - write-remote-env-file: Write environment files
+#
+# REFERENCE: See docs/ARCHITECTURE.md for dispatcher pattern explanation
+# ============================================================================
+
 name: 'dispatch: app'
 description: 'App dispatch: route short calls to app actions'
 
+# ============================================================================
+# INPUTS - Pass-through parameters
+# ============================================================================
+# All inputs are passed through to the selected subaction
+# ============================================================================
 inputs:
+  # ========================================================================
+  # ROUTING
+  # ========================================================================
   subaction:
-    description: "ssh-django-deploy | ssh-django-api-deploy | ssh-nextjs-deploy | ssh-react-deploy | ssh-laravel-deploy | write-remote-env-file"
+    description: "Subaction to route to. Required. Options: ssh-django-deploy, ssh-django-api-deploy, ssh-nextjs-deploy, ssh-react-deploy, ssh-laravel-deploy, write-remote-env-file"
     required: true
   params_json:
-    description: "JSON blob of parameters to pass to the selected subaction"
+    description: "JSON blob of parameters to pass to the selected subaction. Optional. Used for complex parameter passing"
     required: false
 
   # Common SSH / remote
@@ -107,6 +144,14 @@ inputs:
     required: false
     default: '512m'
 
+  # Traefik / networking
+  enable_traefik:
+    required: false
+    default: ''
+  ufw_allow_ports:
+    required: false
+    default: ''
+
   # VHost
   manage_vhost:
     required: false
@@ -148,10 +193,10 @@ runs:
       uses: ./.github/actions/common/validate-subaction
       with:
         subaction: ${{ inputs.subaction }}
-        allowed: ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file
+        allowed: ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-container-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file
 
     - name: Validate base SSH for app subactions
-      if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-django-api-deploy' || inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-nextjs-deploy' || inputs.subaction == 'ssh-react-deploy' || inputs.subaction == 'ssh-laravel-deploy' }}
+      if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-django-api-deploy' || inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-nextjs-deploy' || inputs.subaction == 'ssh-container-deploy' || inputs.subaction == 'ssh-react-deploy' || inputs.subaction == 'ssh-laravel-deploy' }}
       uses: ./.github/actions/app/common/validate-base-ssh
       with:
         subaction: ${{ inputs.subaction }}
@@ -306,6 +351,7 @@ runs:
         prepare_host: ${{ inputs.prepare_host != '' && inputs.prepare_host || fromJSON(steps.params.outputs.json).prepare_host }}
         install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.params.outputs.json).install_podman }}
         create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.params.outputs.json).create_podman_user }}
+        install_traefik: ${{ inputs.install_traefik != '' && inputs.install_traefik || fromJSON(steps.params.outputs.json).install_traefik || 'true' }}
         env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.params.outputs.json).additional_packages }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
@@ -332,7 +378,53 @@ runs:
         domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
         domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
         domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
+        enable_traefik: ${{ inputs.enable_traefik != '' && inputs.enable_traefik || fromJSON(steps.params.outputs.json).enable_traefik || 'true' }}
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
 
+    - name: ssh-container-deploy
+      if: ${{ inputs.subaction == 'ssh-container-deploy' }}
+      uses: ./.github/actions/app/ssh-container-deploy
+      with:
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.params.outputs.json).root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.params.outputs.json).ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.params.outputs.json).ssh_fingerprint }}
+        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.params.outputs.json).podman_user }}
+        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.params.outputs.json).connect_mode }}
+        prepare_host: ${{ inputs.prepare_host != '' && inputs.prepare_host || fromJSON(steps.params.outputs.json).prepare_host }}
+        install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.params.outputs.json).install_podman }}
+        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.params.outputs.json).create_podman_user }}
+        install_traefik: ${{ inputs.install_traefik != '' && inputs.install_traefik || fromJSON(steps.params.outputs.json).install_traefik || 'true' }}
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}
+        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.params.outputs.json).additional_packages }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
+        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.params.outputs.json).write_env_file }}
+        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
+        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
+        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.params.outputs.json).registry }}
+        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.params.outputs.json).registry_username }}
+        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.params.outputs.json).registry_token }}
+        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag }}
+        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
+        container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.params.outputs.json).container_name }}
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
+        container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.params.outputs.json).container_port }}
+        restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.params.outputs.json).restart_policy }}
+        extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
+        memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit }}
+        manage_vhost: ${{ inputs.manage_vhost != '' && inputs.manage_vhost || fromJSON(steps.params.outputs.json).manage_vhost }}
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
+        enable_traefik: ${{ inputs.enable_traefik != '' && inputs.enable_traefik || fromJSON(steps.params.outputs.json).enable_traefik || 'true' }}
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
     - name: ssh-react-deploy
       if: ${{ inputs.subaction == 'ssh-react-deploy' }}
       uses: ./.github/actions/app/ssh-react-deploy

@@ -1,15 +1,47 @@
+# ============================================================================
+# ACTION: Cleanup Runner
+# ============================================================================
+# PURPOSE:
+# Frees disk space on GitHub-hosted runners by pruning Docker and system caches.
+# Prevents disk space issues during large builds.
+#
+# WHAT IT DOES:
+# 1. Checks available disk space
+# 2. If below threshold, prunes Docker images and containers
+# 3. Clears package manager caches
+# 4. Removes unnecessary files
+#
+# WHEN TO USE:
+# - Before large Docker builds
+# - When disk space is limited
+# - Part of build optimization
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'common: cleanup-runner'
 description: 'Free disk space on GitHub-hosted runners by pruning Docker and system caches when space is low.'
 
+# ============================================================================
+# INPUTS
+# ============================================================================
 inputs:
   min_free_gb:
-    description: 'Run cleanup when available disk space (in GiB) is below this threshold. Use 0 to always run.'
+    description: 'Minimum free disk space threshold in GiB. Default: 5. Use 0 to always run cleanup'
     required: false
     default: '5'
 
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Check and clean disk space
+    # ========================================================================
+    # Checks available space and cleans if below threshold
+    # ========================================================================
     - name: Check and clean disk space
       shell: bash
       env:

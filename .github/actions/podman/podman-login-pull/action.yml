@@ -1,59 +1,114 @@
+# ============================================================================
+# ACTION: Podman Login and Pull
+# ============================================================================
+# PURPOSE:
+# Authenticates with a container registry and pulls a Docker image on a
+# remote server via Podman over SSH.
+#
+# WHAT IT DOES:
+# 1. Validates all required inputs
+# 2. Optionally logs in to container registry
+# 3. Pulls the specified Docker image
+# 4. Handles both public and private registries
+#
+# WHEN TO USE:
+# - Pull Docker images before deployment
+# - Part of deployment pipeline (called by deployment actions)
+# - Authenticate with private registries
+# - Update to new image versions
+#
+# REGISTRY SUPPORT:
+# - GitHub Container Registry (ghcr.io) - auto-detected
+# - Docker Hub (docker.io)
+# - Private registries (requires credentials)
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'Podman Login and Pull'
 description: 'Securely logs in to a registry (optional) and pulls a container image on a remote host via Podman.'
 
+# ============================================================================
+# INPUTS - Organized by category
+# ============================================================================
 inputs:
+  # ========================================================================
+  # SSH / REMOTE EXECUTION
+  # ========================================================================
   ssh_host:
-    description: 'SSH host'
+    description: 'SSH host (IP or hostname). Required. Example: 192.168.1.100'
     required: true
   ssh_user:
-    description: 'SSH username (non-root)'
+    description: 'SSH username (non-root). Required. Used for authentication'
     required: true
   ssh_key:
-    description: 'SSH private key for non-root user'
+    description: 'SSH private key for authentication. Required. Should be stored as GitHub secret'
     required: true
   root_ssh_key:
-    description: 'SSH private key for root (optional)'
+    description: 'SSH private key for root (optional). Use if ssh_user cannot escalate to root'
     required: false
   ssh_port:
-    description: 'SSH port'
+    description: 'SSH port. Default: 22. Change if using non-standard SSH port'
     required: false
     default: '22'
   ssh_fingerprint:
-    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
   podman_user:
-    description: 'User on remote host to execute podman commands as'
+    description: 'User on remote host to execute podman commands as. Default: deployer'
     required: false
     default: 'deployer'
   connect_mode:
-    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md"
     required: false
     default: 'auto'
 
+  # ========================================================================
+  # REGISTRY AUTHENTICATION
+  # ========================================================================
   registry:
-    description: 'Container registry hostname'
+    description: 'Container registry hostname. Required. Example: ghcr.io, docker.io, or private.registry.com'
     required: true
   registry_username:
-    description: 'Registry username'
+    description: 'Registry username. Optional for public registries, required for private. Example: myusername'
     required: false
   registry_token:
-    description: 'Registry token/password'
+    description: 'Registry token/password. Optional for public registries, required for private. Should be GitHub secret'
     required: false
   registry_login:
-    description: 'Perform registry login before pulling image'
+    description: 'Perform registry login before pulling image. Default: true. Set false to skip login'
     required: false
     default: 'true'
 
+  # ========================================================================
+  # IMAGE SPECIFICATION
+  # ========================================================================
   image_name:
-    description: 'Image name (e.g., org/app)'
+    description: 'Docker image name in org/repo format. Required. Example: myorg/myapp'
     required: true
   image_tag:
-    description: 'Tag to pull'
+    description: 'Docker image tag to pull. Required. Example: v1.0.0 or latest'
     required: true
+
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
+# The pull follows these steps:
+# 1. Validate inputs - Check required parameters
+# 2. Login and pull remotely - Execute on remote host via SSH
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for detailed step explanations
+# ============================================================================
 
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Validate inputs
+    # ========================================================================
+    # Checks that all required parameters are provided
+    # Validates registry credentials are provided when needed
+    # ========================================================================
     - name: Validate inputs
       run: |
         set -euo pipefail

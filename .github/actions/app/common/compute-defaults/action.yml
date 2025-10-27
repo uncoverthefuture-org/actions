@@ -1,6 +1,31 @@
+# ============================================================================
+# ACTION: Compute Defaults
+# ============================================================================
+# PURPOSE:
+# Derives deployment defaults from repository context.
+# Computes app slug, paths, domain, and image tags.
+#
+# WHAT IT DOES:
+# 1. Derives app slug from repository name
+# 2. Computes environment paths
+# 3. Determines domain from environment
+# 4. Calculates image tags
+# 5. Returns all computed defaults
+#
+# WHEN TO USE:
+# - Compute deployment defaults
+# - Derive values from repository context
+# - Part of deployment pipeline
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'app: compute defaults'
 description: 'Derive deployment defaults (slug, env paths, domain, image tags) from repository context.'
 
+# ============================================================================
+# INPUTS - Environment and domain configuration
+# ============================================================================
 inputs:
   env_name:
     description: 'Explicit environment name override.'

@@ -88,6 +88,46 @@ Each action has its own detailed README with inputs, outputs, and examples. Star
 - **Environment auto-detect**: Deployment actions accept `auto_detect_env` (default `true`) which maps Git refs (`main`, `staging`, `develop`, tags, etc.) to canonical environment folders (`production`, `staging`, `development`). Provide `env_name` to override.
 - **Derived domains**: Supplying `base_domain` (and optional `domain_prefix_*`) lets the actions compute a domain used for Traefik routing. A direct `domain` input always wins.
 
+### Per-environment ports and Traefik routing
+
+- **Explicit host/container ports**: All app deploy actions accept `host_port` and `container_port`. If omitted, they fall back to environment file values on the host: `WEB_HOST_PORT`/`PORT` for host, `WEB_CONTAINER_PORT`/`TARGET_PORT`/`PORT` for container.
+- **Collision avoidance for branches**: If you don't use Traefik and publish host ports instead, assign unique `host_port` per environment/branch in your workflow. Example strategy:
+
+  ```yaml
+  - name: Compute deployment ports
+    id: ports
+    run: |
+      set -euo pipefail
+      ENV_NAME="${{ steps.prep.outputs.env_name }}"
+      BRANCH="${GITHUB_REF_NAME:-development}"
+      case "$ENV_NAME" in
+        production) HOST_PORT=3000 ;;
+        staging) HOST_PORT=3001 ;;
+        *) # Deterministic 3200-3899 range per branch
+           if command -v sha1sum >/dev/null 2>&1; then HHEX=$(printf '%s' "$BRANCH" | sha1sum | cut -c1-6); else HHEX=$(printf '%s' "$BRANCH" | shasum -a 1 | awk '{print $1}' | cut -c1-6); fi
+           HDEC=$((16#$HHEX)); HOST_PORT=$((3200 + (HDEC % 700))) ;;
+      esac
+      echo "host_port=$HOST_PORT" >> "$GITHUB_OUTPUT"
+      echo "container_port=3000" >> "$GITHUB_OUTPUT"
+  - name: Deploy App
+    uses: uncoverthefuture-org/actions@master
+    with:
+      subaction: ssh-nextjs-deploy
+      params_json: |
+        {
+          "ssh_host": "${{ secrets.SERVER_HOST }}",
+          "ssh_user": "${{ secrets.SERVER_USER }}",
+          "ssh_key":  "${{ secrets.SERVER_SSH_KEY }}",
+          "host_port": "${{ steps.ports.outputs.host_port }}",
+          "container_port": "${{ steps.ports.outputs.container_port }}"
+        }
+  ```
+
+- **Traefik on/off switch**:
+  - Pass a `domain` or `base_domain` to enable Traefik routing with automatic TLS. Optionally set `enable_traefik: true` (default) to attach labels.
+  - Omit `domain`/`base_domain` (or set `enable_traefik: false`) to publish `-p host:container` instead. This avoids port 80/443 and lets multiple branches run side-by-side.
+  - When using `prepare_host: true`, Traefik can be provisioned with `install_traefik: true` and `traefik_email` (Let's Encrypt). To open firewall ports during preparation, set `ufw_allow_ports` (e.g., `"22 80 443 3000 3001"`).
+
 ### Example Workflow
 
 ```yaml

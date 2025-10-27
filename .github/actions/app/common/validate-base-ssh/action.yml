@@ -1,5 +1,26 @@
+# ============================================================================
+# ACTION: Validate Base SSH
+# ============================================================================
+# PURPOSE:
+# Validates SSH connection parameters for app deployment actions.
+# Ensures required SSH credentials and host information are provided.
+#
+# WHAT IT DOES:
+# 1. Validates ssh_host is provided
+# 2. Validates ssh_key is provided
+# 3. Checks ssh_user is valid
+# 4. Validates connect_mode is valid
+#
+# WHEN TO USE:
+# - Internal validation for SSH connections
+# - Validate SSH parameters
+# - Part of deployment pipeline
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'app: validate base ssh'
-description: 'Ensures SSH host and key are provided for applicable app subactions.'
+description: 'Validates SSH-related inputs for app deployment.'
 
 inputs:
   subaction:

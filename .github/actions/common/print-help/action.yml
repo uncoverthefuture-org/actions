@@ -1,41 +1,121 @@
+# ============================================================================
+# ACTION: Print Help
+# ============================================================================
+# PURPOSE:
+# Displays all available subactions and usage instructions.
+# Called when user provides 'help' as subaction or leaves it empty.
+#
+# WHAT IT DOES:
+# 1. Scans all action categories (build, podman, infra, app, version)
+# 2. Lists available subactions in each category
+# 3. Shows usage examples
+# 4. Provides links to documentation
+# 5. Exits successfully after printing
+#
+# WHEN TO USE:
+# - Internal action called by main aggregator
+# - Called when subaction is 'help' or empty
+# - Provides user guidance on available actions
+#
+# OUTPUT:
+# - Lists all available subactions by category
+# - Shows usage syntax
+# - Provides documentation links
+# - Tips for discovering actions
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'common: print help'
 description: 'Prints available subactions and usage with default @v1.0.41 ref.'
+
+# ============================================================================
+# EXECUTION
+# ============================================================================
+# Scans the action directory structure and prints available actions
+# ============================================================================
 
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Print help
+    # ========================================================================
+    # Scans all categories and lists available subactions
+    # Shows usage examples and documentation links
+    # ========================================================================
     - name: Print help
       shell: bash
       run: |
+        # Enable strict error handling: exit on error, undefined variables, pipe failures
         set -euo pipefail
+        
+        # Get the root directory of the uactions project
+        # Navigate up 3 levels from the action script directory to reach project root
         ROOT="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        
+        # Set base directory where all action categories are located
         BASE="${ROOT}/.github/actions"
+        
+        # Print header for available subactions
         echo "\nUncover Actions — available subactions:"
+        
+        # Loop through all action categories: build, podman, infra, app, version
         for CAT in build podman infra app version; do
+          # Construct directory path for this category
           DIR="${BASE}/${CAT}"
+          
+          # Skip if category directory doesn't exist
           [ -d "$DIR" ] || continue
+          
+          # Initialize empty map to collect action names
           MAP=""
+          
+          # Find all subdirectories in this category (each is an action)
+          # Read each subdirectory path one at a time
           while IFS= read -r SUB; do
+            # Extract the action name from the directory path
             NAME=$(basename "$SUB")
+            
+            # Skip the 'dispatch' action (internal router, not user-facing)
             [ "$NAME" = "dispatch" ] && continue
+            
+            # Skip if action.yml doesn't exist (invalid action)
             [ -f "$SUB/action.yml" ] || continue
+            
+            # Add action name to the map, comma-separated if not first
             MAP="${MAP}${MAP:+, }${NAME}"
           done < <(find "$DIR" -mindepth 1 -maxdepth 1 -type d | sort)
+          
+          # Print category and its actions if any were found
           if [ -n "$MAP" ]; then
             echo "- ${CAT}: ${MAP}"
           fi
         done
+        
+        # Print usage instructions
         echo "\nUsage:"
         echo "- uses: uncoverthefuture-org/actions@v1.0.41"
         echo "  with:"
         echo "    subaction: <one-of-the-above>"
         echo "    # optional: category: build|podman|infra|app\n"
+        
+        # Print documentation links for each category
         echo "Docs per category:"
+        
+        # Construct base URL for documentation links
+        # Uses GitHub context variables if available, falls back to defaults
         BASE_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-uncoverthefuture-org/actions}/tree/${GITHUB_REF_NAME:-master}/.github/actions"
+        
+        # Print links to each category's documentation
         echo "- build:  ${BASE_URL}/build"
         echo "- podman: ${BASE_URL}/podman"
         echo "- infra:  ${BASE_URL}/infra"
         echo "- app:    ${BASE_URL}/app"
         echo "- version: ${BASE_URL}/version"
+        
+        # Print helpful tip about discovering actions
         echo "Tip: pass 'subaction: help' to print this list."
+        
+        # Exit successfully after printing help
         exit 0

@@ -1,8 +1,40 @@
+# ============================================================================
+# ACTION: SSH Django API Deploy
+# ============================================================================
+# PURPOSE:
+# Deploys a Django API application to a remote server via SSH using Podman.
+# [DEPRECATED] - Use ssh-django-deploy instead. This action uses Apache vhost.
+#
+# WHAT IT DOES:
+# 1. Optionally prepares a fresh Ubuntu host (Podman, Apache, directories)
+# 2. Writes environment file to remote server
+# 3. Logs in to container registry and pulls image
+# 4. Runs Django migrations
+# 5. Starts Django container with Apache vhost routing
+# 6. Optionally starts database, worker, and scheduler containers
+#
+# WHEN TO USE:
+# - Deploy Django API applications (legacy Apache setup)
+# - Prefer ssh-django-deploy for new deployments (uses Traefik)
+# - Deploy to production, staging, or development environments
+#
+# DEPRECATION NOTE:
+# This action uses Apache vhost management which is deprecated.
+# New deployments should use ssh-django-deploy with Traefik instead.
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'SSH Django API Deploy'
 description: 'Optionally prepare a fresh Ubuntu host, upload env, and deploy a Django API container via Podman over SSH with Traefik routing support.'
 
+# ============================================================================
+# INPUTS - Organized by category (similar to ssh-django-deploy)
+# ============================================================================
 inputs:
-  # SSH / remote execution
+  # ========================================================================
+  # SSH / REMOTE EXECUTION
+  # ========================================================================
   ssh_host:
     description: 'SSH host'
     required: true

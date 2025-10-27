@@ -1,23 +1,55 @@
+# ============================================================================
+# ACTION: Validate Environment Inputs
+# ============================================================================
+# PURPOSE:
+# Validates environment-related inputs for app deployment subactions.
+# Ensures required parameters are provided and valid.
+#
+# WHAT IT DOES:
+# 1. Validates subaction name
+# 2. Checks environment name format
+# 3. Validates env_b64 or env_content is provided
+# 4. Ensures no conflicting parameters
+#
+# WHEN TO USE:
+# - Internal validation for app deployment
+# - Validate environment parameters
+# - Part of deployment pipeline
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'app: validate env inputs'
 description: 'Validates environment-related inputs for specific app subactions.'
 
+# ============================================================================
+# INPUTS
+# ============================================================================
 inputs:
   subaction:
-    description: 'App subaction name.'
+    description: 'App subaction name. Required. Example: ssh-django-deploy'
     required: true
   env_name:
-    description: 'Environment name value.'
+    description: 'Environment name. Optional. Example: production, staging, development'
     required: false
   env_b64:
-    description: 'Base64-encoded environment content.'
+    description: 'Base64-encoded environment file contents. Optional. Preferred over env_content'
     required: false
   env_content:
-    description: 'Plain-text environment content.'
+    description: 'Plain-text environment file contents. Optional. Use env_b64 when possible'
     required: false
 
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Validate env inputs
+    # ========================================================================
+    # Validates environment parameters for the subaction
+    # ========================================================================
     - name: Validate env inputs
       shell: bash
       env:

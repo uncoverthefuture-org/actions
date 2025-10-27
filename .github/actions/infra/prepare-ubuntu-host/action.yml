@@ -1,83 +1,169 @@
+# ============================================================================
+# ACTION: Prepare Ubuntu Host
+# ============================================================================
+# PURPOSE:
+# Bootstraps a fresh Ubuntu server for containerized deployments.
+# Installs Podman, Traefik, creates directories, and configures firewall.
+#
+# WHAT IT DOES:
+# 1. Validates all required inputs
+# 2. Installs Podman (container runtime)
+# 3. Creates deployment directories
+# 4. Creates deployer user (optional)
+# 5. Installs Traefik (optional, for automatic HTTPS)
+# 6. Configures UFW firewall
+# 7. Installs additional packages
+#
+# WHEN TO USE:
+# - First deployment to a new Ubuntu server
+# - Setting up a fresh server for containerized applications
+# - Preparing infrastructure for CI/CD deployments
+#
+# REQUIREMENTS:
+# - Fresh Ubuntu 20.04+ server
+# - SSH access as root or user with sudo
+# - Internet access for package installation
+#
+# REFERENCE: See docs/GETTING_STARTED.md Step 1 and docs/ACTION_FILES_GUIDE.md
+# ============================================================================
+
 name: 'Prepare Ubuntu Host'
 description: 'Bootstraps a fresh Ubuntu server for containerized deployments (Podman, directories, optional user).'
 
+# ============================================================================
+# INPUTS - Organized by category
+# ============================================================================
 inputs:
+  # ========================================================================
+  # SSH / REMOTE EXECUTION
+  # ========================================================================
+  # Parameters for SSH connection to the remote server
   ssh_host:
-    description: 'SSH host'
+    description: 'SSH host (IP or hostname). Required. Example: 192.168.1.100 or deploy.example.com'
     required: true
   ssh_user:
-    description: 'SSH username (non-root)'
+    description: 'SSH username (non-root). Required. Used for authentication and privilege escalation'
     required: true
   ssh_key:
-    description: 'SSH private key for non-root user'
+    description: 'SSH private key for authentication. Required. Should be stored as GitHub secret'
     required: true
   root_ssh_key:
-    description: 'SSH private key for root (optional)'
+    description: 'SSH private key for root (optional). Use if ssh_user cannot escalate to root'
     required: false
   ssh_port:
-    description: 'SSH port'
+    description: 'SSH port. Default: 22. Change if using non-standard SSH port'
     required: false
     default: '22'
   ssh_fingerprint:
-    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
   connect_mode:
-    description: "How to connect: 'auto' (default), 'root', or 'user'. For package install, root is recommended."
+    description: "Connection mode: 'auto' (default), 'root', or 'user'. For package install, root is recommended"
     required: false
     default: 'root'
+
+  # ========================================================================
+  # PODMAN CONFIGURATION
+  # ========================================================================
+  # Parameters for Podman container runtime setup
   podman_user:
-    description: 'User on remote host that will run containers (rootless)'
+    description: 'User on remote host that will run containers (rootless). Default: deployer. Example: appuser'
     required: false
     default: 'deployer'
   create_podman_user:
-    description: 'Create podman_user if it does not exist'
+    description: 'Create podman_user if it does not exist. Default: false. Set true to auto-create user'
     required: false
     default: 'false'
-  env_dir_path:
-    description: 'Directory to hold env files and app data'
-    required: false
   install_podman:
-    description: 'Install Podman and dependencies'
+    description: 'Install Podman and dependencies. Default: true. Set false if already installed'
     required: false
     default: 'true'
+
+  # ========================================================================
+  # DIRECTORY CONFIGURATION
+  # ========================================================================
+  # Parameters for deployment directory structure
+  env_dir_path:
+    description: 'Directory to hold env files and app data. Default: /var/deployments. Example: /opt/apps'
+    required: false
+
+  # ========================================================================
+  # PACKAGE INSTALLATION
+  # ========================================================================
+  # Parameters for additional packages to install
   additional_packages:
-    description: 'Space-separated additional apt packages to install'
+    description: 'Space-separated additional apt packages to install. Default: jq curl ca-certificates. Example: git vim htop'
     required: false
     default: 'jq curl ca-certificates'
 
-  # Optional platform services
+  # ========================================================================
+  # OPTIONAL PLATFORM SERVICES
+  # ========================================================================
+  # Parameters for optional services (Apache, Webmin, etc.)
   install_apache:
-    description: 'Install and configure Apache2 with common modules'
+    description: 'Install and configure Apache2 with common modules. Default: false. Deprecated in favor of Traefik'
     required: false
     default: 'false'
   install_webmin:
-    description: 'Install Webmin (default false)'
+    description: 'Install Webmin (web-based system administration). Default: false'
     required: false
     default: 'false'
   install_usermin:
-    description: 'Install Usermin (default false)'
+    description: 'Install Usermin (user-level web administration). Default: false'
     required: false
     default: 'false'
+
+  # ========================================================================
+  # FIREWALL CONFIGURATION
+  # ========================================================================
+  # Parameters for UFW firewall setup
   configure_ufw:
-    description: 'Configure UFW firewall (default true)'
+    description: 'Configure UFW firewall. Default: true. Set false to skip firewall configuration'
     required: false
     default: 'true'
   ufw_allow_ports:
-    description: 'Space-separated list of TCP ports to allow (applied if configure_ufw=true)'
+    description: 'Space-separated list of TCP ports to allow. Default: 22 80 443 10000 20000. Example: 22 80 443 3000'
     required: false
     default: '22 80 443 10000 20000'
+
+  # ========================================================================
+  # TRAEFIK CONFIGURATION
+  # ========================================================================
+  # Parameters for Traefik reverse proxy with automatic HTTPS
   install_traefik:
-    description: 'Install and run Traefik as reverse proxy with SSL'
+    description: 'Install and run Traefik as reverse proxy with SSL. Default: true. Provides automatic HTTPS with Let''s Encrypt'
     required: false
     default: 'true'
   traefik_email:
-    description: 'Email for Let''s Encrypt certificates (required if install_traefik=true)'
+    description: "Email for Let's Encrypt certificates. Required if install_traefik=true. Example: admin@example.com"
     required: false
     default: ''
+
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
+# The preparation follows these steps:
+# 1. Validate inputs - Check required parameters
+# 2. Compute defaults - Calculate derived values
+# 3. Install Podman - Container runtime
+# 4. Create directories - Deployment structure
+# 5. Create user - Podman user (optional)
+# 6. Install Traefik - Reverse proxy (optional)
+# 7. Configure firewall - UFW rules
+# 8. Install packages - Additional utilities
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for detailed step explanations
+# ============================================================================
 
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Validate inputs
+    # ========================================================================
+    # Checks that all required parameters are provided and valid
+    # Fails early if configuration is incorrect
+    # ========================================================================
     - name: Validate inputs
       run: |
         if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi

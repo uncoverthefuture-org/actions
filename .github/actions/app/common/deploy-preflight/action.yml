@@ -1,6 +1,32 @@
+# ============================================================================
+# ACTION: Deploy Preflight
+# ============================================================================
+# PURPOSE:
+# Performs preflight checks and setup for SSH-based Podman deployments.
+# Validates inputs, prepares host, syncs env, and logs in to registry.
+#
+# WHAT IT DOES:
+# 1. Validates deployment inputs
+# 2. Optionally prepares fresh Ubuntu host
+# 3. Writes environment file to remote server
+# 4. Logs in to container registry
+# 5. Returns resolved configuration
+#
+# WHEN TO USE:
+# - Before deploying applications
+# - Validate deployment parameters
+# - Prepare remote host
+# - Part of deployment pipeline
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'app: deploy preflight'
 description: 'Common preflight for SSH-based Podman deployments (validation, optional host prep, env sync, registry login).'
 
+# ============================================================================
+# OUTPUTS
+# ============================================================================
 outputs:
   traefik_email:
     description: 'Resolved Traefik email used for setup.'
@@ -74,6 +100,10 @@ inputs:
     description: 'Whether to write the env file before deploy'
     required: false
     default: 'false'
+  ufw_allow_ports:
+    description: 'Space-separated ports to allow via UFW when preparing the host'
+    required: false
+    default: ''
   env_name:
     description: 'Resolved environment name'
     required: false
@@ -229,6 +259,7 @@ runs:
         additional_packages: ${{ inputs.additional_packages }}
         install_traefik: ${{ inputs.install_traefik }}
         traefik_email: ${{ steps.validate.outputs.traefik_email_resolved }}
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports }}
 
     - name: Write env file (optional)
       if: ${{ steps.validate.outputs.write_env_file_effective == 'true' }}

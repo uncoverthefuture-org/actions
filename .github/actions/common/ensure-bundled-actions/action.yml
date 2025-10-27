@@ -1,31 +1,70 @@
+# ============================================================================
+# ACTION: Ensure Bundled Actions
+# ============================================================================
+# PURPOSE:
+# Ensures bundled .github/actions directory is available in workspace.
+# Copies actions from repository if not already present.
+#
+# WHAT IT DOES:
+# 1. Locates bundled actions in repository
+# 2. Checks if already present in workspace
+# 3. Copies actions if needed
+# 4. Skips if already present
+#
+# WHEN TO USE:
+# - Internal action for operation summary
+# - Ensure actions are available
+# - Part of workflow setup
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'common: ensure bundled actions'
 description: 'Copies the bundled .github/actions directory from this repository into the current workspace.'
 
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Restore bundled actions directory
+    # ========================================================================
+    # Locates and copies bundled actions to workspace
+    # Skips if already present
+    # ========================================================================
     - name: Restore bundled actions directory
       shell: bash
       run: |
+        # Enable strict error handling
         set -euo pipefail
+        
+        # Set destination directory
         dest=".github/actions"
         mkdir -p "$dest"
 
+        # Find source directory by walking up from action path
         source_dir="$GITHUB_ACTION_PATH"
         while [ "$source_dir" != "/" ] && [ ! -d "$source_dir/.github/actions" ]; do
           source_dir="$(dirname "$source_dir")"
         done
+        
+        # Fail if bundled actions not found
         if [ ! -d "$source_dir/.github/actions" ]; then
           echo "::error::Unable to locate bundled actions relative to $GITHUB_ACTION_PATH" >&2
           exit 1
         fi
 
+        # Get absolute paths to compare
         src_path="$(cd "$source_dir/.github/actions" && pwd)"
         dest_path="$(cd "$dest" && pwd)"
 
+        # Skip if already present (same path)
         if [ "$src_path" = "$dest_path" ]; then
           echo "Bundled actions already present in workspace; skipping copy."
           exit 0
         fi
 
+        # Copy bundled actions to workspace
         cp -a "$source_dir/.github/actions/." "$dest/"

@@ -1,6 +1,33 @@
+# ============================================================================
+# ACTION: SSH Laravel Deploy
+# ============================================================================
+# PURPOSE:
+# Deploys a Laravel application to a remote server via SSH using Podman.
+# Similar to Django deploy but tailored for Laravel applications.
+#
+# WHAT IT DOES:
+# 1. Optionally prepares a fresh Ubuntu host (Podman, Traefik, directories)
+# 2. Writes environment file to remote server
+# 3. Logs in to container registry and pulls image
+# 4. Runs Laravel migrations (optional)
+# 5. Starts Laravel container with Traefik routing
+# 6. Optionally starts database, worker, and scheduler containers
+#
+# WHEN TO USE:
+# - Deploy Laravel applications
+# - Deploy to production, staging, or development environments
+# - First deployment to a new server (set prepare_host: true)
+# - Subsequent deployments (prepare_host: false)
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'SSH Laravel Deploy'
 description: 'Upload env (optional) and deploy a Laravel container via Podman over SSH with Traefik routing and optional migrations.'
 
+# ============================================================================
+# INPUTS - Organized by category (similar to ssh-django-deploy)
+# ============================================================================
 inputs:
   ssh_host:
     description: 'SSH host'

@@ -1,6 +1,31 @@
+# ============================================================================
+# ACTION: Determine Environment Context
+# ============================================================================
+# PURPOSE:
+# Determines environment metadata (name, key, deploy flag) from overrides,
+# scripts, or branch conventions.
+#
+# WHAT IT DOES:
+# 1. Checks for explicit overrides (env_name, env_key, deploy_enabled)
+# 2. Sources optional environment script if no overrides
+# 3. Detects environment from branch name
+# 4. Falls back to defaults if detection fails
+# 5. Returns environment metadata
+#
+# WHEN TO USE:
+# - Auto-detect environment from branch
+# - Resolve environment metadata
+# - Part of CI/CD pipeline
+#
+# REFERENCE: See docs/ARCHITECTURE.md for environment detection rules
+# ============================================================================
+
 name: 'common: determine-env-context'
 description: 'Compute environment metadata from overrides, optional scripts, or default branch conventions.'
 
+# ============================================================================
+# INPUTS - Environment detection and overrides
+# ============================================================================
 inputs:
   env_name:
     description: 'Explicit environment name override (e.g., production, staging, dev)'

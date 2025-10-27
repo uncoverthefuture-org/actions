@@ -1,27 +1,74 @@
+# ============================================================================
+# ACTION: Normalize Params JSON
+# ============================================================================
+# PURPOSE:
+# Normalizes optional JSON parameters input into consistent JSON output.
+# Handles empty/missing JSON gracefully by defaulting to empty object.
+#
+# WHAT IT DOES:
+# 1. Accepts optional params_json input
+# 2. Validates JSON format
+# 3. Defaults to empty object {} if not provided
+# 4. Returns normalized JSON output
+#
+# WHEN TO USE:
+# - Internal action used by dispatchers
+# - Normalize complex parameter passing
+# - Handle optional JSON parameters
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'common: normalize params json'
 description: 'Normalizes optional params_json input into a JSON output.'
 
+# ============================================================================
+# INPUTS
+# ============================================================================
 inputs:
   params_json:
-    description: 'JSON string to normalize (optional).'
+    description: 'JSON string to normalize. Optional. Defaults to empty object {} if not provided. Example: {"key":"value"}'
     required: false
 
+# ============================================================================
+# OUTPUTS
+# ============================================================================
 outputs:
   json:
-    description: 'Normalized JSON string.'
+    description: 'Normalized JSON string. Empty object {} if input was empty. Used for parameter passing'
     value: ${{ steps.norm.outputs.json }}
+
+# ============================================================================
+# EXECUTION
+# ============================================================================
+# Normalizes JSON parameter input with graceful empty handling
+# ============================================================================
 
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Normalize params
+    # ========================================================================
+    # Validates and normalizes JSON input
+    # Defaults to empty object if not provided
+    # ========================================================================
     - name: Normalize params
       id: norm
       env:
         INPUT_PARAMS_JSON: ${{ inputs.params_json }}
       run: |
+        # Enable strict error handling
         set -euo pipefail
+        
+        # Get input JSON or use empty string
         J="${INPUT_PARAMS_JSON}"
+        
+        # If empty, default to empty JSON object
         if [ -z "$J" ]; then J='{}'; fi
+        
+        # Output normalized JSON using heredoc syntax
+        # This preserves multi-line JSON and special characters
         {
           printf 'json<<EOF\n'
           printf '%s\n' "$J"

@@ -1,22 +1,70 @@
+# ============================================================================
+# ACTION: Route Category
+# ============================================================================
+# PURPOSE:
+# Determines which dispatcher category a subaction belongs to.
+# Used internally by the main aggregator to route to the correct dispatcher.
+#
+# WHAT IT DOES:
+# 1. Reads subaction name
+# 2. Looks up category in routes.json
+# 3. Returns category (build, app, podman, infra, common, version)
+# 4. Allows explicit category override
+#
+# WHEN TO USE:
+# - Internal action used by main aggregator
+# - Called before dispatcher routing
+# - Used to determine which dispatcher to invoke
+#
+# CATEGORIES:
+# - build: Docker image building (build-and-push)
+# - app: Application deployment (ssh-django-deploy, ssh-nextjs-deploy, etc.)
+# - podman: Container operations (remote-podman-exec, podman-run-service, etc.)
+# - infra: Infrastructure setup (prepare-ubuntu-host, setup-podman-user, etc.)
+# - common: Shared utilities (prepare-app-env, normalize-params, etc.)
+# - version: Semantic versioning (compute-next, update-tags, etc.)
+#
+# REFERENCE: See docs/ARCHITECTURE.md for category definitions
+# ============================================================================
+
 name: 'common: route category'
 description: 'Determines the dispatcher category for a given subaction.'
 
+# ============================================================================
+# INPUTS
+# ============================================================================
 inputs:
   subaction:
-    description: 'Subaction to route'
+    description: 'Subaction to route. Example: build-and-push, ssh-django-deploy, prepare-ubuntu-host'
     required: false
   category:
-    description: 'Optional explicit category override'
+    description: 'Optional explicit category override. Valid: build|app|podman|infra|common|version. Bypasses auto-detection'
     required: false
 
+# ============================================================================
+# OUTPUTS
+# ============================================================================
 outputs:
   category:
-    description: 'Resolved category (build|podman|infra|app|version)'
+    description: 'Resolved category (build|app|podman|infra|common|version). Used to determine which dispatcher to invoke'
     value: ${{ steps.route.outputs.category }}
+
+# ============================================================================
+# EXECUTION
+# ============================================================================
+# Uses routes.json to map subactions to categories
+# Falls back to explicit category if provided
+# ============================================================================
 
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Route subaction to category
+    # ========================================================================
+    # Reads routes.json and determines category
+    # Allows explicit override via category input
+    # ========================================================================
     - name: Route
       id: route
       shell: bash

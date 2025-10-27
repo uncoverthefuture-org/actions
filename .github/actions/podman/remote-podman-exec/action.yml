@@ -1,6 +1,32 @@
+# ============================================================================
+# ACTION: Remote Podman Exec
+# ============================================================================
+# PURPOSE:
+# Executes arbitrary commands on a remote server via SSH with Podman support.
+# Provides a run_podman helper function for container operations.
+#
+# WHAT IT DOES:
+# 1. Connects to remote server via SSH
+# 2. Optionally sources environment file (.env)
+# 3. Provides run_podman helper function
+# 4. Executes inline script on remote host
+# 5. Returns output to GitHub Actions
+#
+# WHEN TO USE:
+# - Run custom deployment scripts on remote server
+# - Execute Podman commands (start, stop, exec, etc.)
+# - Run database migrations
+# - Execute any remote commands via SSH
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'Remote Podman Exec'
 description: 'Run remote commands over SSH with a run_podman helper, supporting root or user.'
 
+# ============================================================================
+# INPUTS - Organized by category
+# ============================================================================
 inputs:
   ssh_host:
     description: 'SSH host'

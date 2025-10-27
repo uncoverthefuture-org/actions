@@ -1,30 +1,70 @@
+# ============================================================================
+# ACTION: Validate Subaction
+# ============================================================================
+# PURPOSE:
+# Validates that a subaction name matches an allowed list.
+# Prevents invalid subaction names from being used.
+#
+# WHAT IT DOES:
+# 1. Checks subaction is provided
+# 2. Validates against allowed list
+# 3. Fails if not in allowed list
+# 4. Provides helpful error messages
+#
+# WHEN TO USE:
+# - Validate subaction input
+# - Enforce allowed subactions
+# - Part of input validation
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'common: validate subaction'
 description: 'Validates that a provided subaction matches an allow list.'
 
+# ============================================================================
+# INPUTS
+# ============================================================================
 inputs:
   subaction:
-    description: 'Subaction name to validate.'
+    description: 'Subaction name to validate. Required. Example: ssh-django-deploy'
     required: true
   allowed:
-    description: 'Pipe-delimited list of allowed subaction names.'
+    description: 'Pipe-delimited list of allowed subaction names. Required. Example: ssh-django-deploy|ssh-nextjs-deploy'
     required: true
 
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Validate subaction input
+    # ========================================================================
+    # Checks subaction is in allowed list
+    # Fails with helpful error if not
+    # ========================================================================
     - name: Validate subaction input
       env:
         SA_INPUT: ${{ inputs.subaction }}
         ALLOWED_LIST: ${{ inputs.allowed }}
       run: |
+        # Enable strict error handling
         set -euo pipefail
+        
+        # Get subaction and allowed list
         SA="${SA_INPUT}"
         ALLOWED="${ALLOWED_LIST}"
+        
+        # Check subaction is provided
         if [ -z "$SA" ]; then
           echo '::error::subaction input is required'
           echo 'Error: subaction is required' >&2
           exit 1
         fi
+        
+        # Check if subaction is in allowed list
         MATCHED='false'
         OLD_IFS="$IFS"
         IFS='|'
@@ -35,6 +75,8 @@ runs:
           fi
         done
         IFS="$OLD_IFS"
+        
+        # Fail if not matched
         if [ "$MATCHED" != 'true' ]; then
           echo "::error::Unsupported subaction '$SA' (allowed: $ALLOWED)"
           echo "Error: unsupported subaction '$SA' (allowed: $ALLOWED)" >&2

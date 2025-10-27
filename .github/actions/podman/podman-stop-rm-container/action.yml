@@ -1,50 +1,95 @@
+# ============================================================================
+# ACTION: Podman Stop and Remove Container
+# ============================================================================
+# PURPOSE:
+# Stops and removes a container on a remote server via SSH using Podman.
+# Used for cleanup, redeployment, or service shutdown.
+#
+# WHAT IT DOES:
+# 1. Connects to remote server via SSH
+# 2. Stops the specified container (gracefully)
+# 3. Removes the container
+# 4. Handles missing containers gracefully
+#
+# WHEN TO USE:
+# - Stop running containers before redeployment
+# - Clean up old containers
+# - Shutdown services
+# - Part of deployment cleanup process
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'Podman Stop and Remove Container'
 description: 'Stops and removes a container by name on a remote host via Podman.'
 
+# ============================================================================
+# INPUTS - Organized by category
+# ============================================================================
 inputs:
+  # ========================================================================
+  # SSH / REMOTE EXECUTION
+  # ========================================================================
   ssh_host:
-    description: 'SSH host'
+    description: 'SSH host (IP or hostname). Required. Example: 192.168.1.100'
     required: true
   ssh_user:
-    description: 'SSH username (non-root)'
+    description: 'SSH username (non-root). Required. Used for authentication'
     required: true
   ssh_key:
-    description: 'SSH private key for non-root user'
+    description: 'SSH private key for authentication. Required. Should be stored as GitHub secret'
     required: true
   root_ssh_key:
-    description: 'SSH private key for root (optional)'
+    description: 'SSH private key for root (optional). Use if ssh_user cannot escalate to root'
     required: false
   ssh_port:
-    description: 'SSH port'
+    description: 'SSH port. Default: 22. Change if using non-standard SSH port'
     required: false
     default: '22'
   ssh_fingerprint:
-    description: 'Server SSH host key fingerprint to verify host identity (optional but recommended)'
+    description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
   podman_user:
-    description: 'User on remote host to execute podman commands as'
+    description: 'User on remote host to execute podman commands as. Default: deployer'
     required: false
     default: 'deployer'
   connect_mode:
-    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md"
     required: false
     default: 'auto'
 
-  # Container naming
+  # ========================================================================
+  # CONTAINER IDENTIFICATION
+  # ========================================================================
   container_name:
-    description: 'Name of the container to stop/remove. If empty, defaults to app_slug-env_name.'
+    description: 'Container name to stop/remove. Optional. If empty, defaults to app_slug-env_name. Example: myapp-production'
     required: false
   app_slug:
-    description: 'Slug used in default container name'
+    description: 'Application slug for default container name. Default: ekaban-api. Example: myapp'
     required: false
     default: 'ekaban-api'
   env_name:
-    description: 'Environment name'
+    description: 'Environment name for default container name. Optional. Example: production, staging, development'
     required: false
+
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
+# The container removal follows these steps:
+# 1. Validate inputs - Check required parameters
+# 2. Stop and remove - Execute on remote host via SSH
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for detailed step explanations
+# ============================================================================
 
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Validate inputs
+    # ========================================================================
+    # Checks that all required parameters are provided
+    # ========================================================================
     - name: Validate inputs
       run: |
         set -euo pipefail

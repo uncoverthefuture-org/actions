@@ -1,24 +1,57 @@
+# ============================================================================
+# ACTION: Update Tags
+# ============================================================================
+# PURPOSE:
+# Creates new version tag and updates major/minor alias tags in git.
+# Used to maintain semantic version tags for releases.
+#
+# WHAT IT DOES:
+# 1. Validates tag format (vX.Y.Z, vX.Y, vX)
+# 2. Creates new full version tag if missing
+# 3. Updates major alias tag to point to new version
+# 4. Updates minor alias tag to point to new version
+# 5. Pushes all tags to repository
+#
+# WHEN TO USE:
+# - Create git tags for new releases
+# - Update version aliases (v1, v1.0)
+# - Part of release automation
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'version: update-tags'
 description: 'Create the new version tag if missing, and (force) update major/minor alias tags to point to it.'
 
+# ============================================================================
+# INPUTS
+# ============================================================================
 inputs:
   new:
-    description: 'New tag (vX.Y.Z) to create/point aliases to'
+    description: 'New full version tag (vX.Y.Z). Required. Example: v1.2.3'
     required: true
   major:
-    description: 'Major alias (vX)'
+    description: 'Major alias tag (vX). Required. Example: v1'
     required: true
   minor:
-    description: 'Minor alias (vX.Y)'
+    description: 'Minor alias tag (vX.Y). Required. Example: v1.2'
     required: true
   tag_message:
-    description: 'Message for annotated tags'
+    description: 'Message for annotated tags. Optional. Default: empty (lightweight tags)'
     required: false
     default: ''
 
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Validate tag inputs
+    # ========================================================================
+    # Ensures all tags are in correct format
+    # ========================================================================
     - name: Validate tag inputs
       shell: bash
       env:

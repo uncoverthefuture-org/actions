@@ -1,53 +1,94 @@
+# ============================================================================
+# ACTION: Prepare App Environment
+# ============================================================================
+# PURPOSE:
+# Determines environment context, resolves environment-specific secrets,
+# and prepares .env file for container builds.
+#
+# WHAT IT DOES:
+# 1. Detects environment from branch or uses explicit override
+# 2. Resolves environment-specific secret (e.g., PROD_ENV_B64)
+# 3. Decodes base64 secret to .env file
+# 4. Optionally exports variables to GitHub Actions
+# 5. Returns environment metadata
+#
+# WHEN TO USE:
+# - Prepare environment files for container builds
+# - Resolve environment-specific secrets
+# - Auto-detect environment from branch
+# - Part of CI/CD pipeline
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'common: prepare-app-env'
 description: 'Determines environment context, resolves the matching secret, and prepares an env file for container builds.'
 
+# ============================================================================
+# INPUTS - Environment detection and secret resolution
+# ============================================================================
 inputs:
+  # ========================================================================
+  # ENVIRONMENT OVERRIDES
+  # ========================================================================
   env_name:
-    description: 'Explicit environment name override (e.g., production, staging, dev)'
+    description: 'Explicit environment name override. Example: production, staging, development. Bypasses auto-detection'
     required: false
   env_key:
-    description: 'Explicit environment key override (e.g., prod, staging, dev)'
+    description: 'Explicit environment key override. Example: prod, staging, dev. Short form of env_name'
     required: false
   deploy_enabled:
-    description: "Override deploy flag ('true' or 'false')"
+    description: "Override deploy flag ('true' or 'false'). Controls whether deployment should proceed"
     required: false
   image_tag:
-    description: 'Override image tag (passed through to determine-env-context)'
+    description: 'Override image tag. Passed to environment detection script'
     required: false
+
+  # ========================================================================
+  # ENVIRONMENT DETECTION
+  # ========================================================================
   environment_script:
-    description: 'Optional script sourced by determine-env-context when overrides are absent'
+    description: 'Script to source for environment detection. Default: .github/scripts/set-environment-context.sh'
     required: false
     default: '.github/scripts/set-environment-context.sh'
   fallback_env_name:
-    description: 'Environment name to use when branch detection is unknown'
+    description: 'Fallback environment name when branch detection fails. Default: dev'
     required: false
     default: 'dev'
   fallback_env_key:
-    description: 'Environment key to use when branch detection is unknown'
+    description: 'Fallback environment key when branch detection fails. Default: dev'
     required: false
     default: 'dev'
   fallback_deploy_enabled:
-    description: "Deploy flag default when branch detection is unknown ('true' or 'false')"
+    description: "Fallback deploy flag when branch detection fails. Default: false ('true' or 'false')"
     required: false
     default: 'false'
+
+  # ========================================================================
+  # SECRET RESOLUTION
+  # ========================================================================
   secret_prefix:
-    description: "Secret name prefix. Final secret is <prefix><UPPERCASE env key>.<suffix>"
+    description: "Secret name prefix. Final secret: <prefix><UPPERCASE env_key><suffix>. Example: '' results in PROD_ENV_B64"
     required: false
     default: ''
   secret_suffix:
-    description: 'Secret name suffix appended after the upper-cased environment key.'
+    description: 'Secret name suffix. Default: _ENV_B64. Final secret: <prefix><UPPERCASE env_key><suffix>'
     required: false
     default: '_ENV_B64'
   secret_required:
-    description: "Set to 'true' to fail when the secret is empty/missing"
+    description: "Fail if secret is missing/empty. Default: true. Set 'false' to allow missing secrets"
     required: false
     default: 'true'
+
+  # ========================================================================
+  # ENV FILE OUTPUT
+  # ========================================================================
   env_file:
-    description: 'Path (relative to workspace) where the decoded env file should be written'
+    description: 'Output path for decoded .env file. Default: .env.production. Example: .env'
     required: false
     default: '.env.production'
   export_to_github_env:
-    description: "Append the decoded env file to $GITHUB_ENV so future steps inherit the variables"
+    description: "Export variables to GitHub Actions. Default: false. Set 'true' to inherit in future steps"
     required: false
     default: 'true'
 

@@ -1,25 +1,111 @@
+# ============================================================================
+# WORKFLOW: CI/CD — Build and Deploy Django API
+# ============================================================================
+# PURPOSE:
+# Automated CI/CD pipeline for Django API applications.
+# Builds Docker images and deploys them to remote servers via SSH.
+#
+# WHAT IT DOES:
+# 1. Builds and pushes Docker image to container registry
+# 2. Deploys the image to a remote server via SSH
+# 3. Runs database migrations
+# 4. Starts the Django container with Traefik routing
+#
+# TRIGGERS:
+# - Push to main (production)
+# - Push to staging (staging environment)
+# - Push to develop (development environment)
+#
+# REFERENCE: See GETTING_STARTED.md for setup instructions
+# ============================================================================
+
 name: CI/CD — Build and Deploy Django API
 
+# ============================================================================
+# TRIGGERS
+# ============================================================================
+# This workflow runs on push to any of these branches.
+# Each branch maps to an environment (auto-detected by the actions).
 on:
   push:
     branches: [ main, staging, develop ]
 
+# ============================================================================
+# PERMISSIONS
+# ============================================================================
+# Required permissions:
+# - contents: read - to checkout the repository
+# - packages: write - to push images to GitHub Container Registry (ghcr.io)
 permissions:
   contents: read
   packages: write
 
+# ============================================================================
+# JOBS
+# ============================================================================
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
+      # ====================================================================
+      # STEP 1: Checkout repository
+      # ====================================================================
+      # Clones the repository so we can build the Docker image from source.
+      # This is required before using any local actions.
+      # ====================================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ====================================================================
+      # STEP 2: Build and push Docker image
+      # ====================================================================
+      # Builds the Docker image and pushes it to the container registry.
+      # Automatically detects environment from branch name:
+      # - main → production
+      # - staging → staging
+      # - develop → development
+      #
+      # OUTPUTS:
+      # - steps.build.outputs.env_name: Environment name (e.g., "production")
+      # - steps.build.outputs.image_tag: Image tag (e.g., "abc123def")
+      # - steps.build.outputs.deploy_enabled: Whether to deploy (true/false)
+      #
+      # WHY THIS STEP?
+      # Docker images need to be built and stored in a registry before deployment.
+      # This action handles the entire build and push process.
+      # ====================================================================
       - id: build
         uses: uncoverthefuture-org/actions@v1.0.41
         with:
           subaction: build-and-push
 
+      # ====================================================================
+      # STEP 3: Deploy Django App
+      # ====================================================================
+      # Deploys the built image to a remote server via SSH.
+      # Only runs if deployment is enabled (deploy_enabled == 'true').
+      #
+      # CONDITION: if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
+      # This prevents deployment on branches where it's not configured.
+      #
+      # REQUIRED SECRETS (set in GitHub repository settings):
+      # - SSH_HOST: IP or hostname of the deployment server
+      # - SSH_KEY: Private SSH key for authentication
+      #
+      # PARAMETERS:
+      # - base_domain: Base domain for Traefik routing (e.g., "example.com")
+      # - domain_prefix_prod: Subdomain prefix for production (e.g., "app")
+      #   Results in: app.example.com
+      # - run_db: Whether to start a database container (default: false)
+      #   Set to "true" if you want the action to provision MySQL/PostgreSQL
+      #
+      # DEFAULT BEHAVIORS:
+      # - ssh_user defaults to "root" (override in params_json if needed)
+      # - Domain configuration is optional (Traefik is used if domain is provided)
+      # - Migrations run automatically (disable with "migrate": "false")
+      #
+      # REFERENCE: See VARIABLES_REFERENCE.md for all available parameters
+      # ====================================================================
       - name: Deploy Django App
         if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
         uses: uncoverthefuture-org/actions@v1.0.41
@@ -33,12 +119,26 @@ jobs:
               "domain_prefix_prod": "app",
               "run_db": "false"
             }
-        # ssh_user defaults to "root". Provide "ssh_user" in params_json if you need a non-root user.
-        # Note: domain config is optional. If neither base_domain nor domain is provided,
-        # the Apache vhost step is skipped automatically.
-        # Set "run_db": "false" (default) to skip provisioning a local database when you already have a managed DB.
 
-      # Optional: write env file from the resolved secret (env_name defaults from branch; can omit)
+      # ====================================================================
+      # OPTIONAL: Write environment file
+      # ====================================================================
+      # Uncomment this section to write a .env file on the remote server.
+      # This is useful if you have environment variables stored as GitHub secrets.
+      #
+      # HOW IT WORKS:
+      # 1. GitHub secret is expected to be base64-encoded .env file contents
+      # 2. Secret name pattern: ENV_B64_<ENV_NAME> (e.g., ENV_B64_PRODUCTION)
+      # 3. The action decodes and writes it to the remote server
+      #
+      # SETUP:
+      # 1. Create a .env file locally with your environment variables
+      # 2. Base64 encode it: cat .env | base64
+      # 3. Create a GitHub secret named ENV_B64_PRODUCTION with the encoded value
+      # 4. Uncomment the step below
+      #
+      # REFERENCE: See GETTING_STARTED.md for detailed setup instructions
+      # ====================================================================
       # - uses: uncoverthefuture-org/actions@v1.0.41
       #   with:
       #     subaction: write-remote-env-file
@@ -51,7 +151,28 @@ jobs:
       #         "env_b64":  "${{ steps.env.outputs.env_b64 }}"
       #       }
 
-      # Optional: manage multiple env files (e.g., API and worker)
+      # ====================================================================
+      # OPTIONAL: Manage multiple environment files (e.g., API and worker)
+      # ====================================================================
+      # Uncomment this section if you need separate environment files for:
+      # - API container
+      # - Background worker container
+      # - Scheduler container
+      #
+      # HOW IT WORKS:
+      # 1. Select a different secret for the worker (e.g., WORKER_ENV_B64_PRODUCTION)
+      # 2. Write it to a different path (e.g., /var/deployments/production/myapp-worker/.env)
+      # 3. The worker container reads from this separate file
+      #
+      # EXAMPLE SETUP:
+      # - Create GitHub secrets:
+      #   - ENV_B64_PRODUCTION (for API)
+      #   - WORKER_ENV_B64_PRODUCTION (for worker)
+      # - Uncomment the steps below
+      # - The worker will use its own environment variables
+      #
+      # REFERENCE: See VARIABLES_REFERENCE.md for select-env-secret parameters
+      # ====================================================================
       # - name: Select worker env secret
       #   id: worker_env
       #   uses: ./.github/actions/common/select-env-secret

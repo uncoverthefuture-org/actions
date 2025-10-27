@@ -1,12 +1,49 @@
+# ============================================================================
+# ACTION: Infrastructure Dispatcher
+# ============================================================================
+# PURPOSE:
+# Internal router that dispatches to infrastructure setup and management actions.
+# Routes infrastructure requests to appropriate handlers.
+#
+# WHAT IT DOES:
+# 1. Receives subaction name and parameters
+# 2. Routes to appropriate infra action (prepare-host, manage-vhost, etc.)
+# 3. Passes all parameters to the selected action
+# 4. Returns outputs from the selected action
+#
+# WHEN TO USE:
+# - Internal action used by main aggregator
+# - Routes infrastructure setup and management requests
+# - Part of the aggregator pattern
+#
+# SUPPORTED SUBACTIONS:
+# - prepare-ubuntu-host: Full server preparation
+# - setup-podman-user: Configure Podman user
+# - apache-manage-vhost: Manage Apache virtual hosts
+# - install-podman, install-apache, install-webmin, install-certbot
+# - configure-ufw: Firewall configuration
+# - And more infrastructure utilities
+#
+# REFERENCE: See docs/ARCHITECTURE.md for dispatcher pattern explanation
+# ============================================================================
+
 name: 'dispatch: infra'
 description: 'Infra dispatch: route short calls to infra actions'
 
+# ============================================================================
+# INPUTS - Pass-through parameters
+# ============================================================================
+# All inputs are passed through to the selected subaction
+# ============================================================================
 inputs:
+  # ========================================================================
+  # ROUTING
+  # ========================================================================
   subaction:
-    description: "prepare-ubuntu-host | apache-manage-vhost | install-podman | install-apache | install-webmin | install-certbot | request-certbot-cert | ensure-certbot-cert | configure-ufw | setup-podman-user | determine-domain | compute-host-port | check-dns-match | ensure-apache-installed | enable-apache-modules | manage-vhost-config | enable-site-reload"
+    description: "Subaction to route to. Required. Options: prepare-ubuntu-host, setup-podman-user, apache-manage-vhost, install-podman, install-apache, install-webmin, install-certbot, configure-ufw, and more"
     required: true
   params_json:
-    description: "JSON blob of parameters to pass to the selected subaction"
+    description: "JSON blob of parameters to pass to the selected subaction. Optional. Used for complex parameter passing"
     required: false
 
   # --- Remote connection (common) ---

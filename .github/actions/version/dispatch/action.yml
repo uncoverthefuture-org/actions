@@ -1,12 +1,46 @@
+# ============================================================================
+# ACTION: Version Dispatcher
+# ============================================================================
+# PURPOSE:
+# Internal router that dispatches to semantic versioning actions.
+# Routes version management requests to appropriate handlers.
+#
+# WHAT IT DOES:
+# 1. Receives subaction name and parameters
+# 2. Routes to appropriate version action (compute-next, update-tags, update-refs)
+# 3. Passes all parameters to the selected action
+# 4. Returns outputs from the selected action
+#
+# WHEN TO USE:
+# - Internal action used by main aggregator
+# - Routes semantic versioning requests
+# - Part of the aggregator pattern
+#
+# SUPPORTED SUBACTIONS:
+# - compute-next: Calculate next semantic version
+# - update-tags: Create git tags for new version
+# - update-refs: Update action references to new version
+#
+# REFERENCE: See docs/ARCHITECTURE.md for dispatcher pattern explanation
+# ============================================================================
+
 name: 'dispatch: version'
 description: 'Version dispatch: route short calls to version actions'
 
+# ============================================================================
+# INPUTS - Pass-through parameters
+# ============================================================================
+# All inputs are passed through to the selected subaction
+# ============================================================================
 inputs:
+  # ========================================================================
+  # ROUTING
+  # ========================================================================
   subaction:
-    description: "compute-next | update-tags | update-refs"
+    description: "Subaction to route to. Required. Options: compute-next, update-tags, update-refs"
     required: true
   params_json:
-    description: "JSON blob of parameters to pass to the selected subaction"
+    description: "JSON blob of parameters to pass to the selected subaction. Optional. Used for complex parameter passing"
     required: false
 
 outputs:

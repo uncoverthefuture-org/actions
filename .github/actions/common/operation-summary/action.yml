@@ -1,6 +1,37 @@
+# ============================================================================
+# ACTION: Operation Summary
+# ============================================================================
+# PURPOSE:
+# Generates a detailed summary of the operation after execution.
+# Displays results, status, and troubleshooting information.
+#
+# WHAT IT DOES:
+# 1. Collects outcomes from all dispatchers (build, app, podman, infra, version, common)
+# 2. Routes to category-specific summary generator
+# 3. Compiles overall operation summary
+# 4. Displays success/failure status
+# 5. Provides troubleshooting guidance
+#
+# WHEN TO USE:
+# - Internal action called by main aggregator
+# - Generates summary after operation completes
+# - Provides user-friendly output and next steps
+#
+# OUTPUTS:
+# - Detailed operation summary
+# - Success/failure status
+# - Links to logs and workflow run
+# - Troubleshooting guidance
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'common: operation-summary'
 description: 'Generates a detailed summary of the operation, including results, failures, and where to find errors.'
 
+# ============================================================================
+# INPUTS - Operation results from all dispatchers
+# ============================================================================
 inputs:
   subaction:
     description: 'The subaction that was run'
@@ -130,6 +161,12 @@ runs:
         minor: ${{ inputs.version_minor }}
         last: ${{ inputs.version_last }}
 
+    # ========================================================================
+    # STEP 2: Generate Overall Summary
+    # ========================================================================
+    # Compiles results from category-specific summaries
+    # Displays success/failure status and troubleshooting guidance
+    # ========================================================================
     - name: Generate Overall Summary
       shell: bash
       env:
@@ -143,35 +180,44 @@ runs:
         COMMON_IMAGE_TAG: ${{ inputs.common_image_tag }}
         COMMON_ENV_FILE: ${{ inputs.common_env_file }}
       run: |
+        # Enable strict error handling
         set -euo pipefail
 
+        # Extract operation details
         SUBACTION="${{ inputs.subaction }}"
         CATEGORY="${{ inputs.category }}"
         TIMESTAMP="$(date -u +"%Y-%m-%d %H:%M:%S UTC")"
 
-        # Determine which summary to use
+        # Route to category-specific summary or use common summary
+        # Each category has its own summary generator that formats results
         case "$CATEGORY" in
           build)
+            # Get build summary from build-specific summary generator
             SUMMARY="${{ steps.build_sum.outputs.summary }}"
             SUCCESS="${{ steps.build_sum.outputs.success }}"
             ;;
           podman)
+            # Get podman summary from podman-specific summary generator
             SUMMARY="${{ steps.podman_sum.outputs.summary }}"
             SUCCESS="${{ steps.podman_sum.outputs.success }}"
             ;;
           infra)
+            # Get infrastructure summary from infra-specific summary generator
             SUMMARY="${{ steps.infra_sum.outputs.summary }}"
             SUCCESS="${{ steps.infra_sum.outputs.success }}"
             ;;
           app)
+            # Get app deployment summary from app-specific summary generator
             SUMMARY="${{ steps.app_sum.outputs.summary }}"
             SUCCESS="${{ steps.app_sum.outputs.success }}"
             ;;
           version)
+            # Get version summary from version-specific summary generator
             SUMMARY="${{ steps.version_sum.outputs.summary }}"
             SUCCESS="${{ steps.version_sum.outputs.success }}"
             ;;
           common)
+            # Format common utility results
             SECRET_NAME="${COMMON_SECRET_NAME:-n/a}"
             SECRET_FOUND="${COMMON_SECRET_FOUND:-unknown}"
             ENV_NAME_VAL="${COMMON_ENV_NAME:-n/a}"
@@ -179,6 +225,8 @@ runs:
             DEPLOY_VAL="${COMMON_DEPLOY_ENABLED:-unknown}"
             IMAGE_TAG_VAL="${COMMON_IMAGE_TAG:-n/a}"
             ENV_FILE_VAL="${COMMON_ENV_FILE:-n/a}"
+            
+            # Build markdown summary for common utilities
             SUMMARY="### 🧩 Common Utility
             - **Env name**: ${ENV_NAME_VAL}
             - **Env key**: ${ENV_KEY_VAL}
@@ -187,6 +235,8 @@ runs:
             - **Secret key**: ${SECRET_NAME}
             - **Secret found**: ${SECRET_FOUND}
             - **Env file**: ${ENV_FILE_VAL}"
+            
+            # Determine success based on outcome
             if [ "${COMMON_OUTCOME}" = "success" ]; then
               SUCCESS="true"
             else
@@ -194,12 +244,14 @@ runs:
             fi
             ;;
           *)
+            # Handle unknown category
             SUMMARY="### ❓ Unknown Operation
             **Status**: ⚠️ Unknown category"
             SUCCESS="false"
             ;;
         esac
 
+        # Print header with operation details
         echo "## 🔍 Uncover Actions Detailed Summary"
         echo ""
         echo "### 📋 Operation Overview"
@@ -208,14 +260,19 @@ runs:
         echo "- **Timestamp**: $TIMESTAMP"
         echo "- **Workflow Run**: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
         echo ""
+        
+        # Print category-specific summary
         echo "$SUMMARY"
         echo ""
 
+        # Print overall status and next steps or troubleshooting
         echo "### 📊 Overall Status"
         if [ "$SUCCESS" = "true" ]; then
+          # Success case: show completion message and next steps
           echo "**Result**: ✅ Operation completed successfully"
           echo "**Next Steps**: Monitor the deployed application or proceed with related workflows."
         else
+          # Failure case: show error and troubleshooting guidance
           echo "**Result**: ❌ Operation failed"
           echo "**Troubleshooting**:"
           echo "  - Review the job logs for the failed step"

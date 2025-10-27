@@ -1,54 +1,106 @@
+# ============================================================================
+# ACTION: Build and Push Docker Image
+# ============================================================================
+# PURPOSE:
+# Builds a Docker image from the repository and pushes it to a container registry.
+# This action is the first step in the CI/CD pipeline.
+#
+# WHAT IT DOES:
+# 1. Checks out the repository code
+# 2. Authenticates with the Docker registry
+# 3. Extracts metadata (tags, labels) for the image
+# 4. Builds the Docker image using the Dockerfile
+# 5. Pushes the image to the registry
+#
+# WHEN TO USE:
+# - First step in any CI/CD workflow
+# - Before deploying to production/staging/development
+# - Whenever you need to build and push a Docker image
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for more details
+# ============================================================================
+
 name: 'Build and Push Docker Image'
 description: 'Builds and pushes a Docker image for a Django API, determining environment context.'
 
+# ============================================================================
+# INPUTS - Parameters passed by the user
+# ============================================================================
 inputs:
   registry:
-    description: 'Docker registry to use'
+    description: 'Docker registry to use (default: GitHub Container Registry)'
     required: false
     default: 'ghcr.io'
   image_name:
-    description: 'Name of the Docker image'
+    description: 'Name of the Docker image (org/repo format). Defaults to github.repository'
     required: false
   github_token:
-    description: 'GitHub token for authentication'
+    description: 'GitHub token for authentication. Defaults to github.token if not provided'
     required: false
   environment_script:
     description: 'Path to the script that sets environment context'
     required: false
     default: '.github/scripts/set-environment-context.sh'
   env_name:
-    description: 'Override environment name (bypass auto detection if provided)'
+    description: 'Override environment name (bypass auto detection if provided). Example: production, staging, development'
     required: false
   env_key:
-    description: 'Override environment key (e.g., prod, staging, dev)'
+    description: 'Override environment key (e.g., prod, staging, dev). Short form of env_name'
     required: false
   deploy_enabled:
-    description: "Override deploy flag ('true' or 'false')"
+    description: "Override deploy flag ('true' or 'false'). Controls whether deployment should proceed"
     required: false
   image_tag:
-    description: 'Override image tag to publish'
+    description: 'Override image tag to publish. Usually auto-generated from commit SHA'
     required: false
 
+# ============================================================================
+# OUTPUTS - Values returned by this action
+# ============================================================================
 outputs:
   env_name:
-    description: 'Environment name'
+    description: 'Environment name (production, staging, development)'
     value: ${{ inputs.env_name }}
   env_key:
-    description: 'Environment key'
+    description: 'Environment key (prod, staging, dev)'
     value: ${{ inputs.env_key }}
   image_tag:
-    description: 'Image tag'
+    description: 'Docker image tag that was pushed'
     value: ${{ inputs.image_tag }}
   deploy_enabled:
-    description: 'Whether deployment is enabled'
+    description: 'Whether deployment is enabled (true/false)'
     value: ${{ inputs.deploy_enabled }}
 
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Checkout repository code
+    # ========================================================================
+    # Clones the repository so we can access the Dockerfile and source code.
+    # This is required before building the Docker image.
+    # ========================================================================
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # ========================================================================
+    # STEP 2: Authenticate with Docker registry
+    # ========================================================================
+    # Logs in to the Docker registry (GitHub Container Registry by default).
+    # This allows us to push the image to the registry.
+    #
+    # AUTHENTICATION:
+    # - username: GitHub actor (the user who triggered the workflow)
+    # - password: GitHub token (provided or defaults to github.token)
+    #
+    # VARIABLES:
+    # - inputs.registry: The registry URL (e.g., ghcr.io)
+    # - inputs.github_token: Custom token (optional)
+    # - github.token: Default GitHub token (always available)
+    # ========================================================================
     - name: Log in to registry
       uses: docker/login-action@v3
       with:
@@ -56,6 +108,21 @@ runs:
         username: ${{ github.actor }}
         password: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
 
+    # ========================================================================
+    # STEP 3: Extract Docker metadata
+    # ========================================================================
+    # Generates metadata for the Docker image including tags and labels.
+    # This metadata is used when building and pushing the image.
+    #
+    # METADATA INCLUDES:
+    # - tags: Image tags (e.g., ghcr.io/org/repo:abc123def)
+    # - labels: Image labels (metadata about the image)
+    #
+    # VARIABLES:
+    # - inputs.registry: Registry URL
+    # - inputs.image_name: Image name (defaults to github.repository)
+    # - inputs.image_tag: Custom tag (usually auto-generated)
+    # ========================================================================
     - name: Extract Docker metadata
       id: meta
       uses: docker/metadata-action@v5
@@ -64,6 +131,26 @@ runs:
         tags: |
           type=raw,value=${{ inputs.image_tag }}
 
+    # ========================================================================
+    # STEP 4: Build and push Docker image
+    # ========================================================================
+    # Builds the Docker image using the Dockerfile in the repository root.
+    # The image is then pushed to the registry.
+    #
+    # WHAT HAPPENS:
+    # 1. Reads Dockerfile from repository root
+    # 2. Builds the image with all layers
+    # 3. Tags the image with metadata from STEP 3
+    # 4. Pushes the image to the registry
+    #
+    # VARIABLES:
+    # - context: . (current directory - repository root)
+    # - push: true (push to registry after building)
+    # - tags: Image tags from STEP 3
+    # - labels: Image labels from STEP 3
+    #
+    # REFERENCE: See docs/VARIABLES_REFERENCE.md for all parameters
+    # ========================================================================
     - name: Build and push
       uses: docker/build-push-action@v6
       with:

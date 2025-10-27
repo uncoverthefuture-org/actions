@@ -1,5 +1,31 @@
+# ============================================================================
+# WORKFLOW: Auto Version Tags
+# ============================================================================
+# PURPOSE:
+# Automatically creates semantic version tags for releases.
+# Triggered on every push to master or manually via workflow_dispatch.
+#
+# WHAT IT DOES:
+# 1. Computes the next semantic version (patch, minor, or major bump)
+# 2. Updates all action.yml files to reference the new version
+# 3. Creates git tags for the new version and major/minor aliases
+#
+# WHY THIS MATTERS:
+# - Allows users to reference actions by major version (e.g., @v1)
+# - Automatically bumps versions on each release
+# - Keeps all action references up-to-date
+#
+# REFERENCE: See ARCHITECTURE.md for versioning strategy
+# ============================================================================
+
 name: Release — Auto Version Tags
 
+# ============================================================================
+# TRIGGERS
+# ============================================================================
+# This workflow runs:
+# - On every push to master branch (automatic versioning)
+# - Manually via workflow_dispatch (manual version bump with custom level)
 on:
   push:
     branches: [ master ]
@@ -12,28 +38,84 @@ on:
         type: choice
         options: [patch, minor, major]
 
+# ============================================================================
+# PERMISSIONS
+# ============================================================================
+# This workflow needs write access to repository contents to:
+# - Create new git tags
+# - Push version updates
 permissions:
   contents: write
 
+# ============================================================================
+# CONCURRENCY
+# ============================================================================
+# Ensures only one versioning job runs at a time to prevent race conditions
+# where multiple version bumps could conflict.
 concurrency:
   group: auto-versioning
   cancel-in-progress: false
 
+# ============================================================================
+# JOBS
+# ============================================================================
 jobs:
   version:
+    # ========================================================================
+    # CONDITION: Skip if run by github-actions[bot]
+    # ========================================================================
+    # Prevents infinite loops: when this workflow creates a commit, GitHub's
+    # bot account would normally trigger another workflow run. We skip it.
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
+      # ====================================================================
+      # STEP 1: Checkout repository
+      # ====================================================================
+      # Clones the repository with full history (fetch-depth: 0).
+      # Full history is needed to compute version based on git tags.
+      #
+      # VARIABLES:
+      # - github.actor: The user who triggered the workflow
+      # - fetch-depth: 0 means fetch all history (needed for version computation)
+      # ====================================================================
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # ====================================================================
+      # STEP 2: Lint action uses
+      # ====================================================================
+      # Validates that all action.yml files use correct syntax and references.
+      # This catches errors before they're committed.
+      #
+      # PARAMETER: allow_deep_repo: 'true' allows checking actions in subdirectories
+      # ====================================================================
       - name: Lint action uses
         uses: uncoverthefuture-org/actions/.github/actions/common/lint-uses@master
         with:
           allow_deep_repo: 'true'
 
+      # ====================================================================
+      # STEP 3: Compute next version
+      # ====================================================================
+      # Calculates the next semantic version based on:
+      # - Current git tags
+      # - Bump level (patch, minor, or major)
+      # - Conventional commit history
+      #
+      # INPUTS:
+      # - level: The semver bump level (patch, minor, major)
+      #   Defaults to 'patch' if not provided
+      #
+      # OUTPUTS:
+      # - steps.ver.outputs.new: The new version (e.g., "v1.2.3")
+      # - steps.ver.outputs.major: Major alias (e.g., "v1")
+      # - steps.ver.outputs.minor: Minor alias (e.g., "v1.2")
+      #
+      # REFERENCE: See VARIABLES_REFERENCE.md for all version outputs
+      # ====================================================================
       - name: Compute next version
         id: ver
         uses: uncoverthefuture-org/actions/.github/actions/version/dispatch@master
@@ -44,6 +126,20 @@ jobs:
               "level": "${{ github.event.inputs.level || 'patch' }}"
             }
 
+      # ====================================================================
+      # STEP 4: Update action refs to new version
+      # ====================================================================
+      # Updates all action.yml files to reference the new version.
+      # This ensures all actions point to the correct version tag.
+      #
+      # INPUTS:
+      # - new_tag: The new version computed in STEP 3
+      # - force: 'true' to overwrite existing references
+      #
+      # WHY THIS STEP?
+      # When you release v1.2.3, all action.yml files should reference v1.2.3
+      # so users get the latest version when they use @v1.2.3
+      # ====================================================================
       - name: Update action refs to new version
         uses: uncoverthefuture-org/actions/.github/actions/version/dispatch@master
         with:
@@ -54,6 +150,25 @@ jobs:
               "force": "true"
             }
 
+      # ====================================================================
+      # STEP 5: Create version tag and update aliases
+      # ====================================================================
+      # Creates git tags for:
+      # - Full version: v1.2.3 (points to the exact release)
+      # - Major alias: v1 (always points to latest v1.x.x)
+      # - Minor alias: v1.2 (always points to latest v1.2.x)
+      #
+      # INPUTS:
+      # - new: The full version tag (e.g., "v1.2.3")
+      # - major: The major alias (e.g., "v1")
+      # - minor: The minor alias (e.g., "v1.2")
+      # - tag_message: The message for the git tag
+      #
+      # WHY ALIASES?
+      # Users can reference @v1 to always get the latest major version.
+      # This allows automatic updates without changing their workflow files.
+      # Example: uncoverthefuture-org/actions@v1 always gets latest v1.x.x
+      # ====================================================================
       - name: Create version tag and update aliases
         uses: uncoverthefuture-org/actions/.github/actions/version/dispatch@master
         with:

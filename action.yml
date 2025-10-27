@@ -1,82 +1,164 @@
+# ============================================================================
+# UNCOVER ACTIONS - Main Aggregator Action
+# ============================================================================
+# This is the primary entry point for all Uncover GitHub Actions.
+# It acts as a router that dispatches to sub-actions based on the category.
+#
+# WHY THIS DESIGN?
+# - Keeps the main action.yml small and maintainable
+# - Allows versioning the entire action suite with a single tag (e.g., @v1.0.41)
+# - Provides a consistent interface for users: uncoverthefuture-org/actions@v1.0.41
+# - Automatically restores bundled actions after any checkout step
+#
+# HOW IT WORKS?
+# 1. User calls this action with a subaction name (e.g., "build-and-push")
+# 2. The "route-category" action determines which category it belongs to
+# 3. The appropriate dispatcher (build, app, infra, etc.) is invoked
+# 4. The dispatcher calls the actual sub-action
+# 5. Outputs are collected and returned to the user
+#
+# REFERENCE: See ARCHITECTURE.md for detailed flow diagrams
+# ============================================================================
+
+# ============================================================================
+# OUTPUTS - Returned values from executed sub-actions
+# ============================================================================
+# These outputs come from different dispatchers depending on which subaction runs.
+# All outputs are optional since different actions produce different outputs.
+#
+# BUILD DISPATCH OUTPUTS (when running build-and-push or similar):
 outputs:
   env_name:
-    description: 'Environment name (from build dispatch)'
+    description: 'Environment name (from build dispatch) - e.g., "production", "staging", "development"'
     value: ${{ steps.bdisp.outputs.env_name }}
   env_key:
-    description: 'Environment key (from build dispatch)'
+    description: 'Environment key (from build dispatch) - short form like "prod", "staging", "dev"'
     value: ${{ steps.bdisp.outputs.env_key }}
   image_tag:
-    description: 'Image tag (from build dispatch)'
+    description: 'Image tag (from build dispatch) - the tag used to push the Docker image'
     value: ${{ steps.bdisp.outputs.image_tag }}
   deploy_enabled:
-    description: 'Whether deployment is enabled (from build dispatch)'
+    description: 'Whether deployment is enabled (from build dispatch) - "true" or "false" based on branch rules'
     value: ${{ steps.bdisp.outputs.deploy_enabled }}
+
+  # COMMON DISPATCH OUTPUTS (when running environment/secret-related actions):
   env_b64:
-    description: 'Resolved environment secret payload (from common dispatch)'
+    description: 'Resolved environment secret payload (from common dispatch) - base64-encoded .env file contents'
     value: ${{ steps.cdisp.outputs.env_b64 }}
   secret_name:
-    description: 'Secret inspected by common dispatch'
+    description: 'Secret inspected by common dispatch - the GitHub secret name that was used'
     value: ${{ steps.cdisp.outputs.secret_name }}
   secret_found:
-    description: 'Whether the secret existed (from common dispatch)'
+    description: 'Whether the secret existed (from common dispatch) - "true" if found, "false" otherwise'
     value: ${{ steps.cdisp.outputs.found }}
   common_env_name:
-    description: 'Environment name from common dispatch (prepare-app-env)'
+    description: 'Environment name from common dispatch (prepare-app-env) - canonical name like "production"'
     value: ${{ steps.cdisp.outputs.env_name }}
   common_env_key:
-    description: 'Environment key from common dispatch (prepare-app-env)'
+    description: 'Environment key from common dispatch (prepare-app-env) - short key like "prod"'
     value: ${{ steps.cdisp.outputs.env_key }}
   common_deploy_enabled:
-    description: 'Deploy flag from common dispatch (prepare-app-env)'
+    description: 'Deploy flag from common dispatch (prepare-app-env) - "true" or "false"'
     value: ${{ steps.cdisp.outputs.deploy_enabled }}
   common_image_tag:
-    description: 'Image tag from common dispatch (prepare-app-env)'
+    description: 'Image tag from common dispatch (prepare-app-env) - the computed image tag'
     value: ${{ steps.cdisp.outputs.image_tag }}
   common_env_file:
-    description: 'Path to decoded env file from common dispatch'
+    description: 'Path to decoded env file from common dispatch - local path where .env was written'
     value: ${{ steps.cdisp.outputs.env_file }}
+
+  # VERSION DISPATCH OUTPUTS (when running version/compute-next or version/update-tags):
   new:
-    description: 'New semantic version computed by version dispatch.'
+    description: 'New semantic version computed by version dispatch - e.g., "v1.2.3"'
     value: ${{ steps.vdisp.outputs.new }}
   major:
-    description: 'Major alias (vX) computed by version dispatch.'
+    description: 'Major alias (vX) computed by version dispatch - e.g., "v1" for "v1.2.3"'
     value: ${{ steps.vdisp.outputs.major }}
   minor:
-    description: 'Minor alias (vX.Y) computed by version dispatch.'
+    description: 'Minor alias (vX.Y) computed by version dispatch - e.g., "v1.2" for "v1.2.3"'
     value: ${{ steps.vdisp.outputs.minor }}
   last:
-    description: 'Previous version tag reported by version dispatch.'
+    description: 'Previous version tag reported by version dispatch - the tag before this release'
     value: ${{ steps.vdisp.outputs.last }}
   new_version:
-    description: 'New semantic version computed by compute-next.'
+    description: 'New semantic version computed by compute-next - same as "new" (alias for clarity)'
     value: ${{ steps.vdisp.outputs.new }}
   major_version:
-    description: 'Major alias (vX) computed by compute-next.'
+    description: 'Major alias (vX) computed by compute-next - same as "major" (alias for clarity)'
     value: ${{ steps.vdisp.outputs.major }}
   minor_version:
-    description: 'Minor alias (vX.Y) computed by compute-next.'
+    description: 'Minor alias (vX.Y) computed by compute-next - same as "minor" (alias for clarity)'
     value: ${{ steps.vdisp.outputs.minor }}
   last_version:
-    description: 'Previous version tag reported by compute-next.'
+    description: 'Previous version tag reported by compute-next - same as "last" (alias for clarity)'
     value: ${{ steps.vdisp.outputs.last }}
+
+# ============================================================================
+# ACTION METADATA
+# ============================================================================
 name: 'Uncover Actions'
 description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@v1.0.41'
 
+# ============================================================================
+# INPUTS - Parameters passed by the user
+# ============================================================================
+# These inputs control which sub-action runs and what parameters it receives.
+# See VARIABLES_REFERENCE.md for detailed documentation on each input.
+#
 inputs:
   subaction:
-    description: "Sub-action to run (use 'help' or leave empty to list available)"
+    description: |
+      Sub-action to run. Examples: "build-and-push", "ssh-django-deploy", "prepare-ubuntu-host"
+      Use 'help' or leave empty to list all available sub-actions.
+      See README.md for the complete list of available actions.
     required: false
   category:
-    description: "Optional category to route: build | podman | infra | app (auto-derived from subaction if omitted)"
+    description: |
+      Optional category to route the subaction to. Valid values: build | podman | infra | app | common | version
+      If omitted, the category is auto-derived from the subaction name.
+      Only needed if you want to override the auto-detection.
+      See ARCHITECTURE.md for category definitions.
     required: false
   params_json:
-    description: "JSON blob of parameters to pass to the selected subaction (keeps this file small)"
+    description: |
+      JSON blob of parameters to pass to the selected subaction.
+      This keeps the main action.yml file small and maintainable.
+      Each sub-action documents its own required and optional parameters.
+      Example: { "ssh_host": "example.com", "ssh_key": "...", "env_name": "production" }
+      See the specific action's README for its parameters.
     required: false
 
+
+# ============================================================================
+# EXECUTION FLOW - How this action runs
+# ============================================================================
+# The execution follows this pattern:
+# 1. Prepare bundled actions (copy actions from this repo to .github/actions)
+# 2. Show help or route to the appropriate dispatcher
+# 3. Execute the dispatcher (which calls the actual sub-action)
+# 4. Restore bundled actions (in case checkout was called)
+# 5. Print operation summary
+#
+# WHY PREPARE AND RESTORE?
+# GitHub Actions can lose bundled actions if actions/checkout@v4 is called.
+# We prepare them before and restore them after to ensure they're always available.
+# See: https://github.com/actions/checkout/issues/1467
+# ============================================================================
 
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Prepare bundled actions
+    # ========================================================================
+    # Copy all actions from this repository into the workflow's .github/actions
+    # This ensures they're available for the dispatcher steps.
+    # Only copies if not already present (idempotent).
+    #
+    # VARIABLES:
+    # - GITHUB_ACTION_PATH: Automatically set by GitHub Actions to the path of this action
+    # - dest: The target directory where actions will be copied
+    # ========================================================================
     - name: Prepare bundled actions
       shell: bash
       run: |
@@ -87,10 +169,27 @@ runs:
           cp -a "$GITHUB_ACTION_PATH/.github/actions/." "$dest/"
         fi
 
+    # ========================================================================
+    # STEP 2: Help (list available actions)
+    # ========================================================================
+    # If no subaction is provided or 'help' is requested, display all available actions.
+    # This is useful for users who want to discover what actions are available.
+    #
+    # CONDITION: Runs only if subaction is empty or equals 'help'
+    # ========================================================================
     - name: Help (list available actions)
       if: ${{ !inputs.subaction || inputs.subaction == 'help' }}
       uses: ./.github/actions/common/print-help
 
+    # ========================================================================
+    # STEP 3: Determine category
+    # ========================================================================
+    # Analyzes the subaction name to determine which category it belongs to.
+    # Categories: build, podman, infra, app, common, version
+    #
+    # OUTPUT: steps.route.outputs.category - The determined category
+    # CONDITION: Only runs if a valid subaction is provided
+    # ========================================================================
     - name: Determine category
       if: ${{ inputs.subaction && inputs.subaction != 'help' }}
       id: route
@@ -98,6 +197,22 @@ runs:
       with:
         subaction: ${{ inputs.subaction }}
         category: ${{ inputs.category }}
+
+    # ========================================================================
+    # STEP 4: Category-specific dispatchers
+    # ========================================================================
+    # Each dispatcher is responsible for routing to the actual sub-action.
+    # Only ONE dispatcher will run based on the category determined in STEP 3.
+    # Each dispatcher collects outputs from the sub-action it calls.
+    #
+    # DISPATCHERS:
+    # - Build dispatch: Handles Docker image building and pushing
+    # - Podman dispatch: Handles container runtime operations
+    # - Common dispatch: Handles environment and secret management
+    # - Infra dispatch: Handles infrastructure setup and management
+    # - App dispatch: Handles application-specific deployments
+    # - Version dispatch: Handles semantic versioning and tagging
+    # ========================================================================
 
     - name: Build dispatch
       id: bdisp
@@ -147,6 +262,16 @@ runs:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
 
+    # ========================================================================
+    # STEP 5: Restore bundled actions
+    # ========================================================================
+    # Re-copy all actions to ensure they're available after any checkout steps.
+    # This is critical because actions/checkout can remove bundled actions.
+    #
+    # WHY RESTORE?
+    # If a sub-action called actions/checkout@v4, the bundled actions would be lost.
+    # This step ensures they're restored for any subsequent steps.
+    # ========================================================================
     - name: Restore bundled actions
       if: ${{ inputs.subaction && inputs.subaction != 'help' }}
       shell: bash
@@ -156,6 +281,16 @@ runs:
         mkdir -p "$dest"
         cp -a "$GITHUB_ACTION_PATH/.github/actions/." "$dest/"
 
+    # ========================================================================
+    # STEP 6: Operation Summary
+    # ========================================================================
+    # Collects and displays a summary of the operation that was executed.
+    # Shows which action ran, its outcome, and key outputs.
+    # This helps users quickly understand what happened and what was produced.
+    #
+    # INPUTS: Outcomes and outputs from all dispatchers (most will be empty)
+    # OUTPUT: Formatted summary printed to the workflow log
+    # ========================================================================
     - name: Operation Summary
       if: ${{ inputs.subaction && inputs.subaction != 'help' }}
       uses: ./.github/actions/common/operation-summary

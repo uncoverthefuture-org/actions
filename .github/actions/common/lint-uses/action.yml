@@ -1,15 +1,47 @@
+# ============================================================================
+# ACTION: Lint Uses
+# ============================================================================
+# PURPOSE:
+# Validates action reference patterns in YAML files.
+# Ensures consistent use of relative vs repository references.
+#
+# WHAT IT DOES:
+# 1. Scans YAML files for action uses
+# 2. Validates reference patterns
+# 3. Checks for forbidden patterns
+# 4. Reports violations
+#
+# WHEN TO USE:
+# - Validate action references
+# - Enforce reference patterns
+# - Part of CI/CD validation
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'common: lint-uses'
 description: 'Reusable lint to ensure allowed action reference patterns (relative vs deep repo)'
 
+# ============================================================================
+# INPUTS
+# ============================================================================
 inputs:
   allow_deep_repo:
-    description: 'If true, deep repo uses are allowed'
+    description: 'Allow deep repository uses. Default: true'
     required: false
     default: 'true'
 
+# ============================================================================
+# EXECUTION STEPS
+# ============================================================================
 runs:
   using: 'composite'
   steps:
+    # ========================================================================
+    # STEP 1: Lint action uses
+    # ========================================================================
+    # Validates action reference patterns
+    # ========================================================================
     - name: Lint action uses
       shell: bash
       run: |

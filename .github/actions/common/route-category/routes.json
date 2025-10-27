@@ -29,6 +29,7 @@
     "ssh-django-deploy",
     "ssh-django-api-deploy",
     "ssh-nextjs-deploy",
+    "ssh-container-deploy",
     "ssh-react-deploy",
     "ssh-laravel-deploy",
     "write-remote-env-file"

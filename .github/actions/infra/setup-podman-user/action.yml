@@ -1,40 +1,64 @@
+# ============================================================================
+# ACTION: Setup Podman User
+# ============================================================================
+# PURPOSE:
+# Configures a user for rootless Podman container execution.
+# Sets up subuid/subgid ranges and environment directories.
+#
+# WHAT IT DOES:
+# 1. Creates podman user if needed
+# 2. Configures subuid/subgid ranges for rootless containers
+# 3. Creates environment directory with correct permissions
+# 4. Enables user namespace delegation
+#
+# WHEN TO USE:
+# - Setup new Podman user on server
+# - Configure rootless Podman execution
+# - Part of server preparation
+#
+# REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
+# ============================================================================
+
 name: 'infra: setup-podman-user'
 description: 'Setup podman user, subuid/subgid ranges, and env directory'
 
+# ============================================================================
+# INPUTS - SSH connection and Podman user configuration
+# ============================================================================
 inputs:
   ssh_host:
-    description: 'SSH host'
+    description: 'SSH host (IP or hostname). Required. Example: 192.168.1.100'
     required: true
   ssh_user:
-    description: 'SSH username (non-root)'
+    description: 'SSH username (non-root). Required. Used for authentication'
     required: true
   ssh_key:
-    description: 'SSH private key for non-root user'
+    description: 'SSH private key for authentication. Required. Should be stored as GitHub secret'
     required: true
   root_ssh_key:
-    description: 'SSH private key for root (optional)'
+    description: 'SSH private key for root (optional). Use if ssh_user cannot escalate to root'
     required: false
   ssh_port:
-    description: 'SSH port'
+    description: 'SSH port. Default: 22. Change if using non-standard SSH port'
     required: false
     default: '22'
   ssh_fingerprint:
-    description: 'Server SSH host key fingerprint'
+    description: 'Server SSH host key fingerprint for verification. Optional but recommended'
     required: false
   podman_user:
-    description: 'User on remote host to setup for podman'
+    description: 'User to setup for Podman. Default: deployer. Example: appuser'
     required: false
     default: 'deployer'
   connect_mode:
-    description: "How to connect: 'auto' (default), 'root', or 'user'"
+    description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md"
     required: false
     default: 'auto'
   create_podman_user:
-    description: 'Whether to create the podman user if it does not exist'
+    description: 'Create user if it does not exist. Default: false. Set true to auto-create'
     required: false
     default: 'false'
   env_dir_path:
-    description: 'Path to environment directory'
+    description: 'Environment directory path. Default: /var/deployments/development/deployer. Example: /opt/apps'
     required: false
     default: '/var/deployments/development/deployer'
 
