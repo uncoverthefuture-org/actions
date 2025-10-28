@@ -91,6 +91,7 @@ runs:
         source: ".uactions_cache/uactions-scripts.tgz"
         target: "/tmp"
         overwrite: true
+        strip_components: 1
         timeout: 15s
         command_timeout: 30s
 

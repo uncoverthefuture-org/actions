@@ -354,6 +354,7 @@ runs: # Composite action implementation
         source: ".uactions_cache/deploy-container.sh"
         target: "/tmp"
         overwrite: true
+        strip_components: 1
         timeout: 15s
         command_timeout: 30s
 
