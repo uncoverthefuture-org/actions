@@ -413,3 +413,19 @@ runs: # Composite action implementation
 
           # Execute script (REMOTE_ENV_FILE is available if source_env=true)
           /opt/uactions/scripts/app/deploy-container.sh
+
+    - name: Deployment status summary
+      uses: ./.github/actions/app/deployment-status-summary
+      with:
+        reachable: ${{ steps.reach.outputs.reachable }}
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        container_name: ${{ inputs.container_name }}
+        enable_traefik: ${{ inputs.enable_traefik }}
+        domain_effective: ${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }}
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}
+        container_port: ${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}

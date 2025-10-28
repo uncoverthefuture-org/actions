@@ -1,0 +1,174 @@
+name: 'app: deployment-status-summary'
+description: 'Generate a comprehensive deployment status summary (Podman, containers, pods, networks, listeners, HTTP probes, logs) into GITHUB_STEP_SUMMARY.'
+
+inputs:
+  reachable:
+    description: 'Whether SSH host is reachable (from a previous probe)'
+    required: true
+  ssh_host:
+    required: true
+  ssh_user:
+    required: false
+    default: 'root'
+  ssh_key:
+    required: true
+  ssh_port:
+    required: false
+    default: '22'
+  app_slug:
+    required: true
+  env_name:
+    required: true
+  container_name:
+    required: false
+    default: ''
+  enable_traefik:
+    required: false
+    default: 'true'
+  domain_effective:
+    required: false
+    default: ''
+  host_port:
+    required: false
+    default: '8080'
+  container_port:
+    required: false
+    default: '8080'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Deployment status summary
+      if: ${{ inputs.reachable == 'true' }}
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        APP_SLUG: ${{ inputs.app_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+        CONTAINER_NAME_IN: ${{ inputs.container_name }}
+        TRAEFIK_ENABLED: ${{ inputs.enable_traefik }}
+        DOMAIN_EFFECTIVE: ${{ inputs.domain_effective }}
+        HOST_PORT_IN: ${{ inputs.host_port }}
+        CONTAINER_PORT_IN: ${{ inputs.container_port }}
+      run: |
+        set -euo pipefail
+
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+
+        ENV_CANON=$(printf '%s' "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
+        if [ -n "$CONTAINER_NAME_IN" ]; then
+          CONT_NAME="$CONTAINER_NAME_IN"
+        else
+          CONT_NAME="${APP_SLUG}-${ENV_CANON}"
+        fi
+        HOST_PORT="$HOST_PORT_IN"
+        CONT_PORT="$CONTAINER_PORT_IN"
+
+        if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
+          URL_LABEL="https://${DOMAIN_EFFECTIVE}"
+        else
+          URL_LABEL="http://${SSH_HOST}:${HOST_PORT}"
+        fi
+
+        SSH_BASE=(ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "${SSH_USER}@${SSH_HOST}")
+
+        PODMAN_VERSION="$(${SSH_BASE[@]} 'podman --version' 2>/dev/null || echo "unavailable")"
+        CONTAINERS_TBL="$(${SSH_BASE[@]} "podman ps -a --format 'table {{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}\t{{.Image}}'" 2>/dev/null || echo "unavailable")"
+        PODS_TBL="$(${SSH_BASE[@]} "podman pod ps -a --format 'table {{.ID}}\t{{.Status}}\t{{.Name}}\t{{.Networks}}'" 2>/dev/null || echo "unavailable")"
+        NETWORKS_TBL="$(${SSH_BASE[@]} "podman network ls --format 'table {{.Name}}\t{{.Driver}}\t{{.Labels}}'" 2>/dev/null || echo "unavailable")"
+        LISTENERS="$(${SSH_BASE[@]} "ss -ltnp 2>/dev/null | head -n 80 || netstat -ltnp 2>/dev/null | head -n 80" 2>/dev/null || echo "unavailable")"
+
+        CONT_PRESENT=$(${SSH_BASE[@]} "podman ps -a --format '{{.Names}}' | grep -Fx '${CONT_NAME}' >/dev/null && echo yes || echo no" 2>/dev/null || echo no)
+
+        HTTP_STATUS_DOMAIN="N/A"
+        if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
+          HTTP_STATUS_DOMAIN="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w '%{http_code}' --max-time 5 'https://${DOMAIN_EFFECTIVE}'" 2>/dev/null || echo "ERR")"
+        fi
+        HTTP_STATUS_PORT="$(${SSH_BASE[@]} "curl -fsS -o /dev/null -w '%{http_code}' --max-time 5 'http://127.0.0.1:${HOST_PORT}'" 2>/dev/null || echo "ERR")"
+
+        IN_CONTAINER_PROBE="N/A"
+        if [ "$CONT_PRESENT" = "yes" ]; then
+          IN_CONTAINER_PROBE="$(${SSH_BASE[@]} "podman exec '${CONT_NAME}' sh -lc 'if command -v curl >/dev/null 2>&1; then curl -fsS -o /dev/null -w \"%{http_code}\" http://127.0.0.1:${CONT_PORT} --max-time 5; elif command -v wget >/dev/null 2>&1; then wget -qO- --server-response http://127.0.0.1:${CONT_PORT} 2>&1 | awk \"/HTTP\/{print \$2; exit}\"; else echo NO_CURL_WGET; fi'" 2>/dev/null || echo "ERR")"
+        fi
+
+        RECENT_LOGS=""
+        if [ "$CONT_PRESENT" = "yes" ]; then
+          RECENT_LOGS="$(${SSH_BASE[@]} "podman logs --tail 80 '${CONT_NAME}' 2>/dev/null" || true)"
+        fi
+
+        now_utc=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+
+        {
+          echo "# Deployment Status Summary"
+          echo
+          echo "- **App**: ${APP_SLUG}"
+          echo "- **Environment**: ${ENV_CANON}"
+          echo "- **Container name**: ${CONT_NAME}"
+          echo "- **Endpoint**: ${URL_LABEL}"
+          echo "- **SSH Host**: ${SSH_HOST}:${SSH_PORT}"
+          echo "- **Generated**: ${now_utc}"
+          echo
+          echo "## Podman Version"
+          echo
+          echo '```'
+          echo "$PODMAN_VERSION"
+          echo '```'
+          echo
+          echo "## Containers"
+          echo
+          echo '```'
+          echo "$CONTAINERS_TBL"
+          echo '```'
+          echo
+          echo "## Pods"
+          echo
+          echo '```'
+          echo "$PODS_TBL"
+          echo '```'
+          echo
+          echo "## Networks"
+          echo
+          echo '```'
+          echo "$NETWORKS_TBL"
+          echo '```'
+          echo
+          echo "## Network Listeners (Top 80)"
+          echo
+          echo '```'
+          echo "$LISTENERS"
+          echo '```'
+          echo
+          echo "## Endpoint Checks"
+          echo
+          echo "- **Traefik URL**: ${DOMAIN_EFFECTIVE:-N/A} → ${HTTP_STATUS_DOMAIN}"
+          echo "- **Host Port**: 127.0.0.1:${HOST_PORT} → ${HTTP_STATUS_PORT}"
+          echo "- **In-Container Probe**: 127.0.0.1:${CONT_PORT} inside ${CONT_NAME} → ${IN_CONTAINER_PROBE}"
+          echo
+          if [ -n "$RECENT_LOGS" ]; then
+            echo "## Recent Container Logs (${CONT_NAME})"
+            echo
+            echo '```'
+            echo "$RECENT_LOGS"
+            echo '```'
+            echo
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Deployment summary (unreachable)
+      if: ${{ inputs.reachable != 'true' }}
+      shell: bash
+      run: |
+        echo "# Deployment Status Summary" >> "$GITHUB_STEP_SUMMARY"
+        echo >> "$GITHUB_STEP_SUMMARY"
+        echo "- **Status**: SSH host not reachable; no remote status available." >> "$GITHUB_STEP_SUMMARY"
+        echo "- **Tip**: Verify firewall (UFW/security group), host/port, and credentials." >> "$GITHUB_STEP_SUMMARY"
