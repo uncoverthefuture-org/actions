@@ -80,6 +80,7 @@ runs:
 
     # Upload: Transfer tarball to remote /tmp via scp
     - name: Upload scripts bundle
+      id: upload
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: appleboy/scp-action@v0.1.7
       with:
@@ -95,7 +96,7 @@ runs:
 
     # Execute: Extract into /opt/uactions, set executable bits, stamp version
     - name: Install scripts on remote host
-      if: ${{ steps.reach.outputs.reachable == 'true' }}
+      if: ${{ steps.reach.outputs.reachable == 'true' && steps.upload.outcome == 'success' }}
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -110,6 +111,10 @@ runs:
         inline_script: |
           set -euo pipefail
           mkdir -p /opt/uactions
+          if [ ! -f /tmp/uactions-scripts.tgz ]; then
+            echo '::error::Missing /tmp/uactions-scripts.tgz on remote host (upload failed or was skipped)';
+            exit 1
+          fi
           # Replace scripts atomically
           TMPDIR="$(mktemp -d)"
           tar -xzf /tmp/uactions-scripts.tgz -C "$TMPDIR"
