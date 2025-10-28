@@ -51,28 +51,14 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    # Execute locally: run compute script and write to GITHUB_OUTPUT
     - name: Compute host port
       id: compute
-      uses: ./.github/actions/podman/remote-podman-exec
-      with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
-        env_name: ${{ inputs.env_name }}
-        env_file_path: ${{ inputs.env_file_path }}
-        source_env: ${{ inputs.source_env }}
-        fail_if_env_missing: 'false'
-        inline_script: |
-          set -euo pipefail
-          HP_IN='${{ inputs.host_port }}'
-          if [ -n "$HP_IN" ]; then
-            HOST_PORT="$HP_IN"
-          else
-            HOST_PORT="${API_HOST_PORT:-${PORT:-8000}}"
-          fi
-          echo "host_port=$HOST_PORT" >> "$GITHUB_OUTPUT"
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        HOST_PORT_IN: ${{ inputs.host_port }}
+        ENV_NAME: ${{ inputs.env_name }}
+      run: |
+        set -euo pipefail
+        bash "$ACTION_PATH/../../scripts/infra/compute-host-port.sh"

@@ -36,57 +36,63 @@ inputs:
     description: 'Traefik image tag'
     required: false
     default: 'v3.1'
+  skip_upload:
+    description: 'Skip uploading per-script file (assumes scripts are already deployed via deploy-server-scripts)'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
   steps:
-    - name: Prepare Traefik configuration
-      uses: ./.github/actions/podman/remote-podman-exec
+    - name: Check SSH reachability
+      id: reach
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+        if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" true 2>/dev/null; then
+          echo "reachable=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "reachable=false" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Stage Traefik script for upload
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$WORKSPACE/.uactions_cache"
+        SRC_REL="../../scripts/traefik/setup-traefik.sh"
+        cp "$ACTION_PATH/$SRC_REL" "$WORKSPACE/.uactions_cache/setup-traefik.sh"
+
+    - name: Upload Traefik script (Option B)
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      uses: appleboy/scp-action@v0.1.7
       with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
-        inline_script: |
-          set -euo pipefail
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        source: ".uactions_cache/setup-traefik.sh"
+        target: "/tmp"
+        overwrite: true
 
-          # Stop legacy reverse proxies to free ports 80/443
-          sudo systemctl stop apache2 nginx >/dev/null 2>&1 || true
-          sudo systemctl disable apache2 nginx >/dev/null 2>&1 || true
-
-          sudo mkdir -p /etc/traefik
-          sudo mkdir -p /var/lib/traefik
-
-          cat <<'EOF_TRAEFIK' | sudo tee /etc/traefik/traefik.yml >/dev/null
-          entryPoints:
-            web:
-              address: ":80"
-            websecure:
-              address: ":443"
-
-          providers:
-            docker:
-              # Inside container we'll mount the host podman socket at /var/run/docker.sock
-              endpoint: "unix:///var/run/docker.sock"
-              exposedByDefault: false
-
-          certificatesResolvers:
-            letsencrypt:
-              acme:
-                email: "${{ inputs.traefik_email }}"
-                storage: /letsencrypt/acme.json
-                httpChallenge:
-                  entryPoint: web
-          EOF_TRAEFIK
-
-          sudo touch /var/lib/traefik/acme.json
-          sudo chmod 600 /var/lib/traefik/acme.json
-
-    - name: Run Traefik container
+    - name: Run Traefik script
+      if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -99,46 +105,18 @@ runs:
         connect_mode: root
         inline_script: |
           set -euo pipefail
-
-          # Ensure legacy proxies are not competing for 80/443
-          systemctl stop apache2 nginx >/dev/null 2>&1 || true
-          systemctl disable apache2 nginx >/dev/null 2>&1 || true
-
-          # Determine the Podman socket to mount. Prefer the rootless socket of the podman_user
-          PUSER='${{ inputs.podman_user }}'
-          PUID=$(id -u "$PUSER" 2>/dev/null || echo 1000)
-          # Ensure the user's Podman API socket is running so Traefik can discover rootless containers
-          loginctl enable-linger "$PUSER" || true
-          runuser -l "$PUSER" -c "XDG_RUNTIME_DIR=/run/user/$PUID systemctl --user enable --now podman.socket" || true
-          USER_RUNTIME_DIR="/run/user/$PUID"
-          SOCK_USER="$USER_RUNTIME_DIR/podman/podman.sock"
-          SOCK_ROOT="/var/run/podman/podman.sock"
-          if [ -S "$SOCK_USER" ]; then
-            HOST_SOCK="$SOCK_USER"
-          else
-            HOST_SOCK="$SOCK_ROOT"
+          # Ensure final scripts directory and move uploaded script into place
+          sudo mkdir -p /opt/uactions/scripts/traefik
+          if [ -f /tmp/setup-traefik.sh ]; then
+            sudo mv -f /tmp/setup-traefik.sh /opt/uactions/scripts/traefik/setup-traefik.sh
           fi
+          sudo chmod +x /opt/uactions/scripts/traefik/setup-traefik.sh
 
-          # Restart Traefik
-          podman container exists traefik >/dev/null 2>&1 && podman stop traefik >/dev/null 2>&1 || true
-          podman container exists traefik >/dev/null 2>&1 && podman rm traefik >/dev/null 2>&1 || true
-
-          if ! podman run -d \
-            --name traefik \
-            --restart unless-stopped \
-            -p 80:80 \
-            -p 443:443 \
-            -v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro \
-            -v /var/lib/traefik/acme.json:/letsencrypt/acme.json \
-            -v "$HOST_SOCK":/var/run/docker.sock \
-            docker.io/traefik:${{ inputs.traefik_version }}; then
-            echo "::error::Failed to start Traefik container" >&2
-            podman logs traefik 2>&1 || echo "No logs available"
-            exit 1
-          fi
-
-          echo "✅ Traefik container started successfully"
-          podman ps --filter name=traefik
+          # Execute the server-managed script with explicit env vars
+          export TRAEFIK_EMAIL='${{ inputs.traefik_email }}'
+          export PODMAN_USER='${{ inputs.podman_user }}'
+          export TRAEFIK_VERSION='${{ inputs.traefik_version }}'
+          /opt/uactions/scripts/traefik/setup-traefik.sh
 
     - name: Traefik status summary
       if: always()
@@ -148,6 +126,7 @@ runs:
         SSH_USER: ${{ inputs.ssh_user }}
         SSH_KEY: ${{ inputs.ssh_key }}
         SSH_PORT: ${{ inputs.ssh_port }}
+        REACHABLE: ${{ steps.reach.outputs.reachable }}
       run: |
         set -euo pipefail
         
@@ -167,6 +146,16 @@ runs:
         run_remote() {
           ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "$@" 2>/dev/null || echo "SSH_FAILED"
         }
+
+        # Connectivity section
+        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
+        ### 🌐 Connectivity
+        SUMMARY_EOF
+        if [ "${REACHABLE:-false}" = "true" ]; then
+          echo "Host reachable" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "Host NOT reachable (skipped Traefik setup steps)" >> "$GITHUB_STEP_SUMMARY"
+        fi
 
         # Fetch Traefik container status
         TRAEFIK_PS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman ps --filter name=traefik --format "table {{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}" || echo "podman not available"' || true)"

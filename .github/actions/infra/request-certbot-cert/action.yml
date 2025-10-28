@@ -38,11 +38,66 @@ inputs:
     description: 'Use Let’s Encrypt staging environment'
     required: false
     default: 'false'
+  skip_upload:
+    description: 'Skip staging/upload (assumes scripts deployed via deploy-server-scripts)'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
   steps:
-    - name: Request certificate
+    # Stage: Copy script from action path to workspace
+    - name: Stage request-certbot-cert script
+      if: ${{ inputs.skip_upload != 'true' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$WORKSPACE/.uactions_cache"
+        cp "$ACTION_PATH/../../scripts/infra/request-certbot-cert.sh" "$WORKSPACE/.uactions_cache/request-certbot-cert.sh"
+
+    # Upload: Transfer script to remote /tmp via scp
+    - name: Upload request-certbot-cert script
+      if: ${{ inputs.skip_upload != 'true' }}
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        source: ".uactions_cache/request-certbot-cert.sh"
+        target: "/tmp"
+        overwrite: true
+
+    # Stage: Copy wrapper script from action path to workspace
+    - name: Stage request-certbot-cert-wrapper script
+      if: ${{ inputs.skip_upload != 'true' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$WORKSPACE/.uactions_cache"
+        cp "$ACTION_PATH/../../scripts/infra/request-certbot-cert-wrapper.sh" "$WORKSPACE/.uactions_cache/request-certbot-cert-wrapper.sh"
+
+    # Upload: Transfer wrapper script to remote /tmp via scp
+    - name: Upload request-certbot-cert-wrapper script
+      if: ${{ inputs.skip_upload != 'true' }}
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        source: ".uactions_cache/request-certbot-cert-wrapper.sh"
+        target: "/tmp"
+        overwrite: true
+
+    # Execute: Move to /opt/uactions/scripts/, chmod, export env, run wrapper
+    - name: Execute request-certbot-cert
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -56,33 +111,18 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          if ! command -v certbot >/dev/null 2>&1; then
-            echo 'Error: certbot is not installed. Run install-certbot first.' >&2
-            exit 1
+          # Move wrapper script from /tmp to /opt/uactions/scripts/
+          sudo mkdir -p /opt/uactions/scripts/infra
+          if [ -f /tmp/request-certbot-cert-wrapper.sh ]; then
+            sudo mv -f /tmp/request-certbot-cert-wrapper.sh /opt/uactions/scripts/infra/request-certbot-cert-wrapper.sh
           fi
-          if ! systemctl status apache2 >/dev/null 2>&1; then
-            echo 'Error: apache2 service is required for the Apache plugin.' >&2
-            exit 1
-          fi
+          sudo chmod +x /opt/uactions/scripts/infra/request-certbot-cert-wrapper.sh
 
-          domain='${{ inputs.domain }}'
-          email='${{ inputs.email }}'
-          extra='${{ inputs.extra_domains }}'
-          staging='${{ inputs.staging }}'
+          # Export inputs for server-managed script
+          export DOMAIN='${{ inputs.domain }}'
+          export EMAIL='${{ inputs.email }}'
+          export EXTRA_DOMAINS='${{ inputs.extra_domains }}'
+          export STAGING='${{ inputs.staging }}'
 
-          args=(--apache --non-interactive --agree-tos --keep-until-expiring --redirect)
-          args+=(--email "$email")
-          args+=(--domain "$domain")
-          if [ -n "$extra" ]; then
-            IFS=',' read -ra more <<< "$extra"
-            for d in "${more[@]}"; do
-              d_trim=$(echo "$d" | xargs)
-              [ -n "$d_trim" ] && args+=(--domain "$d_trim")
-            done
-          fi
-          if [ "$staging" = 'true' ]; then
-            args+=(--staging)
-          fi
-
-          certbot --apache "${args[@]}"
-          systemctl reload apache2
+          # Execute wrapper script (which calls main script and reloads Apache)
+          /opt/uactions/scripts/infra/request-certbot-cert-wrapper.sh

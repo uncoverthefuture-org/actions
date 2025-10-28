@@ -22,7 +22,7 @@ inputs:
     description: 'Server SSH host key fingerprint'
     required: false
   podman_user:
-    description: 'User on remote host'
+    description: 'User on remote host (not used for UFW, kept for consistency)'
     required: false
     default: 'deployer'
   connect_mode:
@@ -30,14 +30,44 @@ inputs:
     required: false
     default: 'auto'
   ufw_allow_ports:
-    description: 'Space/newline-separated list of ports to allow'
+    description: 'Space-separated list of ports to allow (e.g., "80 443 22")'
     required: false
     default: ''
+  skip_upload:
+    description: 'Skip staging/upload (assumes scripts deployed via deploy-server-scripts)'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
   steps:
-    - name: Configure UFW
+    # Stage: Copy script from action path to workspace
+    - name: Stage configure-ufw script
+      if: ${{ inputs.skip_upload != 'true' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$WORKSPACE/.uactions_cache"
+        cp "$ACTION_PATH/../../scripts/infra/configure-ufw.sh" "$WORKSPACE/.uactions_cache/configure-ufw.sh"
+
+    # Upload: Transfer script to remote /tmp via scp
+    - name: Upload configure-ufw script
+      if: ${{ inputs.skip_upload != 'true' }}
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        source: ".uactions_cache/configure-ufw.sh"
+        target: "/tmp"
+        overwrite: true
+
+    # Execute: Move to /opt/uactions/scripts/, chmod, export env, run
+    - name: Execute configure-ufw
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -52,9 +82,15 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          apt-get install -y ufw || true
-          ufw --force enable || true
-          for p in ${{ inputs.ufw_allow_ports }}; do
-            ufw allow "$p"/tcp || true
-          done
-          ufw status || true
+          # Move script from /tmp to /opt/uactions/scripts/
+          sudo mkdir -p /opt/uactions/scripts/infra
+          if [ -f /tmp/configure-ufw.sh ]; then
+            sudo mv -f /tmp/configure-ufw.sh /opt/uactions/scripts/infra/configure-ufw.sh
+          fi
+          sudo chmod +x /opt/uactions/scripts/infra/configure-ufw.sh
+          
+          # Export env vars for script
+          export UFW_ALLOW_PORTS='${{ inputs.ufw_allow_ports }}'
+          
+          # Execute server-managed script
+          /opt/uactions/scripts/infra/configure-ufw.sh

@@ -1,0 +1,124 @@
+name: 'infra: deploy-server-scripts'
+description: 'Bundle and deploy all server-managed scripts to /opt/uactions/scripts on the remote host (run once before any other steps).'
+
+inputs:
+  ssh_host:
+    description: 'SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username'
+    required: true
+  ssh_key:
+    description: 'SSH private key'
+    required: true
+  root_ssh_key:
+    description: 'Optional root SSH key'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'SSH host key fingerprint'
+    required: false
+  connect_mode:
+    description: "Connection mode: auto | root | user"
+    required: false
+    default: 'auto'
+
+runs:
+  using: 'composite'
+  steps:
+    # Probe: Check SSH reachability to avoid noisy timeouts
+    - name: Check SSH reachability
+      id: reach
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+        if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" true 2>/dev/null; then
+          echo "reachable=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "reachable=false" >> "$GITHUB_OUTPUT"
+        fi
+    # Stage: Tar up the entire scripts directory into workspace cache
+    - name: Stage scripts bundle
+      if: ${{ steps.reach.outputs.reachable == 'true' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$WORKSPACE/.uactions_cache"
+        # Create a tarball of the scripts directory relative to this action
+        # scripts directory lives two levels up from this action path
+        TAR_PATH="$WORKSPACE/.uactions_cache/uactions-scripts.tgz"
+        # scripts directory lives under .github/actions/scripts => two levels up from this action's dir
+        SRC_ROOT="$(cd "$ACTION_PATH/../.." && pwd)"
+        if [ ! -d "$SRC_ROOT/scripts" ]; then
+          echo 'Error: scripts directory not found relative to action path' >&2
+          exit 1
+        fi
+        tar -C "$SRC_ROOT" -czf "$TAR_PATH" scripts
+        ls -lh "$TAR_PATH"
+
+    # Upload: Transfer tarball to remote /tmp via scp
+    - name: Upload scripts bundle
+      if: ${{ steps.reach.outputs.reachable == 'true' }}
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        source: ".uactions_cache/uactions-scripts.tgz"
+        target: "/tmp"
+        overwrite: true
+
+    # Execute: Extract into /opt/uactions, set executable bits, stamp version
+    - name: Install scripts on remote host
+      if: ${{ steps.reach.outputs.reachable == 'true' }}
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: ${{ inputs.connect_mode }}
+        source_env: 'false'
+        fail_if_env_missing: 'false'
+        inline_script: |
+          set -euo pipefail
+          mkdir -p /opt/uactions
+          # Replace scripts atomically
+          TMPDIR="$(mktemp -d)"
+          tar -xzf /tmp/uactions-scripts.tgz -C "$TMPDIR"
+          rm -rf /opt/uactions/scripts
+          mv "$TMPDIR/scripts" /opt/uactions/scripts
+          rm -rf "$TMPDIR"
+          # Ensure all scripts are executable
+          find /opt/uactions/scripts -type f -name '*.sh' -exec chmod +x {} +
+          # Stamp version marker for visibility
+          date -u +'%Y-%m-%d %H:%M:%S UTC' > /opt/uactions/scripts/.deployed_at
+          echo '${{ github.sha }}' > /opt/uactions/scripts/.version
+
+    - name: Skip notice (host unreachable)
+      if: ${{ steps.reach.outputs.reachable != 'true' }}
+      shell: bash
+      run: |
+        echo '::notice::SSH host not reachable; skipped deploying server scripts.'

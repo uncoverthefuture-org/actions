@@ -71,6 +71,11 @@ inputs:
   env_name:
     description: 'Environment name for default container name. Optional. Example: production, staging, development'
     required: false
+    default: ''
+  skip_upload:
+    description: 'Skip staging/upload (assumes scripts deployed via deploy-server-scripts)'
+    required: false
+    default: 'true'
 
 # ============================================================================
 # EXECUTION STEPS
@@ -98,6 +103,32 @@ runs:
         if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
       shell: bash
 
+    # Stage: Copy script from action path to workspace
+    - name: Stage stop-rm-container script
+      if: ${{ inputs.skip_upload != 'true' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$WORKSPACE/.uactions_cache"
+        cp "$ACTION_PATH/../../scripts/podman/stop-rm-container.sh" "$WORKSPACE/.uactions_cache/stop-rm-container.sh"
+
+    # Upload: Transfer script to remote /tmp via scp
+    - name: Upload stop-rm-container script
+      if: ${{ inputs.skip_upload != 'true' }}
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        source: ".uactions_cache/stop-rm-container.sh"
+        target: "/tmp"
+        overwrite: true
+
+    # Execute: Move to /opt/uactions/scripts/, chmod, export env, run
     - name: Stop and remove container
       uses: ./.github/actions/podman/remote-podman-exec
       with:
@@ -113,10 +144,21 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          CN_IN='${{ inputs.container_name }}'
-          APP_SLUG='${{ inputs.app_slug }}'
-          ENV_NAME='${{ inputs.env_name }}'
-          CONTAINER_NAME="${CN_IN:-${APP_SLUG}-${ENV_NAME}}"
-
-          run_podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-          run_podman rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+          # Move script from /tmp to /opt/uactions/scripts/
+          sudo mkdir -p /opt/uactions/scripts/podman
+          if [ -f /tmp/stop-rm-container.sh ]; then
+            sudo mv -f /tmp/stop-rm-container.sh /opt/uactions/scripts/podman/stop-rm-container.sh
+          fi
+          sudo chmod +x /opt/uactions/scripts/podman/stop-rm-container.sh
+          
+          # Compute fallback container name when not provided
+          CN='${{ inputs.container_name }}'
+          APP='${{ inputs.app_slug }}'
+          ENVN='${{ inputs.env_name }}'
+          if [ -z "$CN" ] && [ -n "$APP" ] && [ -n "$ENVN" ]; then
+            CN="$APP-$ENVN"
+          fi
+          export CONTAINER_NAME="$CN"
+          
+          # Execute server-managed script
+          /opt/uactions/scripts/podman/stop-rm-container.sh

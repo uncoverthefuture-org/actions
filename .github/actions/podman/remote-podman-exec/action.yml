@@ -59,6 +59,10 @@ inputs:
     description: "How to connect: 'auto' (default), 'root', or 'user'"
     required: false
     default: 'auto'
+  skip_if_unreachable:
+    description: 'Skip remote execution when SSH host is unreachable (prevents noisy timeouts)'
+    required: false
+    default: 'true'
   env_file_path:
     description: 'Base directory for env files on the server; the action creates <env_file_path>/<env_name>/<app_slug>/.env'
     required: false
@@ -135,7 +139,28 @@ runs:
         printf 'username=%s\n' "$USERNAME" >> "$GITHUB_OUTPUT"
         printf 'key<<EOF\n%s\nEOF\n' "$KEY_VALUE" >> "$GITHUB_OUTPUT"
 
+    - name: Probe SSH reachability
+      id: probe
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        SSH_USER_EFF: ${{ steps.conn.outputs.username }}
+        SSH_KEY_EFF: ${{ steps.conn.outputs.key }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        printf '%s\n' "$SSH_KEY_EFF" > "$KEY_FILE"
+        chmod 600 "$KEY_FILE"
+        if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER_EFF@$SSH_HOST" true 2>/dev/null; then
+          echo "reachable=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "reachable=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Execute remote podman script
+      if: ${{ steps.probe.outputs.reachable == 'true' || inputs.skip_if_unreachable == 'false' }}
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ inputs.ssh_host }}
@@ -247,3 +272,9 @@ runs:
           # Begin inline script
           ${{ inputs.inline_script }}
           BASH_EOF
+
+    - name: Skip notice (host unreachable)
+      if: ${{ steps.probe.outputs.reachable != 'true' && inputs.skip_if_unreachable == 'true' }}
+      shell: bash
+      run: |
+        echo '::notice::SSH host not reachable; skipped remote execution for this step.'

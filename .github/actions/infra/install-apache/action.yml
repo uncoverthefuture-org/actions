@@ -29,11 +29,41 @@ inputs:
     description: "How to connect: 'auto' (default), 'root', or 'user'"
     required: false
     default: 'auto'
+  skip_upload:
+    description: 'Skip staging/upload (assumes scripts deployed via deploy-server-scripts)'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
   steps:
-    - name: Install Apache2
+    # Stage: Copy script from action path to workspace (needed for scp)
+    - name: Stage install-apache script
+      if: ${{ inputs.skip_upload != 'true' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$WORKSPACE/.uactions_cache"
+        cp "$ACTION_PATH/../../scripts/infra/install-apache.sh" "$WORKSPACE/.uactions_cache/install-apache.sh"
+
+    # Upload: Transfer script to remote /tmp via scp
+    - name: Upload install-apache script
+      if: ${{ inputs.skip_upload != 'true' }}
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        source: ".uactions_cache/install-apache.sh"
+        target: "/tmp"
+        overwrite: true
+
+    # Execute: Move to /opt/uactions/scripts/, chmod, run
+    - name: Execute install-apache
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -48,8 +78,12 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          apt-get update -y
-          apt-get install -y apache2 libapache2-mod-wsgi-py3
-          a2enmod headers proxy proxy_http proxy_uwsgi wsgi || true
-          systemctl enable apache2 || true
-          systemctl restart apache2 || true
+          # Move script from /tmp to /opt/uactions/scripts/
+          sudo mkdir -p /opt/uactions/scripts/infra
+          if [ -f /tmp/install-apache.sh ]; then
+            sudo mv -f /tmp/install-apache.sh /opt/uactions/scripts/infra/install-apache.sh
+          fi
+          sudo chmod +x /opt/uactions/scripts/infra/install-apache.sh
+          
+          # Execute server-managed script
+          /opt/uactions/scripts/infra/install-apache.sh

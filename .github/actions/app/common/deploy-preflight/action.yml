@@ -130,6 +130,10 @@ inputs:
     description: 'Whether to log in to the registry before pulling'
     required: false
     default: 'true'
+  perform_pull:
+    description: 'When false, skip the remote login+pull step (caller will handle pulling)'
+    required: false
+    default: 'true'
   app_slug:
     description: 'Application slug used for default paths and names'
     required: false
@@ -280,6 +284,7 @@ runs:
         env_content: ${{ inputs.env_content }}
 
     - name: Login and pull image
+      if: ${{ inputs.perform_pull == 'true' }}
       uses: ./.github/actions/podman/podman-login-pull
       with:
         ssh_host: ${{ inputs.ssh_host }}
