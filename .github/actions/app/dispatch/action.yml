@@ -162,13 +162,13 @@ inputs:
     required: false
   domain_prefix_prod:
     required: false
-    default: 'api'
+    default: ''
   domain_prefix_staging:
     required: false
-    default: 'api-staging'
+    default: 'staging'
   domain_prefix_dev:
     required: false
-    default: 'api-dev'
+    default: 'dev'
   require_dns_match:
     required: false
     default: 'true'
