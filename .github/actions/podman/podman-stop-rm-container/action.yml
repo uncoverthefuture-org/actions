@@ -90,6 +90,30 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    # Probe: Check SSH reachability to avoid scp timeouts
+    - name: Check SSH reachability
+      id: reach
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+        if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" true 2>/dev/null; then
+          echo "reachable=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "reachable=false" >> "$GITHUB_OUTPUT"
+        fi
     # ========================================================================
     # STEP 1: Validate inputs
     # ========================================================================
@@ -105,7 +129,7 @@ runs:
 
     # Stage: Copy script from action path to workspace
     - name: Stage stop-rm-container script
-      if: ${{ inputs.skip_upload != 'true' }}
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -117,7 +141,7 @@ runs:
 
     # Upload: Transfer script to remote /tmp via scp
     - name: Upload stop-rm-container script
-      if: ${{ inputs.skip_upload != 'true' }}
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ inputs.ssh_host }}
@@ -127,9 +151,12 @@ runs:
         source: ".uactions_cache/stop-rm-container.sh"
         target: "/tmp"
         overwrite: true
+        timeout: 15s
+        command_timeout: 30s
 
     # Execute: Move to /opt/uactions/scripts/, chmod, export env, run
     - name: Stop and remove container
+      if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}

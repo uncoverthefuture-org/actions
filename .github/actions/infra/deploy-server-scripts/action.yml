@@ -48,11 +48,14 @@ runs:
           printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
         fi
         chmod 600 "$KEY_FILE"
-        if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" true 2>/dev/null; then
-          echo "reachable=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "reachable=false" >> "$GITHUB_OUTPUT"
-        fi
+        ok=false
+        for i in 1 2 3; do
+          if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" true 2>/dev/null; then
+            ok=true; break
+          fi
+          sleep 5
+        done
+        if $ok; then echo "reachable=true" >> "$GITHUB_OUTPUT"; else echo "reachable=false" >> "$GITHUB_OUTPUT"; fi
     # Stage: Tar up the entire scripts directory into workspace cache
     - name: Stage scripts bundle
       if: ${{ steps.reach.outputs.reachable == 'true' }}
@@ -87,6 +90,8 @@ runs:
         source: ".uactions_cache/uactions-scripts.tgz"
         target: "/tmp"
         overwrite: true
+        timeout: 15s
+        command_timeout: 30s
 
     # Execute: Extract into /opt/uactions, set executable bits, stamp version
     - name: Install scripts on remote host

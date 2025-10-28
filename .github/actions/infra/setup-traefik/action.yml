@@ -90,6 +90,8 @@ runs:
         source: ".uactions_cache/setup-traefik.sh"
         target: "/tmp"
         overwrite: true
+        timeout: 15s
+        command_timeout: 30s
 
     - name: Run Traefik script
       if: ${{ steps.reach.outputs.reachable == 'true' }}

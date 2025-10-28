@@ -210,11 +210,14 @@ runs: # Composite action implementation
           printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
         fi
         chmod 600 "$KEY_FILE"
-        if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" true 2>/dev/null; then
-          echo "reachable=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "reachable=false" >> "$GITHUB_OUTPUT"
-        fi
+        ok=false
+        for i in 1 2 3; do
+          if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" true 2>/dev/null; then
+            ok=true; break
+          fi
+          sleep 5
+        done
+        if $ok; then echo "reachable=true" >> "$GITHUB_OUTPUT"; else echo "reachable=false" >> "$GITHUB_OUTPUT"; fi
 
     - name: Ensure server scripts bundle is deployed
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.ensure_scripts_deployed == 'true' }}
@@ -351,6 +354,8 @@ runs: # Composite action implementation
         source: ".uactions_cache/deploy-container.sh"
         target: "/tmp"
         overwrite: true
+        timeout: 15s
+        command_timeout: 30s
 
     - name: Deploy container # Start/replace container with Traefik or port mapping
       if: ${{ steps.reach.outputs.reachable == 'true' }}
