@@ -89,7 +89,7 @@ runs:
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
         source: ".uactions_cache/uactions-scripts.tgz"
-        target: "/tmp"
+        target: "~"
         overwrite: true
         strip_components: 1
         timeout: 15s
@@ -112,13 +112,13 @@ runs:
         inline_script: |
           set -euo pipefail
           mkdir -p /opt/uactions
-          if [ ! -f /tmp/uactions-scripts.tgz ]; then
-            echo '::error::Missing /tmp/uactions-scripts.tgz on remote host (upload failed or was skipped)';
+          if [ ! -f "$HOME/uactions-scripts.tgz" ]; then
+            echo '::error::Missing $HOME/uactions-scripts.tgz on remote host (upload failed or was skipped)';
             exit 1
           fi
           # Replace scripts atomically
           TMPDIR="$(mktemp -d)"
-          tar -xzf /tmp/uactions-scripts.tgz -C "$TMPDIR"
+          tar -xzf "$HOME/uactions-scripts.tgz" -C "$TMPDIR"
           rm -rf /opt/uactions/scripts
           mv "$TMPDIR/scripts" /opt/uactions/scripts
           rm -rf "$TMPDIR"
