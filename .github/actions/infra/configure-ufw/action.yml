@@ -117,6 +117,7 @@ runs:
           sudo chmod +x /opt/uactions/scripts/infra/configure-ufw.sh
           
           # Export env vars for script
+          export SSH_PORT='${{ inputs.ssh_port }}'
           export UFW_ALLOW_PORTS='${{ inputs.ufw_allow_ports }}'
           
           # Execute server-managed script
