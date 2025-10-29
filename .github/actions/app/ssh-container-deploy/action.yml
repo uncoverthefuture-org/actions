@@ -243,12 +243,12 @@ runs: # Composite action implementation
         fingerprint: ${{ inputs.ssh_fingerprint }}
         script: |
           set -euo pipefail
-          # 1) systemd service
+          # 1) systemd service (if Traefik was started as service)
           if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet traefik; then exit 0; fi
-          # 2) podman container named "traefik"
+          # 2) podman container named "traefik" as podman user
+          if command -v runuser >/dev/null 2>&1 && runuser -l ${{ inputs.podman_user }} -c "podman ps -a --format '{{.Names}}' | grep -qx traefik" 2>/dev/null; then exit 0; fi
+          # 3) podman container named "traefik" as current user (fallback)
           if command -v podman >/dev/null 2>&1 && podman ps -a --format '{{.Names}}' | grep -qx traefik; then exit 0; fi
-          # 3) docker container named "traefik" (fallback)
-          if command -v docker >/dev/null 2>&1 && docker ps -a --format '{{.Names}}' | grep -qx traefik; then exit 0; fi
           # Not found
           exit 1
 

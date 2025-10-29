@@ -56,7 +56,7 @@ entryPoints:
     address: ":443"
 
 providers:
-  docker:
+  podman:
     # Traefik will be given access to the Podman API socket via /var/run/docker.sock
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
@@ -73,6 +73,10 @@ EOF
 echo "🔐 Preparing ACME storage ..."
 sudo touch /var/lib/traefik/acme.json
 sudo chmod 600 /var/lib/traefik/acme.json
+
+# Change ownership of Traefik directories to podman user
+echo "👤 Changing ownership of Traefik directories to $PODMAN_USER ..."
+sudo chown -R "$PODMAN_USER:$PODMAN_USER" /etc/traefik /var/lib/traefik
 
 # --- Determine Podman API socket to mount -------------------------------------------
 echo "🧩 Enabling linger and Podman user socket for $PODMAN_USER ..."
@@ -93,26 +97,26 @@ else
 fi
 
 echo "🛑 Stopping existing Traefik container (if any) ..."
-podman container exists traefik >/dev/null 2>&1 && podman stop traefik >/dev/null 2>&1 || true
+runuser -l "$PODMAN_USER" -c "podman container exists traefik >/dev/null 2>&1 && podman stop traefik >/dev/null 2>&1" || true
 echo "🧹 Removing existing Traefik container (if any) ..."
-podman container exists traefik >/dev/null 2>&1 && podman rm traefik   >/dev/null 2>&1 || true
+runuser -l "$PODMAN_USER" -c "podman container exists traefik >/dev/null 2>&1 && podman rm traefik >/dev/null 2>&1" || true
 
 echo "🚀 Starting Traefik container (version: ${TRAEFIK_VERSION}) ..."
-if ! podman run -d \
+if ! runuser -l "$PODMAN_USER" -c "podman run -d \
   --name traefik \
   --restart unless-stopped \
   -p 80:80 \
   -p 443:443 \
   -v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro \
   -v /var/lib/traefik/acme.json:/letsencrypt/acme.json \
-  -v "$HOST_SOCK":/var/run/docker.sock \
-  docker.io/traefik:"${TRAEFIK_VERSION}"; then
+  -v \"$HOST_SOCK\":/var/run/docker.sock \
+  docker.io/traefik:\"${TRAEFIK_VERSION}\""; then
   echo "Failed to start Traefik container" >&2
-  podman logs traefik 2>&1 || true
+  runuser -l "$PODMAN_USER" -c "podman logs traefik" 2>&1 || true
   exit 1
 fi
 
 # --- Post status ---------------------------------------------------------------------
 echo "✅ Traefik container started (image: docker.io/traefik:${TRAEFIK_VERSION})"
 echo "🔎 podman ps --filter name=traefik"
-podman ps --filter name=traefik
+runuser -l "$PODMAN_USER" -c "podman ps --filter name=traefik"

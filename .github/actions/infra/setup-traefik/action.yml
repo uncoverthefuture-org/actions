@@ -104,7 +104,7 @@ runs:
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         podman_user: ${{ inputs.podman_user }}
-        connect_mode: root
+        connect_mode: user
         inline_script: |
           set -euo pipefail
           # Ensure final scripts directory and move uploaded script into place
@@ -160,13 +160,13 @@ runs:
         fi
 
         # Fetch Traefik container status
-        TRAEFIK_PS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman ps --filter name=traefik --format "table {{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}" || echo "podman not available"' || true)"
+        TRAEFIK_PS="$(run_remote 'command -v podman >/dev/null 2>&1 && runuser -l '${{ inputs.podman_user }}' -c "podman ps --filter name=traefik --format \"table {{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}\"" || echo "podman not available"' || true)"
         
         # Fetch Traefik container stats (CPU, memory, I/O)
-        TRAEFIK_STATS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman stats traefik --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}" || echo "stats unavailable"' || true)"
+        TRAEFIK_STATS="$(run_remote 'command -v podman >/dev/null 2>&1 && runuser -l '${{ inputs.podman_user }}' -c "podman stats traefik --no-stream --format \"table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\"" || echo "stats unavailable"' || true)"
         
         # Fetch recent Traefik logs (last 50 lines)
-        TRAEFIK_LOGS="$(run_remote 'command -v podman >/dev/null 2>&1 && sudo podman logs traefik --tail=50 || echo "logs unavailable"' || true)"
+        TRAEFIK_LOGS="$(run_remote 'command -v podman >/dev/null 2>&1 && runuser -l '${{ inputs.podman_user }}' -c "podman logs traefik --tail=50" || echo "logs unavailable"' || true)"
         
         # Fetch port listeners on 80/443
         PORTS_LISTEN="$(run_remote 'ss -ltnp 2>/dev/null | grep -E ":80|:443" || echo "no listeners"' || true)"
