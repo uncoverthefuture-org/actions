@@ -159,7 +159,7 @@ runs:
       shell: bash
 
     # Stage: Copy script from action path to workspace
-    - name: Stage write-env-file script
+    - name: Stage run-env-setup script for upload
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
       shell: bash
       env:
@@ -168,30 +168,30 @@ runs:
       run: |
         set -euo pipefail
         mkdir -p "$WORKSPACE/.uactions_cache"
-        cp "$ACTION_PATH/../../scripts/app/write-env-file.sh" "$WORKSPACE/.uactions_cache/write-env-file.sh"
+        SRC_REL="../../../scripts/app/run-env-setup.sh"
+        cp "$ACTION_PATH/$SRC_REL" "$WORKSPACE/.uactions_cache/run-env-setup.sh"
 
-    # Upload: Transfer script to remote /tmp via scp
-    - name: Upload write-env-file script
+    - name: Upload env setup script
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ inputs.ssh_host }}
-        username: ${{ inputs.ssh_user }}
+        username: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
-        source: ".uactions_cache/write-env-file.sh"
+        source: ".uactions_cache/run-env-setup.sh"
         target: "/tmp"
         overwrite: true
+        strip_components: 1
         timeout: 15s
         command_timeout: 30s
 
-    # Execute: Move to /opt/uactions/scripts/, chmod, export env, run
-    - name: Write env file
+    - name: Write remote environment file
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
@@ -205,18 +205,18 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          # Move script from /tmp to /opt/uactions/scripts/
+          # Move scripts to place
           sudo mkdir -p /opt/uactions/scripts/app
-          if [ -f /tmp/write-env-file.sh ]; then
-            sudo mv -f /tmp/write-env-file.sh /opt/uactions/scripts/app/write-env-file.sh
+          if [ -f /tmp/run-env-setup.sh ]; then
+            sudo mv -f /tmp/run-env-setup.sh /opt/uactions/scripts/app/run-env-setup.sh
+            sudo chmod +x /opt/uactions/scripts/app/run-env-setup.sh
           fi
-          sudo chmod +x /opt/uactions/scripts/app/write-env-file.sh
-          
-          # Export env vars for script
-          ENV_FILE_PATH="${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}/${{ inputs.env_name }}/${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}/.env"
-          export ENV_FILE_PATH
+
+          # Export variables for run-env-setup.sh
+          export PODMAN_USER='${{ inputs.podman_user }}'
+          export ENV_FILE_PATH='${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}/${{ inputs.env_name }}/${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}/.env'
           export ENV_B64='${{ inputs.env_b64 }}'
           export ENV_CONTENT='${{ inputs.env_content }}'
-          
-          # Execute server-managed script
-          /opt/uactions/scripts/app/write-env-file.sh
+
+          # Execute environment setup runner script
+          /opt/uactions/scripts/app/run-env-setup.sh

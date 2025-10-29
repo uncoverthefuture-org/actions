@@ -247,7 +247,7 @@ runs: # Composite action implementation
           if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet traefik; then exit 0; fi
           # 2) podman container named "traefik" as podman user
           if command -v runuser >/dev/null 2>&1 && runuser -l ${{ inputs.podman_user }} -c "podman ps -a --format '{{.Names}}' | grep -qx traefik" 2>/dev/null; then exit 0; fi
-          # 3) podman container named "traefik" as current user (fallback)
+          # 3) podman container named "traefik" as root (fallback)
           if command -v podman >/dev/null 2>&1 && podman ps -a --format '{{.Names}}' | grep -qx traefik; then exit 0; fi
           # Not found
           exit 1
@@ -331,7 +331,7 @@ runs: # Composite action implementation
         image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }} # Image path
         image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }} # Tag
 
-    - name: Stage deploy script for upload
+    - name: Stage run-deployment script for upload
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
       shell: bash
       env:
@@ -340,10 +340,10 @@ runs: # Composite action implementation
       run: |
         set -euo pipefail
         mkdir -p "$WORKSPACE/.uactions_cache"
-        SRC_REL="../../scripts/app/deploy-container.sh"
-        cp "$ACTION_PATH/$SRC_REL" "$WORKSPACE/.uactions_cache/deploy-container.sh"
+        SRC_REL="../../scripts/app/run-deployment.sh"
+        cp "$ACTION_PATH/$SRC_REL" "$WORKSPACE/.uactions_cache/run-deployment.sh"
 
-    - name: Upload deploy script (Option B)
+    - name: Upload deployment scripts
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
       uses: appleboy/scp-action@v0.1.7
       with:
@@ -351,7 +351,7 @@ runs: # Composite action implementation
         username: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
-        source: ".uactions_cache/deploy-container.sh"
+        source: ".uactions_cache/deploy-container.sh,.uactions_cache/run-deployment.sh"
         target: "/tmp"
         overwrite: true
         strip_components: 1
@@ -377,14 +377,14 @@ runs: # Composite action implementation
         fail_if_env_missing: ${{ inputs.fail_if_env_missing }} # Fail on missing env
         inline_script: |
           set -euo pipefail
-          # Ensure scripts directory and move uploaded script
+          # Ensure scripts directory and move uploaded scripts
           sudo mkdir -p /opt/uactions/scripts/app
-          if [ -f /tmp/deploy-container.sh ]; then
-            sudo mv -f /tmp/deploy-container.sh /opt/uactions/scripts/app/deploy-container.sh
+          if [ -f /tmp/run-deployment.sh ]; then
+            sudo mv -f /tmp/run-deployment.sh /opt/uactions/scripts/app/run-deployment.sh
+            sudo chmod +x /opt/uactions/scripts/app/run-deployment.sh
           fi
-          sudo chmod +x /opt/uactions/scripts/app/deploy-container.sh
 
-          # Export inputs/derived values for the script
+          # Export deployment variables for run-deployment.sh
           export PODMAN_USER='${{ inputs.podman_user }}'
           export IMAGE_REGISTRY='${{ inputs.registry }}'
           export IMAGE_NAME='${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}'
@@ -411,8 +411,8 @@ runs: # Composite action implementation
           export DOMAIN_DEFAULT='${{ steps.dfl.outputs.domain_default }}'
           export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'
 
-          # Execute script (REMOTE_ENV_FILE is available if source_env=true)
-          /opt/uactions/scripts/app/deploy-container.sh
+          # Execute deployment runner script
+          /opt/uactions/scripts/app/run-deployment.sh
 
     - name: Deployment status summary
       uses: ./.github/actions/app/deployment-status-summary

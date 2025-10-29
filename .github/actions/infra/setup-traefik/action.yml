@@ -75,20 +75,27 @@ runs:
         WORKSPACE: ${{ github.workspace }}
       run: |
         set -euo pipefail
-        mkdir -p "$WORKSPACE/.uactions_cache"
-        SRC_REL="../../scripts/traefik/setup-traefik.sh"
-        cp "$ACTION_PATH/$SRC_REL" "$WORKSPACE/.uactions_cache/setup-traefik.sh"
+        mkdir -p ${{ runner.temp }}/scripts/traefik
+        cp ./.github/actions/scripts/traefik/install-traefik.sh ${{ runner.temp }}/scripts/traefik/
 
-    - name: Upload Traefik script (Option B)
+    - name: Stage setup-traefik script for upload
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
-      uses: appleboy/scp-action@v0.1.7
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ${{ runner.temp }}/scripts/traefik
+        cp ./.github/actions/scripts/traefik/setup-traefik.sh ${{ runner.temp }}/scripts/traefik/
+
+    - name: Upload Traefik scripts
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      uses: appleboy/scp-action@v0.1.4
       with:
         host: ${{ inputs.ssh_host }}
         username: ${{ inputs.ssh_user }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
-        source: ".uactions_cache/setup-traefik.sh"
-        target: "/tmp"
+        source: ${{ runner.temp }}/scripts/traefik/install-traefik.sh,${{ runner.temp }}/scripts/traefik/setup-traefik.sh
+        target: /tmp
         overwrite: true
         timeout: 15s
         command_timeout: 30s
@@ -104,21 +111,27 @@ runs:
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         podman_user: ${{ inputs.podman_user }}
-        connect_mode: user
+        connect_mode: root
         inline_script: |
           set -euo pipefail
           # Ensure final scripts directory and move uploaded script into place
           sudo mkdir -p /opt/uactions/scripts/traefik
+          if [ -f /tmp/install-traefik.sh ]; then
+            sudo mv -f /tmp/install-traefik.sh /opt/uactions/scripts/traefik/install-traefik.sh
+            sudo chmod +x /opt/uactions/scripts/traefik/install-traefik.sh
+          fi
           if [ -f /tmp/setup-traefik.sh ]; then
             sudo mv -f /tmp/setup-traefik.sh /opt/uactions/scripts/traefik/setup-traefik.sh
+            sudo chmod +x /opt/uactions/scripts/traefik/setup-traefik.sh
           fi
-          sudo chmod +x /opt/uactions/scripts/traefik/setup-traefik.sh
 
-          # Execute the server-managed script with explicit env vars
-          export TRAEFIK_EMAIL='${{ inputs.traefik_email }}'
-          export PODMAN_USER='${{ inputs.podman_user }}'
-          export TRAEFIK_VERSION='${{ inputs.traefik_version }}'
-          /opt/uactions/scripts/traefik/setup-traefik.sh
+          # Execute root-level installation script as deployer (with sudo)
+          echo "🔧 Running Traefik system installation as ${{ inputs.podman_user }} (with sudo)..."
+          runuser -l ${{ inputs.podman_user }} -c "export TRAEFIK_EMAIL='${{ inputs.traefik_email }}' PODMAN_USER='${{ inputs.podman_user }}' && /opt/uactions/scripts/traefik/install-traefik.sh"
+
+          # Execute user-level setup script as deployer
+          echo "🚀 Running Traefik container setup as ${{ inputs.podman_user }}..."
+          runuser -l ${{ inputs.podman_user }} -c "export TRAEFIK_EMAIL='${{ inputs.traefik_email }}' PODMAN_USER='${{ inputs.podman_user }}' TRAEFIK_VERSION='${{ inputs.traefik_version }}' && /opt/uactions/scripts/traefik/setup-traefik.sh"
 
     - name: Traefik status summary
       if: always()
