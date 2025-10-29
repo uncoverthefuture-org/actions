@@ -261,12 +261,21 @@ runs: # Composite action implementation
         CHECK_OUTCOME: ${{ steps.check_traefik.outcome }}
       run: |
         set -euo pipefail
+        echo "🔍 Computing effective prepare_host..."
+        echo "  PREPARE_IN: '$PREPARE_IN'"
+        echo "  ENABLE_TRAEFIK: '$ENABLE_TRAEFIK'"
+        echo "  CHECK_OUTCOME: '$CHECK_OUTCOME'"
         EFFECTIVE="false"
         if [ "${PREPARE_IN}" = "true" ]; then
+          echo "  → Setting EFFECTIVE=true (explicit prepare_host=true)"
           EFFECTIVE="true"
         elif [ "${ENABLE_TRAEFIK}" = "true" ] && [ "${CHECK_OUTCOME:-skipped}" = "failure" ]; then
+          echo "  → Setting EFFECTIVE=true (Traefik enabled but check failed)"
           EFFECTIVE="true"
+        else
+          echo "  → Keeping EFFECTIVE=false (no host prep needed)"
         fi
+        echo "  EFFECTIVE: '$EFFECTIVE'"
         printf 'prepare_host=%s\n' "$EFFECTIVE" >> "$GITHUB_OUTPUT"
 
     - name: Resolve env secret (optional)
