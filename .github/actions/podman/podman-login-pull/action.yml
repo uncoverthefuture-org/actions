@@ -54,14 +54,6 @@ inputs:
   ssh_fingerprint:
     description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
-  podman_user:
-    description: 'User on remote host to execute podman commands as. Default: deployer'
-    required: false
-    default: 'deployer'
-  connect_mode:
-    description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md"
-    required: false
-    default: 'auto'
 
   # ========================================================================
   # REGISTRY AUTHENTICATION
@@ -136,7 +128,6 @@ runs:
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         source_env: 'false'
         fail_if_env_missing: 'false'

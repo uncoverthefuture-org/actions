@@ -2,19 +2,20 @@
 # ACTION: Setup Podman User
 # ============================================================================
 # PURPOSE:
-# Configures a user for rootless Podman container execution.
-# Sets up subuid/subgid ranges and environment directories.
+# DEPRECATED — reference manual host preparation steps in docs/GETTING_STARTED.md.
+# Legacy helper that attempted to configure a dedicated Podman user, but the
+# refactor enforces running all remote commands as the provided ssh_user.
 #
-# WHAT IT DOES:
-# 1. Creates podman user if needed
-# 2. Configures subuid/subgid ranges for rootless containers
-# 3. Creates environment directory with correct permissions
-# 4. Enables user namespace delegation
+# WHAT IT DOES (historical reference only):
+# 1. Created a podman-specific user account
+# 2. Configured subuid/subgid ranges for rootless containers
+# 3. Created environment directories with permissions
+# 4. Enabled user namespace delegation
 #
-# WHEN TO USE:
-# - Setup new Podman user on server
-# - Configure rootless Podman execution
-# - Part of server preparation
+# MIGRATION NOTES:
+# - Provision servers as the target ssh_user directly; do not run this action.
+# - Ensure the ssh_user owns required directories (see docs/ACTION_FILES_GUIDE.md).
+# - Remove calls to setup-podman-user from workflows.
 #
 # REFERENCE: See docs/ACTION_FILES_GUIDE.md for complete guide
 # ============================================================================
@@ -45,22 +46,6 @@ inputs:
   ssh_fingerprint:
     description: 'Server SSH host key fingerprint for verification. Optional but recommended'
     required: false
-  podman_user:
-    description: 'User on remote host to create/configure'
-    required: false
-    default: 'deployer'
-  connect_mode:
-    description: "How to connect: 'auto' (default), 'root', or 'user'"
-    required: false
-    default: 'auto'
-  skip_upload:
-    description: 'Skip staging/upload (assumes scripts deployed via deploy-server-scripts)'
-    required: false
-    default: 'true'
-  create_podman_user:
-    description: 'Create user if it does not exist. Default: false. Set true to auto-create'
-    required: false
-    default: 'false'
   env_dir_path:
     description: 'Environment directory path. Default: /var/deployments/development/deployer. Example: /opt/apps'
     required: false
@@ -131,28 +116,23 @@ runs:
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
+        connect_mode: root
         source_env: 'false'
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
           # Move script from /tmp to /opt/uactions/scripts/
-          sudo mkdir -p /opt/uactions/scripts/infra
+          mkdir -p /opt/uactions/scripts/infra
           if [ -f /tmp/setup-podman-user.sh ]; then
-            sudo mv -f /tmp/setup-podman-user.sh /opt/uactions/scripts/infra/setup-podman-user.sh
+            mv -f /tmp/setup-podman-user.sh /opt/uactions/scripts/infra/setup-podman-user.sh
           fi
-          sudo chmod +x /opt/uactions/scripts/infra/setup-podman-user.sh
+          chmod +x /opt/uactions/scripts/infra/setup-podman-user.sh
           
-          # Export env vars for script
-          export PODMAN_USER='${{ inputs.podman_user }}'
-          
-          # Execute server-managed script
+          # Execute server-managed script (assuming current user is the podman user)
           /opt/uactions/scripts/infra/setup-podman-user.sh
 
-          # Create env directory and set permissions
+          # Create env directory for current user
           mkdir -p "${{ inputs.env_dir_path }}"
-          chown -R "${{ inputs.podman_user }}":"${{ inputs.podman_user }}" "${{ inputs.env_dir_path }}" || true
 
           # Show podman version
           podman --version || true

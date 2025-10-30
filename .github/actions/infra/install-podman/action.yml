@@ -11,9 +11,6 @@ inputs:
   ssh_key:
     description: 'SSH private key for non-root user'
     required: true
-  root_ssh_key:
-    description: 'SSH private key for root (optional)'
-    required: false
   ssh_port:
     description: 'SSH port'
     required: false
@@ -21,14 +18,6 @@ inputs:
   ssh_fingerprint:
     description: 'Server SSH host key fingerprint'
     required: false
-  podman_user:
-    description: 'User on remote host'
-    required: false
-    default: 'deployer'
-  connect_mode:
-    description: "How to connect: 'auto' (default), 'root', or 'user'"
-    required: false
-    default: 'auto'
   additional_packages:
     description: 'Additional packages to install with podman'
     required: false
@@ -98,20 +87,21 @@ runs:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
         source_env: 'false'
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
+          if [ "$(id -u)" -ne 0 ]; then
+            echo '::error::install-podman requires ssh_user to be root (or a user with direct root privileges). Update your host preparation to connect as root.' >&2
+            exit 1
+          fi
           sudo mkdir -p /opt/uactions/scripts/infra
           if [ -f /tmp/install-podman.sh ]; then
             sudo mv -f /tmp/install-podman.sh /opt/uactions/scripts/infra/install-podman.sh
           fi
           sudo chmod +x /opt/uactions/scripts/infra/install-podman.sh
-          
+
           export ADDITIONAL_PACKAGES='${{ inputs.additional_packages }}'
           /opt/uactions/scripts/infra/install-podman.sh

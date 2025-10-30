@@ -7,7 +7,6 @@
 #   routing. Designed to be called from CI after env file and image are ready.
 #
 # Inputs (environment variables):
-#   PODMAN_USER           - Linux user who should own/run the container (default: deployer)
 #   IMAGE_REGISTRY        - Registry host (default: ghcr.io)
 #   IMAGE_NAME            - Image path (org/repo) [REQUIRED]
 #   IMAGE_TAG             - Image tag (default: latest)
@@ -35,14 +34,13 @@
 set -euo pipefail
 
 # --- Resolve inputs -----------------------------------------------------------------
-PODMAN_USER="${PODMAN_USER:-deployer}"
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io}"
 IMAGE_NAME="${IMAGE_NAME:-}"          # required
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 APP_SLUG="${APP_SLUG:-}"              # required
 ENV_NAME="${ENV_NAME:-}"              # required
 CONTAINER_NAME_IN="${CONTAINER_NAME_IN:-}"
-ENV_FILE_PATH_BASE="${ENV_FILE_PATH_BASE:-/var/deployments}"
+ENV_FILE_PATH_BASE="${ENV_FILE_PATH_BASE:-${HOME}/deployments}"
 HOST_PORT_IN="${HOST_PORT_IN:-}"
 CONTAINER_PORT_IN="${CONTAINER_PORT_IN:-}"
 EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
@@ -59,6 +57,19 @@ if [[ -z "$IMAGE_NAME" || -z "$APP_SLUG" || -z "$ENV_NAME" ]]; then
 fi
 
 echo "🔧 Preparing deploy"
+
+CURRENT_USER="$(id -un)"
+CURRENT_UID="$(id -u)"
+CURRENT_GROUPS="$(id -Gn)"
+if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  SUDO_STATUS="available"
+else
+  SUDO_STATUS="not available"
+fi
+echo "👤 Remote user: ${CURRENT_USER} (uid:${CURRENT_UID})"
+echo "👥 Groups: ${CURRENT_GROUPS}"
+echo "🔑 sudo: ${SUDO_STATUS}"
+
 echo "  • App:        $APP_SLUG"
 echo "  • Env:        $ENV_NAME"
 echo "  • Image:      ${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
@@ -72,17 +83,46 @@ fi
 echo "📛 Container name: $CONTAINER_NAME"
 
 ENV_DIR="${ENV_FILE_PATH_BASE%/}/${ENV_NAME}/${APP_SLUG}"
+
+echo "📁 Preparing environment directory: $ENV_DIR"
+if [ -d "$ENV_DIR" ] && [ ! -w "$ENV_DIR" ]; then
+  echo "::error::Environment directory $ENV_DIR is not writable by $CURRENT_USER" >&2
+  echo "Hint: create a user-owned path (e.g., $HOME/deployments) or adjust permissions." >&2
+  exit 1
+fi
+if [ ! -d "$ENV_DIR" ]; then
+  if ! mkdir -p "$ENV_DIR"; then
+    echo "::error::Unable to create env directory $ENV_DIR" >&2
+    echo "Hint: ensure the SSH user owns the parent directory or pick a user-writable location." >&2
+    exit 1
+  fi
+fi
+if [ ! -w "$ENV_DIR" ]; then
+  echo "::error::Environment directory $ENV_DIR is not writable by $CURRENT_USER" >&2
+  echo "Hint: run 'chown -R $CURRENT_USER $ENV_DIR' on the host or choose a user-owned path." >&2
+  exit 1
+fi
+
 ENV_FILE="${REMOTE_ENV_FILE:-${ENV_DIR}/.env}"
 
 echo "📄 Using env file: $ENV_FILE"
 
-# --- Helper: run_podman as PODMAN_USER ---------------------------------------------
-run_podman() {
-  if [[ "$(id -un)" == "$PODMAN_USER" ]]; then
-    podman "$@"
-  else
-    sudo -H -u "$PODMAN_USER" podman "$@"
+ENV_PARENT="$(dirname "$ENV_FILE")"
+if [ ! -d "$ENV_PARENT" ]; then
+  if ! mkdir -p "$ENV_PARENT"; then
+    echo "::error::Unable to create env parent directory $ENV_PARENT" >&2
+    exit 1
   fi
+fi
+if [ ! -w "$ENV_PARENT" ]; then
+  echo "::error::Env parent directory $ENV_PARENT is not writable by $CURRENT_USER" >&2
+  echo "Hint: adjust permissions or set ENV_FILE_PATH_BASE to a user-owned path." >&2
+  exit 1
+fi
+
+# --- Helper: run_podman as current user ---------------------------------------------
+run_podman() {
+  podman "$@"
 }
 
 # --- Inspect existing container for port reuse --------------------------------------
@@ -104,7 +144,7 @@ if [[ -z "$CONTAINER_PORT" ]]; then
     fi
   fi
   if [[ -z "$CONTAINER_PORT" ]]; then
-    CONTAINER_PORT="${WEB_CONTAINER_PORT:-${TARGET_PORT:-${PORT:-3000}}}"
+    CONTAINER_PORT="${WEB_CONTAINER_PORT:-${TARGET_PORT:-${PORT:-8080}}}"
   fi
 fi
 
@@ -120,7 +160,7 @@ if [[ -z "$HOST_PORT" ]]; then
   HOST_PORT="${WEB_HOST_PORT:-${PORT:-8080}}"
 fi
 
-echo "🌐 Service port: container:$CONTAINER_PORT"
+echo "🌐 Service target port (container): $CONTAINER_PORT"
 
 # --- Prepare run args ---------------------------------------------------------------
 IMAGE_REF="${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
@@ -132,12 +172,27 @@ if [[ -z "$DOMAIN" ]]; then DOMAIN="$DOMAIN_DEFAULT"; fi
 
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
   echo "🔀 Traefik mode enabled for domain: $DOMAIN (router: $ROUTER_NAME)"
+  if [[ -n "$HOST_PORT_IN" ]]; then
+    echo "::notice::Host port publishing is disabled while Traefik is enabled; ignoring host_port inputs."
+  fi
+  echo "🔖 Traefik labels will advertise container port $CONTAINER_PORT"
   LABEL_ARGS+=(--label "traefik.enable=true")
   LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.rule=Host(\`$DOMAIN\`)")
   LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.entrypoints=websecure")
   LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt")
   LABEL_ARGS+=(--label "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=${CONTAINER_PORT}")
 else
+  if [[ -z "$HOST_PORT" || -z "$CONTAINER_PORT" ]]; then
+    echo '::error::Host port and container port must both resolve for non-Traefik deployment' >&2
+    echo "Hint: Provide host_port/container_port inputs or set WEB_HOST_PORT/WEB_CONTAINER_PORT (or PORT) in the env file." >&2
+    exit 1
+  fi
+  if ! [[ "$HOST_PORT" =~ ^[0-9]+$ && "$CONTAINER_PORT" =~ ^[0-9]+$ ]]; then
+    echo '::error::Host/container ports must be numeric values (e.g., 8080).' >&2
+    echo "Received host_port='${HOST_PORT}' container_port='${CONTAINER_PORT}'." >&2
+    echo "Hint: Strip protocol prefixes or named ports; only raw integers are allowed." >&2
+    exit 1
+  fi
   echo "🔓 Publishing port mapping host:$HOST_PORT -> container:$CONTAINER_PORT"
   PORT_ARGS=(-p "${HOST_PORT}:${CONTAINER_PORT}")
 fi
@@ -146,23 +201,23 @@ fi
 if [[ "${REGISTRY_LOGIN:-true}" == "true" ]]; then
   echo "🔐 Logging into registry (if credentials provided) ..."
   if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_TOKEN:-}" ]]; then
-    printf '%s' "$REGISTRY_TOKEN" | run_podman login "$IMAGE_REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+    printf '%s' "$REGISTRY_TOKEN" | podman login "$IMAGE_REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
   else
     echo "ℹ️  No explicit credentials provided; skipping login"
   fi
 fi
 echo "📥 Pulling image: $IMAGE_REF"
-run_podman pull "$IMAGE_REF"
+podman pull "$IMAGE_REF"
 
 # --- Stop/replace container ---------------------------------------------------------
 echo "🛑 Stopping existing container (if any): $CONTAINER_NAME"
-run_podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
 echo "🧹 Removing existing container (if any): $CONTAINER_NAME"
-run_podman rm   "$CONTAINER_NAME" >/dev/null 2>&1 || true
+podman rm   "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 # --- Run container -----------------------------------------------------------------
 echo "🚀 Starting container: $CONTAINER_NAME"
-run_podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
+podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
   "${PORT_ARGS[@]}" \
   --restart="$RESTART_POLICY" \
   --memory="$MEMORY_LIMIT" --memory-swap="$MEMORY_LIMIT" \
@@ -171,6 +226,6 @@ run_podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
   "$IMAGE_REF"
 
 # --- Post status --------------------------------------------------------------------
-echo "✅ Started container: $CONTAINER_NAME (image: $IMAGE_REF)"
+echo " Started container: $CONTAINER_NAME (image: $IMAGE_REF)"
 echo ""
-run_podman ps --filter name="$CONTAINER_NAME" --format 'table {{.ID}}\t{{.Status}}\t{{.Image}}\t{{.Names}}\t{{.Ports}}'
+podman ps --filter name="$CONTAINER_NAME" --format 'table {{.ID}}	{{.Status}}	{{.Image}}	{{.Names}}	{{.Ports}}'

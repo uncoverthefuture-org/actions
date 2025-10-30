@@ -63,7 +63,7 @@ inputs:
   connect_mode:
     description: "Connection mode: auto, root, or user"
     required: false
-    default: 'auto'
+    default: 'user'
   prepare_host:
     description: 'Whether to run host preparation'
     required: false

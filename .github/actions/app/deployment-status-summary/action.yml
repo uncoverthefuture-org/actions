@@ -8,8 +8,7 @@ inputs:
   ssh_host:
     required: true
   ssh_user:
-    required: false
-    default: 'root'
+    required: true
   ssh_key:
     required: true
   ssh_port:
@@ -82,6 +81,24 @@ runs:
 
         SSH_BASE=(ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "${SSH_USER}@${SSH_HOST}")
 
+        # Privilege visibility
+        CURRENT_USER="$(${SSH_BASE[@]} 'whoami' 2>/dev/null || echo 'unknown')"
+        CURRENT_UID="$(${SSH_BASE[@]} 'id -u' 2>/dev/null || echo 'unknown')"
+        HAS_SUDO="no"
+        if ${SSH_BASE[@]} 'sudo -n true' 2>/dev/null; then
+          HAS_SUDO="yes"
+        fi
+
+        echo "::notice::Remote session user: ${CURRENT_USER} (uid:${CURRENT_UID}, sudo:${HAS_SUDO})"
+        if [ "$CURRENT_USER" = "root" ]; then
+          echo "::warning::Remote commands are executing as root; verify this is intended." >&2
+        fi
+
+        # Sanitization helper
+        sanitize_output() {
+          printf '%s\n' "$1" | sed 's/password=[^ ]*//gi; s/token=[^ ]*//gi; s/secret=[^ ]*//gi; s/key=[^ ]*//gi'
+        }
+
         PODMAN_VERSION="$(${SSH_BASE[@]} 'podman --version' 2>/dev/null || echo "unavailable")"
         CONTAINERS_TBL="$(${SSH_BASE[@]} "podman ps -a --format 'table {{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}\t{{.Image}}'" 2>/dev/null || echo "unavailable")"
         PODS_TBL="$(${SSH_BASE[@]} "podman pod ps -a --format 'table {{.ID}}\t{{.Status}}\t{{.Name}}\t{{.Networks}}'" 2>/dev/null || echo "unavailable")"
@@ -115,7 +132,7 @@ runs:
           echo "- **Environment**: ${ENV_CANON}"
           echo "- **Container name**: ${CONT_NAME}"
           echo "- **Endpoint**: ${URL_LABEL}"
-          echo "- **SSH Host**: ${SSH_HOST}:${SSH_PORT}"
+          echo "- **SSH Host**: ${SSH_HOST}"
           echo "- **Generated**: ${now_utc}"
           echo
           echo "## Podman Version"
@@ -145,7 +162,7 @@ runs:
           echo "## Network Listeners (Top 80)"
           echo
           echo '```'
-          echo "$LISTENERS"
+          sanitize_output "$LISTENERS"
           echo '```'
           echo
           echo "## Endpoint Checks"
@@ -158,7 +175,7 @@ runs:
             echo "## Recent Container Logs (${CONT_NAME})"
             echo
             echo '```'
-            echo "$RECENT_LOGS"
+            sanitize_output "$RECENT_LOGS"
             echo '```'
             echo
           fi

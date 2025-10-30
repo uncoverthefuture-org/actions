@@ -24,9 +24,26 @@ else
   echo "  • Source: raw content (content will not be printed)"
 fi
 
-# Ensure directory exists
-echo " Ensuring directory exists: $(dirname "$ENV_FILE_PATH")"
-mkdir -p "$(dirname "$ENV_FILE_PATH")"
+# Ensure directory exists and is writable by current user
+ENV_PARENT_DIR="$(dirname "$ENV_FILE_PATH")"
+echo " Ensuring directory exists: $ENV_PARENT_DIR"
+if [ -d "$ENV_PARENT_DIR" ] && [ ! -w "$ENV_PARENT_DIR" ]; then
+  echo "Error: Directory $ENV_PARENT_DIR is not writable by $(id -un)" >&2
+  echo "Hint: adjust ownership (e.g., chown -R $(id -un) $ENV_PARENT_DIR) or choose a user-owned path." >&2
+  exit 1
+fi
+if [ ! -d "$ENV_PARENT_DIR" ]; then
+  if ! mkdir -p "$ENV_PARENT_DIR"; then
+    echo "Error: Unable to create directory $ENV_PARENT_DIR" >&2
+    echo "Hint: ensure the SSH user owns the parent path or select a directory under $HOME." >&2
+    exit 1
+  fi
+fi
+if [ ! -w "$ENV_PARENT_DIR" ]; then
+  echo "Error: Directory $ENV_PARENT_DIR is not writable by $(id -un)" >&2
+  echo "Hint: adjust permissions or choose a user-owned path." >&2
+  exit 1
+fi
 
 # Decode and write (do not print content for security)
 if [ -n "$ENV_B64" ]; then

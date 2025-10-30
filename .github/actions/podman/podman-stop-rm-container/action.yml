@@ -49,14 +49,6 @@ inputs:
   ssh_fingerprint:
     description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
-  podman_user:
-    description: 'User on remote host to execute podman commands as. Default: deployer'
-    required: false
-    default: 'deployer'
-  connect_mode:
-    description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md"
-    required: false
-    default: 'auto'
 
   # ========================================================================
   # CONTAINER IDENTIFICATION
@@ -165,18 +157,17 @@ runs:
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         source_env: 'false'
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
           # Move script from /tmp to /opt/uactions/scripts/
-          sudo mkdir -p /opt/uactions/scripts/podman
+          mkdir -p /opt/uactions/scripts/podman
           if [ -f /tmp/stop-rm-container.sh ]; then
-            sudo mv -f /tmp/stop-rm-container.sh /opt/uactions/scripts/podman/stop-rm-container.sh
+            mv -f /tmp/stop-rm-container.sh /opt/uactions/scripts/podman/stop-rm-container.sh
           fi
-          sudo chmod +x /opt/uactions/scripts/podman/stop-rm-container.sh
+          chmod +x /opt/uactions/scripts/podman/stop-rm-container.sh
           
           # Compute fallback container name when not provided
           CN='${{ inputs.container_name }}'

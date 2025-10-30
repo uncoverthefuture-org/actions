@@ -38,9 +38,8 @@ inputs:
     description: 'SSH host (IP or hostname). Required. Example: 192.168.1.100 or deploy.example.com'
     required: true
   ssh_user:
-    description: 'SSH username (non-root). Default: root. Use for non-root user deployments'
-    required: false
-    default: 'root'
+    description: 'SSH username to connect with (commands run as this user).'
+    required: true
   ssh_key:
     description: 'SSH private key for authentication. Required. Should be stored as GitHub secret'
     required: true
@@ -54,14 +53,10 @@ inputs:
   ssh_fingerprint:
     description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
-  podman_user:
-    description: 'User on remote host to execute podman commands as. Default: deployer'
-    required: false
-    default: 'deployer'
   connect_mode:
-    description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md for details"
+    description: "Connection mode: 'auto', 'root', or 'user'. Default 'user' keeps commands under the SSH account."
     required: false
-    default: 'auto'
+    default: 'user'
 
   # ========================================================================
   # HOST PREPARATION (OPTIONAL)
@@ -75,10 +70,6 @@ inputs:
     description: 'Install Podman when preparing host. Default: true'
     required: false
     default: 'true'
-  create_podman_user:
-    description: 'Create podman_user if it does not exist during preparation. Default: false'
-    required: false
-    default: 'false'
   install_traefik:
     description: 'Install Traefik when prepare_host runs. Default: true. Provides automatic HTTPS with Let''s Encrypt'
     required: false
@@ -395,15 +386,13 @@ runs:
       uses: ./.github/actions/infra/prepare-ubuntu-host
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         install_podman: ${{ inputs.install_podman }}
-        create_podman_user: ${{ inputs.create_podman_user }}
         install_traefik: ${{ inputs.install_traefik }}
         traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || (steps.dfl.outputs.domain_apex != '' && format('traefik@{0}', steps.dfl.outputs.domain_apex)) || '' }}
         env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}
@@ -414,12 +403,11 @@ runs:
       uses: ./.github/actions/app/write-remote-env-file
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
@@ -430,12 +418,11 @@ runs:
       uses: ./.github/actions/podman/podman-login-pull
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         registry: ${{ inputs.registry }}
         registry_username: ${{ inputs.registry_username }}
@@ -448,12 +435,11 @@ runs:
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
@@ -485,11 +471,11 @@ runs:
             CONTAINER_PORT="${API_CONTAINER_PORT:-${TARGET_PORT:-8000}}"
           fi
 
-          run_podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-          run_podman rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+          podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+          podman rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
           if [ "${{ inputs.migrate }}" = "true" ]; then
-            run_podman run --rm --env-file "$ENV_FILE" \
+            podman run --rm --env-file "$ENV_FILE" \
               "$IMAGE" \
               ${{ inputs.migrate_cmd }}
           fi
@@ -515,7 +501,7 @@ runs:
             PORT_ARGS=(-p "$HOST_PORT:$CONTAINER_PORT")
           fi
 
-          run_podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
+          podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
             "${PORT_ARGS[@]}" \
             --restart=${{ inputs.restart_policy }} \
             --memory='${{ inputs.memory_limit }}' --memory-swap='${{ inputs.memory_limit }}' \
@@ -528,12 +514,10 @@ runs:
       uses: ./.github/actions/podman/podman-run-service
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         service_name: ${{ inputs.worker_service_name }}
         image: ${{ inputs.worker_image != '' && inputs.worker_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), inputs.image_tag) }}
@@ -548,12 +532,10 @@ runs:
       uses: ./.github/actions/podman/podman-run-service
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         service_name: ${{ inputs.scheduler_service_name }}
         image: ${{ inputs.scheduler_image != '' && inputs.scheduler_image || format('{0}/{1}:{2}', inputs.registry, (inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name), (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default)) }}

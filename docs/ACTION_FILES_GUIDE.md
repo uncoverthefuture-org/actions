@@ -254,11 +254,14 @@ These are the main actions users call directly.
 
 **Key inputs**:
 - `ssh_host` - SSH host (required)
-- `ssh_key` - SSH private key (required)
+- `ssh_key` - SSH private key for the session user (required)
 - `install_podman` - Install Podman (default: true)
 - `install_traefik` - Install Traefik (default: true)
 - `traefik_email` - Email for Let's Encrypt
-- `create_podman_user` - Create deployer user (default: false)
+
+> ℹ️ All host preparation now runs as the caller-provided `ssh_user`. The legacy
+> `create_podman_user` toggle has been removed—provision target users manually
+> during infrastructure setup and keep directory ownership aligned with that user.
 
 **When to use**: First deployment to a new server
 
@@ -266,18 +269,17 @@ These are the main actions users call directly.
 
 ---
 
-#### **setup-podman-user**
+#### **setup-podman-user** _(deprecated)_
 **Location**: `.github/actions/infra/setup-podman-user/action.yml`
 
-**Purpose**: Configure Podman user and permissions
+> ⚠️ This action is deprecated. The podman-user refactor mandates running all remote
+> commands as the declared `ssh_user`. Provision servers with the correct user up
+> front and avoid calling this action in new workflows.
 
-**What it does**:
-1. Creates user if needed
-2. Sets up Podman permissions
-3. Configures sudo access
-4. Sets up SSH key
-
-**When to use**: Configure non-root user for Podman operations
+**Migration guidance**:
+1. Ensure the provisioning process creates the target `ssh_user` account manually.
+2. Grant the user linger/socket permissions using standard system automation.
+3. Remove any `setup-podman-user` references from workflows and documentation.
 
 ---
 

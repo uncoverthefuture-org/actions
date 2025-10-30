@@ -3,7 +3,7 @@
 Run a long-lived container (service) on a remote host via Podman, with optional env file, ports, memory, volumes, and restart policy.
 
 ## Inputs
-- SSH: `ssh_host`, `ssh_user`, `ssh_key`, `root_ssh_key?`, `ssh_port?`, `ssh_fingerprint?`, `podman_user?`, `connect_mode?`
+- SSH: `ssh_host`, `ssh_user`, `ssh_key`, `root_ssh_key?`, `ssh_port?`, `ssh_fingerprint?`, `connect_mode?`
 - Runtime: `service_name`, `image`, `env_file?`, `command?`, `host_port?`, `container_port?`, `restart_policy?`, `memory_limit?`, `extra_run_args?`, `volumes?`
 
 ## Example

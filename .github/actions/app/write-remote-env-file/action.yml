@@ -56,10 +56,6 @@ inputs:
   ssh_fingerprint:
     description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
-  podman_user:
-    description: 'User on remote host for file ownership. Default: deployer. Example: appuser'
-    required: false
-    default: 'deployer'
   connect_mode:
     description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md"
     required: false
@@ -99,7 +95,7 @@ inputs:
 # 1. Compute defaults - Calculate derived values
 # 2. Validate inputs - Check required parameters
 # 3. Write env file - Create directory and write file
-# 4. Set permissions - chmod 600 and chown to podman_user
+# 4. Set permissions - chmod 600 (directories must be writable by SSH user)
 #
 # REFERENCE: See docs/ACTION_FILES_GUIDE.md for detailed step explanations
 # ============================================================================
@@ -176,7 +172,7 @@ runs:
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ inputs.ssh_host }}
-        username: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        username: ${{ inputs.ssh_user }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
         source: ".uactions_cache/run-env-setup.sh"
@@ -191,12 +187,11 @@ runs:
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         env_name: ${{ inputs.env_name }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
@@ -206,14 +201,13 @@ runs:
         inline_script: |
           set -euo pipefail
           # Move scripts to place
-          sudo mkdir -p /opt/uactions/scripts/app
+          mkdir -p /opt/uactions/scripts/app
           if [ -f /tmp/run-env-setup.sh ]; then
-            sudo mv -f /tmp/run-env-setup.sh /opt/uactions/scripts/app/run-env-setup.sh
-            sudo chmod +x /opt/uactions/scripts/app/run-env-setup.sh
+            mv -f /tmp/run-env-setup.sh /opt/uactions/scripts/app/run-env-setup.sh
+            chmod +x /opt/uactions/scripts/app/run-env-setup.sh
           fi
 
           # Export variables for run-env-setup.sh
-          export PODMAN_USER='${{ inputs.podman_user }}'
           export ENV_FILE_PATH='${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}/${{ inputs.env_name }}/${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}/.env'
           export ENV_B64='${{ inputs.env_b64 }}'
           export ENV_CONTENT='${{ inputs.env_content }}'

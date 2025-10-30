@@ -9,7 +9,6 @@
 #
 # Inputs (environment variables):
 #   TRAEFIK_EMAIL     - Email for Let's Encrypt account (REQUIRED)
-#   PODMAN_USER       - Linux user that runs containers (default: deployer)
 #   TRAEFIK_VERSION   - Traefik image tag (default: v3.1)
 #
 # Exit codes:
@@ -21,7 +20,6 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # --- Resolve inputs -----------------------------------------------------------------
 # Get required environment variables with defaults
 TRAEFIK_EMAIL="${TRAEFIK_EMAIL:-}"
-PODMAN_USER="${PODMAN_USER:-deployer}"
 TRAEFIK_VERSION="${TRAEFIK_VERSION:-v3.1}"
 
 # Validate required inputs
@@ -49,43 +47,33 @@ if [ ! -f "/var/lib/traefik/acme.json" ]; then
   exit 1
 fi
 
-# Check if deployer user can bind to low ports (required for Traefik)
-echo "🔍 Checking if $PODMAN_USER can bind to low ports (80/443) ..."
-if ! runuser -l "$PODMAN_USER" -c "timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/80' 2>/dev/null || true" 2>/dev/null && \
-   ! runuser -l "$PODMAN_USER" -c "python3 -c 'import socket; s=socket.socket(); s.bind((\"\", 80)); s.close()' 2>/dev/null" 2>/dev/null; then
-  echo "❌ ERROR: User $PODMAN_USER cannot bind to port 80." >&2
-  echo "   Traefik must run in the same user namespace as containers ($PODMAN_USER)." >&2
+echo "🔍 Checking if current user can bind to low ports (80/443) ..."
+if ! timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/80' 2>/dev/null && \
+   ! python3 -c 'import socket; s=socket.socket(); s.bind(("", 80)); s.close()' 2>/dev/null; then
+  echo "❌ ERROR: Current user cannot bind to port 80." >&2
+  echo "   Traefik requires CAP_NET_BIND_SERVICE or authbind." >&2
   echo "   To fix this:" >&2
   echo "   1. Grant CAP_NET_BIND_SERVICE to podman: sudo setcap cap_net_bind_service=+ep \$(which podman)" >&2
-  echo "   2. Or use authbind: sudo apt install authbind && sudo touch /etc/authbind/byport/80 /etc/authbind/byport/443 && sudo chown $PODMAN_USER /etc/authbind/byport/*" >&2
+  echo "   2. Or use authbind: sudo apt install authbind && sudo touch /etc/authbind/byport/80 /etc/authbind/byport/443 && sudo chown \$(id -un) /etc/authbind/byport/*" >&2
   exit 1
 fi
 
-# Helper to run podman as deployer user (follows project pattern)
-run_podman() {
-  if [ "$(id -un)" = "$PODMAN_USER" ]; then
-    podman "$@"
-  else
-    sudo -H -u "$PODMAN_USER" podman "$@"
-  fi
-}
-
-# --- Enable Podman user socket -------------------------------------------------------
-echo "🧩 Enabling linger and Podman user socket for $PODMAN_USER ..."
-PUID=$(id -u "$PODMAN_USER" 2>/dev/null || echo 1000)
+echo "🧩 Enabling linger and Podman user socket for current user ..."
+CURRENT_USER="$(id -un)"
+PUID="$(id -u)"
 # Check if linger is already enabled
-if ! loginctl show-user "$PODMAN_USER" 2>/dev/null | grep -q "Linger=yes"; then
-  loginctl enable-linger "$PODMAN_USER" >/dev/null 2>&1 || true
-  echo "  ✓ Enabled linger for $PODMAN_USER"
+if ! loginctl show-user "$CURRENT_USER" 2>/dev/null | grep -q "Linger=yes"; then
+  loginctl enable-linger "$CURRENT_USER" >/dev/null 2>&1 || true
+  echo "  ✓ Enabled linger for $CURRENT_USER"
 else
-  echo "  ✓ Linger already enabled for $PODMAN_USER"
+  echo "  ✓ Linger already enabled for $CURRENT_USER"
 fi
 # Check if user podman socket is enabled and running
-if ! runuser -l "$PODMAN_USER" -c "XDG_RUNTIME_DIR=/run/user/$PUID systemctl --user is-active --quiet podman.socket" 2>/dev/null; then
-  runuser -l "$PODMAN_USER" -c "XDG_RUNTIME_DIR=/run/user/$PUID systemctl --user enable --now podman.socket" >/dev/null 2>&1 || true
-  echo "  ✓ Enabled and started podman.socket for $PODMAN_USER"
+if ! XDG_RUNTIME_DIR="/run/user/$PUID" systemctl --user is-active --quiet podman.socket 2>/dev/null; then
+  XDG_RUNTIME_DIR="/run/user/$PUID" systemctl --user enable --now podman.socket >/dev/null 2>&1 || true
+  echo "  ✓ Enabled and started podman.socket for $CURRENT_USER"
 else
-  echo "  ✓ podman.socket already running for $PODMAN_USER"
+  echo "  ✓ podman.socket already running for $CURRENT_USER"
 fi
 
 USER_RUNTIME_DIR="/run/user/$PUID"
@@ -101,23 +89,23 @@ fi
 
 # --- Container management -------------------------------------------------------------
 echo "🛑 Stopping existing Traefik container (if any) ..."
-if run_podman container exists traefik >/dev/null 2>&1; then
-  run_podman stop traefik >/dev/null 2>&1 || true
+if podman container exists traefik >/dev/null 2>&1; then
+  podman stop traefik >/dev/null 2>&1 || true
   echo "  ✓ Stopped existing traefik container"
 else
   echo "  ✓ No existing traefik container to stop"
 fi
 
 echo "🧹 Removing existing Traefik container (if any) ..."
-if run_podman container exists traefik >/dev/null 2>&1; then
-  run_podman rm traefik >/dev/null 2>&1 || true
+if podman container exists traefik >/dev/null 2>&1; then
+  podman rm traefik >/dev/null 2>&1 || true
   echo "  ✓ Removed existing traefik container"
 else
   echo "  ✓ No existing traefik container to remove"
 fi
 
 echo "🚀 Starting Traefik container (version: ${TRAEFIK_VERSION}) ..."
-if ! run_podman run -d \
+if ! podman run -d \
   --name traefik \
   --restart unless-stopped \
   -p 80:80 \
@@ -127,11 +115,11 @@ if ! run_podman run -d \
   -v "$HOST_SOCK":/var/run/docker.sock \
   docker.io/traefik:"${TRAEFIK_VERSION}"; then
   echo "Failed to start Traefik container" >&2
-  run_podman logs traefik 2>&1 || true
+  podman logs traefik 2>&1 || true
   exit 1
 fi
 
 # --- Post status ---------------------------------------------------------------------
 echo "✅ Traefik container started (image: docker.io/traefik:${TRAEFIK_VERSION})"
 echo "🔎 podman ps --filter name=traefik"
-run_podman ps --filter name=traefik
+podman ps --filter name=traefik

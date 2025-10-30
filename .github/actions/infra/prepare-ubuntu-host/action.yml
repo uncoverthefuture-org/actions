@@ -8,9 +8,9 @@
 # WHAT IT DOES:
 # 1. Validates all required inputs
 # 2. Installs Podman (container runtime)
-# 3. Creates deployment directories
-# 4. Creates deployer user (optional)
-# 5. Installs Traefik (optional, for automatic HTTPS)
+# 3. Creates deployment directories owned by ssh_user
+# 4. Installs Traefik (optional)
+# 5. Configures firewall and optional services
 # 6. Configures UFW firewall
 # 7. Installs additional packages
 #
@@ -47,9 +47,6 @@ inputs:
   ssh_key:
     description: 'SSH private key for authentication. Required. Should be stored as GitHub secret'
     required: true
-  root_ssh_key:
-    description: 'SSH private key for root (optional). Use if ssh_user cannot escalate to root'
-    required: false
   ssh_port:
     description: 'SSH port. Default: 22. Change if using non-standard SSH port'
     required: false
@@ -57,23 +54,11 @@ inputs:
   ssh_fingerprint:
     description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
-  connect_mode:
-    description: "Connection mode: 'auto' (default), 'root', or 'user'. For package install, root is recommended"
-    required: false
-    default: 'root'
 
   # ========================================================================
   # PODMAN CONFIGURATION
   # ========================================================================
   # Parameters for Podman container runtime setup
-  podman_user:
-    description: 'User on remote host that will run containers (rootless). Default: deployer. Example: appuser'
-    required: false
-    default: 'deployer'
-  create_podman_user:
-    description: 'Create podman_user if it does not exist. Default: false. Set true to auto-create user'
-    required: false
-    default: 'false'
   install_podman:
     description: 'Install Podman and dependencies. Default: true. Set false if already installed'
     required: false
@@ -145,12 +130,11 @@ inputs:
 # The preparation follows these steps:
 # 1. Validate inputs - Check required parameters
 # 2. Compute defaults - Calculate derived values
-# 3. Install Podman - Container runtime
-# 4. Create directories - Deployment structure
-# 5. Create user - Podman user (optional)
-# 6. Install Traefik - Reverse proxy (optional)
-# 7. Configure firewall - UFW rules
-# 8. Install packages - Additional utilities
+# 3. Install Podman - Container runtime (optional)
+# 4. Ensure deployment directories exist with ssh_user ownership
+# 5. Install Traefik - Reverse proxy (optional)
+# 6. Configure firewall / optional services
+# 7. Install packages - Additional utilities
 #
 # REFERENCE: See docs/ACTION_FILES_GUIDE.md for detailed step explanations
 # ============================================================================
@@ -169,11 +153,14 @@ runs:
         if [ -z "${{ inputs.ssh_host }}" ]; then echo 'Error: ssh_host is required' ; exit 1 ; fi
         if [ -z "${{ inputs.ssh_user }}" ]; then echo 'Error: ssh_user is required' ; exit 1 ; fi
         if [ -z "${{ inputs.ssh_key }}" ]; then echo 'Error: ssh_key is required' ; exit 1 ; fi
-        case "${{ inputs.connect_mode }}" in auto|root|user) :;; *) echo 'Error: connect_mode must be auto|root|user' ; exit 1 ;;
-        esac
         if [ "${{ inputs.install_traefik }}" = "true" ] && [ -z "${{ inputs.traefik_email }}" ]; then
           echo 'Error: traefik_email is required when install_traefik=true'
           exit 1
+        fi
+        case "${{ inputs.install_podman }}" in true|false) :;; *) echo 'Error: install_podman must be true or false' ; exit 1 ;;
+        esac
+        if [ "${{ inputs.ssh_user }}" != "root" ]; then
+          echo '::notice::ssh_user is not root; ensure this user already has required privileges. Host preparation must be executed with an account that can install packages and configure services.'
         fi
       shell: bash
 
@@ -188,12 +175,34 @@ runs:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
         additional_packages: ${{ inputs.additional_packages }}
+
+    - name: Ensure deployment directories
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        inline_script: |
+          set -euo pipefail
+          TARGET_DIR='${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.defaults.outputs.env_dir_path }}'
+          echo "📁 Ensuring deployment directory exists: ${TARGET_DIR} (user=$(id -un))"
+          if [ -z "$TARGET_DIR" ]; then
+            echo '::error::Unable to resolve target directory for environment files.' >&2
+            exit 1
+          fi
+          if [ ! -d "$TARGET_DIR" ]; then
+            mkdir -p "$TARGET_DIR"
+            echo "✅ Created directory $TARGET_DIR"
+          fi
+          if [ ! -w "$TARGET_DIR" ]; then
+            echo "::error::Directory $TARGET_DIR is not writable by $(id -un). Adjust ownership or choose a user-owned path." >&2
+            exit 1
+          fi
 
     - name: Install Apache
       if: ${{ inputs.install_apache == 'true' }}
@@ -202,11 +211,8 @@ runs:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
 
     - name: Install Webmin/Usermin
       if: ${{ inputs.install_webmin == 'true' || inputs.install_usermin == 'true' }}
@@ -215,11 +221,8 @@ runs:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
         install_webmin: ${{ inputs.install_webmin }}
         install_usermin: ${{ inputs.install_usermin }}
 
@@ -230,26 +233,9 @@ runs:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
         ufw_allow_ports: ${{ inputs.ufw_allow_ports }}
-
-    - name: Setup Podman User
-      uses: ./.github/actions/infra/setup-podman-user
-      with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
-        create_podman_user: ${{ inputs.create_podman_user }}
-        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.defaults.outputs.env_dir_path }}
 
     - name: Setup Traefik reverse proxy
       if: ${{ inputs.install_traefik == 'true' }}
@@ -258,9 +244,6 @@ runs:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
         traefik_email: ${{ inputs.traefik_email }}

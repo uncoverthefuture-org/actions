@@ -33,14 +33,10 @@ inputs:
     required: true
   ssh_user:
     description: 'SSH username'
-    required: false
-    default: 'root'
+    required: true
   ssh_key:
     description: 'SSH private key'
     required: true
-  root_ssh_key:
-    description: 'SSH private key for root (optional)'
-    required: false
   ssh_port:
     description: 'SSH port'
     required: false
@@ -48,14 +44,6 @@ inputs:
   ssh_fingerprint:
     description: 'Server SSH host key fingerprint (optional)'
     required: false
-  podman_user:
-    description: 'User on remote host to execute podman commands as'
-    required: false
-    default: 'deployer'
-  connect_mode:
-    description: "How to connect: 'auto' (default), 'root', or 'user'"
-    required: false
-    default: 'auto'
 
   prepare_host:
     description: 'Install Podman and prepare directories/users on a fresh Ubuntu host'
@@ -65,10 +53,6 @@ inputs:
     description: 'Install Podman when preparing host'
     required: false
     default: 'true'
-  create_podman_user:
-    description: 'Create podman_user if it does not exist during preparation'
-    required: false
-    default: 'false'
   install_traefik:
     description: 'Install Traefik when prepare_host runs'
     required: false
@@ -211,16 +195,12 @@ runs:
       uses: ./.github/actions/app/common/deploy-preflight
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || 'deployer' }}
-        connect_mode: ${{ inputs.connect_mode }}
         prepare_host: ${{ inputs.prepare_host }}
         install_podman: ${{ inputs.install_podman }}
-        create_podman_user: ${{ inputs.create_podman_user }}
         install_traefik: ${{ inputs.install_traefik }}
         traefik_email: ${{ inputs.traefik_email }}
         env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }}
@@ -242,13 +222,10 @@ runs:
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}
         source_env: ${{ inputs.source_env }}
@@ -279,8 +256,8 @@ runs:
             CONTAINER_PORT="${WEB_CONTAINER_PORT:-${TARGET_PORT:-3000}}"
           fi
 
-          run_podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-          run_podman rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+          podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+          podman rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
           EXTRA_ARGS="${{ inputs.extra_run_args }}"
           TRAEFIK_ENABLED="${{ inputs.enable_traefik }}"
@@ -303,7 +280,7 @@ runs:
             PORT_ARGS=(-p "$HOST_PORT:$CONTAINER_PORT")
           fi
 
-          run_podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
+          podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
             "${PORT_ARGS[@]}" \
             --restart=${{ inputs.restart_policy }} \
             --memory='${{ inputs.memory_limit }}' --memory-swap='${{ inputs.memory_limit }}' \

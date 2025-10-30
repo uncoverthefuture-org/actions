@@ -1,5 +1,5 @@
 name: 'infra: setup-traefik'
-description: 'Install Traefik reverse proxy with automatic Let''s Encrypt certificates via Podman.'
+description: 'Installs and manages Traefik reverse proxy on remote host for automatic HTTPS. Traefik terminates HTTP/S on ports 80/443, so downstream app deployments must avoid publishing host ports when Traefik is enabled—the container scripts emit labels only and skip `-p` mappings in that mode. Let''s Encrypt certificates via Podman.'
 
 inputs:
   ssh_host:
@@ -11,9 +11,6 @@ inputs:
   ssh_key:
     description: 'SSH private key for ssh_user'
     required: true
-  root_ssh_key:
-    description: 'Optional SSH key for root (used when switching users)'
-    required: false
   ssh_port:
     description: 'SSH port'
     required: false
@@ -21,14 +18,6 @@ inputs:
   ssh_fingerprint:
     description: 'Optional server fingerprint verification'
     required: false
-  podman_user:
-    description: 'Podman user on target host'
-    required: false
-    default: 'deployer'
-  connect_mode:
-    description: "Connection mode: auto | root | user"
-    required: false
-    default: 'auto'
   traefik_email:
     description: "Email used for Let's Encrypt certificates"
     required: true
@@ -107,31 +96,38 @@ runs:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: root
+        connect_mode: user
         inline_script: |
           set -euo pipefail
           # Ensure final scripts directory and move uploaded script into place
-          sudo mkdir -p /opt/uactions/scripts/traefik
+          mkdir -p /opt/uactions/scripts/traefik
           if [ -f /tmp/install-traefik.sh ]; then
-            sudo mv -f /tmp/install-traefik.sh /opt/uactions/scripts/traefik/install-traefik.sh
-            sudo chmod +x /opt/uactions/scripts/traefik/install-traefik.sh
+            mv -f /tmp/install-traefik.sh /opt/uactions/scripts/traefik/install-traefik.sh
+            chmod +x /opt/uactions/scripts/traefik/install-traefik.sh
           fi
           if [ -f /tmp/setup-traefik.sh ]; then
-            sudo mv -f /tmp/setup-traefik.sh /opt/uactions/scripts/traefik/setup-traefik.sh
-            sudo chmod +x /opt/uactions/scripts/traefik/setup-traefik.sh
+            mv -f /tmp/setup-traefik.sh /opt/uactions/scripts/traefik/setup-traefik.sh
+            chmod +x /opt/uactions/scripts/traefik/setup-traefik.sh
           fi
 
-          # Execute root-level installation script as deployer (with sudo)
-          echo "🔧 Running Traefik system installation as ${{ inputs.podman_user }} (with sudo)..."
-          runuser -l ${{ inputs.podman_user }} -c "export TRAEFIK_EMAIL='${{ inputs.traefik_email }}' PODMAN_USER='${{ inputs.podman_user }}' && /opt/uactions/scripts/traefik/install-traefik.sh"
+          CURRENT_USER="$(id -un)"
+          echo "🔎 Remote session user: $CURRENT_USER"
 
-          # Execute user-level setup script as deployer
-          echo "🚀 Running Traefik container setup as ${{ inputs.podman_user }}..."
-          runuser -l ${{ inputs.podman_user }} -c "export TRAEFIK_EMAIL='${{ inputs.traefik_email }}' PODMAN_USER='${{ inputs.podman_user }}' TRAEFIK_VERSION='${{ inputs.traefik_version }}' && /opt/uactions/scripts/traefik/setup-traefik.sh"
+          export TRAEFIK_EMAIL='${{ inputs.traefik_email }}'
+
+          if [ "$CURRENT_USER" = "root" ]; then
+            echo "🔧 Running Traefik system installation (requires root) ..."
+            /opt/uactions/scripts/traefik/install-traefik.sh
+          else
+            echo "::notice::Skipping install-traefik.sh because it requires root privileges."
+            echo "::notice::Run install-traefik.sh manually as a privileged user to complete system setup."
+          fi
+
+          echo "🚀 Running Traefik container setup as current user ..."
+          export TRAEFIK_VERSION='${{ inputs.traefik_version }}'
+          /opt/uactions/scripts/traefik/setup-traefik.sh
 
     - name: Traefik status summary
       if: always()
@@ -173,13 +169,13 @@ runs:
         fi
 
         # Fetch Traefik container status
-        TRAEFIK_PS="$(run_remote 'command -v podman >/dev/null 2>&1 && runuser -l '${{ inputs.podman_user }}' -c "podman ps --filter name=traefik --format \"table {{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}\"" || echo "podman not available"' || true)"
+        TRAEFIK_PS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman ps --filter name=traefik --format "table {{.ID}}	{{.Status}}	{{.Names}}	{{.Ports}}" || echo "podman not available"' || true)"
         
         # Fetch Traefik container stats (CPU, memory, I/O)
-        TRAEFIK_STATS="$(run_remote 'command -v podman >/dev/null 2>&1 && runuser -l '${{ inputs.podman_user }}' -c "podman stats traefik --no-stream --format \"table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\"" || echo "stats unavailable"' || true)"
+        TRAEFIK_STATS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman stats traefik --no-stream --format "table {{.Container}}	{{.CPUPerc}}	{{.MemUsage}}" || echo "stats unavailable"' || true)"
         
         # Fetch recent Traefik logs (last 50 lines)
-        TRAEFIK_LOGS="$(run_remote 'command -v podman >/dev/null 2>&1 && runuser -l '${{ inputs.podman_user }}' -c "podman logs traefik --tail=50" || echo "logs unavailable"' || true)"
+        TRAEFIK_LOGS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman logs traefik --tail=50 || echo "logs unavailable"' || true)"
         
         # Fetch port listeners on 80/443
         PORTS_LISTEN="$(run_remote 'ss -ltnp 2>/dev/null | grep -E ":80|:443" || echo "no listeners"' || true)"

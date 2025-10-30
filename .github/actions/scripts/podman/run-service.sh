@@ -24,32 +24,33 @@ echo "  • Env file:  ${ENV_FILE:-<none>}"
 echo "  • Restart:   $RESTART_POLICY"
 echo "  • Memory:    $MEMORY_LIMIT"
 
-# Helper to run podman as deployer user
-run_podman() {
-  if [ "$(id -un)" = "deployer" ]; then
-    podman "$@"
-  else
-    sudo -H -u deployer podman "$@"
-  fi
-}
-
 # Stop/remove if exists
 echo "🛑 Stopping existing service (if any): $SERVICE_NAME"
-run_podman stop "$SERVICE_NAME" >/dev/null 2>&1 || true
+podman stop "$SERVICE_NAME" >/dev/null 2>&1 || true
 echo "🧹 Removing existing service (if any): $SERVICE_NAME"
-run_podman rm "$SERVICE_NAME" >/dev/null 2>&1 || true
+podman rm "$SERVICE_NAME" >/dev/null 2>&1 || true
 
 # Build port args (ignore empty or malformed entries)
 PORT_ARGS=()
+INVALID_PORTS=()
 if [ -n "$PORTS" ]; then
   for port_mapping in $PORTS; do
     [ -z "$port_mapping" ] && continue
-    case "$port_mapping" in
-      *:*) PORT_ARGS+=(-p "$port_mapping") ;;
-      *) : ;; # skip invalid
-    esac
+    if [[ "$port_mapping" =~ ^[0-9]+:[0-9]+(/(tcp|udp))?$ ]]; then
+      PORT_ARGS+=( -p "$port_mapping" )
+    else
+      INVALID_PORTS+=("$port_mapping")
+    fi
   done
 fi
+
+if [ ${#INVALID_PORTS[@]} -gt 0 ]; then
+  echo '::error::Invalid port mapping syntax detected in PORTS.' >&2
+  printf 'Invalid entries:%s\n' " ${INVALID_PORTS[*]}" >&2
+  echo "Hint: Use numeric host:container mappings like '8080:80' (optionally append /tcp or /udp)." >&2
+  exit 1
+fi
+
 if [ ${#PORT_ARGS[@]} -gt 0 ]; then
   echo "🔓 Publishing ports: ${PORTS}"
 else
@@ -73,7 +74,7 @@ fi
 
 # Run container
 echo "🚀 Starting service: $SERVICE_NAME"
-run_podman run -d --name "$SERVICE_NAME" \
+podman run -d --name "$SERVICE_NAME" \
   ${ENV_FILE:+--env-file "$ENV_FILE"} \
   "${PORT_ARGS[@]}" \
   "${VOL_ARGS[@]}" \
@@ -82,7 +83,7 @@ run_podman run -d --name "$SERVICE_NAME" \
   ${EXTRA_ARGS:+$EXTRA_ARGS} \
   "$IMAGE" ${COMMAND:+$COMMAND}
 
-echo "✅ Service $SERVICE_NAME started"
-echo "📝 Service details:"
+echo " Service $SERVICE_NAME started"
+echo " Service details:"
 echo ""
-run_podman ps --filter name="$SERVICE_NAME" --format 'table {{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}'
+podman ps --filter name="$SERVICE_NAME" --format 'table {{.ID}}	{{.Status}}	{{.Names}}	{{.Ports}}'

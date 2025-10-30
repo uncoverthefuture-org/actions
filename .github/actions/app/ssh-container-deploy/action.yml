@@ -25,9 +25,9 @@ inputs: # All parameters accepted by this action
   # SSH / Remote
   ssh_host: # SSH host (IP or DNS)
     required: true # Must be provided by caller
-  ssh_user: # SSH username; root supported
+  ssh_user: # SSH username; uses podman_user by default for non-root execution
     required: false
-    default: 'root' # Defaults to root unless overridden
+    default: '' # Empty to allow dynamic default based on podman_user
   ssh_key: # Private key for ssh_user
     required: true
   root_ssh_key: # Optional private key for root for privilege operations
@@ -42,7 +42,7 @@ inputs: # All parameters accepted by this action
     default: 'deployer'
   connect_mode: # How to connect: auto|root|user
     required: false
-    default: 'auto'
+    default: 'user'
   skip_upload:
     description: 'Skip staging/upload of deploy-container.sh (assumes scripts deployed via infra/deploy-server-scripts)'
     required: false
@@ -197,7 +197,7 @@ runs: # Composite action implementation
       shell: bash
       env:
         SSH_HOST: ${{ inputs.ssh_host }}
-        SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || inputs.podman_user }}
         SSH_KEY: ${{ inputs.ssh_key }}
         SSH_PORT: ${{ inputs.ssh_port }}
       run: |
@@ -224,7 +224,7 @@ runs: # Composite action implementation
       uses: ./.github/actions/infra/deploy-server-scripts
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || inputs.podman_user }}
         ssh_key: ${{ inputs.ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
@@ -237,7 +237,7 @@ runs: # Composite action implementation
       continue-on-error: true
       with:
         host: ${{ inputs.ssh_host }}
-        username: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        username: ${{ inputs.ssh_user != '' && inputs.ssh_user || inputs.podman_user }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
         fingerprint: ${{ inputs.ssh_fingerprint }}
@@ -309,7 +309,7 @@ runs: # Composite action implementation
       uses: ./.github/actions/app/common/deploy-preflight
       with:
         ssh_host: ${{ inputs.ssh_host }} # Remote host
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }} # SSH user
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || inputs.podman_user }} # SSH user
         ssh_key: ${{ inputs.ssh_key }} # SSH key for ssh_user
         root_ssh_key: ${{ inputs.root_ssh_key }} # Optional root key
         ssh_port: ${{ inputs.ssh_port }} # SSH port
@@ -357,7 +357,7 @@ runs: # Composite action implementation
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ inputs.ssh_host }}
-        username: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        username: ${{ inputs.ssh_user != '' && inputs.ssh_user || inputs.podman_user }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
         source: ".uactions_cache/deploy-container.sh,.uactions_cache/run-deployment.sh"
@@ -372,7 +372,7 @@ runs: # Composite action implementation
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }} # Remote host
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }} # SSH user
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || inputs.podman_user }} # SSH user
         ssh_key: ${{ inputs.ssh_key }} # SSH key
         root_ssh_key: ${{ inputs.root_ssh_key }} # Optional root key
         ssh_port: ${{ inputs.ssh_port }} # SSH port
@@ -387,10 +387,10 @@ runs: # Composite action implementation
         inline_script: |
           set -euo pipefail
           # Ensure scripts directory and move uploaded scripts
-          sudo mkdir -p /opt/uactions/scripts/app
+          mkdir -p /opt/uactions/scripts/app
           if [ -f /tmp/run-deployment.sh ]; then
-            sudo mv -f /tmp/run-deployment.sh /opt/uactions/scripts/app/run-deployment.sh
-            sudo chmod +x /opt/uactions/scripts/app/run-deployment.sh
+            mv -f /tmp/run-deployment.sh /opt/uactions/scripts/app/run-deployment.sh
+            chmod +x /opt/uactions/scripts/app/run-deployment.sh
           fi
 
           # Export deployment variables for run-deployment.sh
@@ -428,7 +428,7 @@ runs: # Composite action implementation
       with:
         reachable: ${{ steps.reach.outputs.reachable }}
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || 'root' }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || inputs.podman_user }}
         ssh_key: ${{ inputs.ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}

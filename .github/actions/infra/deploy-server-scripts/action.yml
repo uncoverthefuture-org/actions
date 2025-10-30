@@ -11,9 +11,6 @@ inputs:
   ssh_key:
     description: 'SSH private key'
     required: true
-  root_ssh_key:
-    description: 'Optional root SSH key'
-    required: false
   ssh_port:
     description: 'SSH port'
     required: false
@@ -21,10 +18,6 @@ inputs:
   ssh_fingerprint:
     description: 'SSH host key fingerprint'
     required: false
-  connect_mode:
-    description: "Connection mode: auto | root | user"
-    required: false
-    default: 'auto'
 
 runs:
   using: 'composite'
@@ -103,10 +96,10 @@ runs:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        connect_mode: ${{ inputs.connect_mode }}
+        # Remote execution runs strictly as ssh_user to avoid implicit user switching.
+        connect_mode: user
         source_env: 'false'
         fail_if_env_missing: 'false'
         inline_script: |

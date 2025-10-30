@@ -4,7 +4,7 @@ Run an inline script on a remote host over SSH with a `run_podman` helper functi
 
 ## Inputs
 - `ssh_host`, `ssh_user`, `ssh_key`, `root_ssh_key?`, `ssh_port?`, `ssh_fingerprint?`
-- `podman_user?` (default `deployer`), `connect_mode?` (`auto|root|user`)
+- `connect_mode?` (`auto|root|user`)
 - `env_file_path?`, `env_name?`, `source_env?=false`, `fail_if_env_missing?=true`
 - `inline_script` (required)
 
@@ -53,7 +53,6 @@ jobs:
     ssh_host: ${{ secrets.SSH_HOST }}
     ssh_user: ${{ secrets.SSH_USER }}
     ssh_key:  ${{ secrets.SSH_KEY }}
-    podman_user: deployer
     inline_script: |
       run_podman ps -a
 ```

@@ -55,14 +55,6 @@ inputs:
   ssh_fingerprint:
     description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
-  podman_user:
-    description: 'User on remote host to execute podman commands as. Default: deployer'
-    required: false
-    default: 'deployer'
-  connect_mode:
-    description: "Connection mode: 'auto' (default), 'root', or 'user'. See docs/ARCHITECTURE.md"
-    required: false
-    default: 'auto'
   skip_upload:
     description: 'Skip staging/upload (assumes scripts deployed via deploy-server-scripts)'
     required: false
@@ -206,18 +198,17 @@ runs:
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
         connect_mode: ${{ inputs.connect_mode }}
         source_env: 'false'
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
           # Move script from /tmp to /opt/uactions/scripts/
-          sudo mkdir -p /opt/uactions/scripts/podman
+          mkdir -p /opt/uactions/scripts/podman
           if [ -f /tmp/run-service.sh ]; then
-            sudo mv -f /tmp/run-service.sh /opt/uactions/scripts/podman/run-service.sh
+            mv -f /tmp/run-service.sh /opt/uactions/scripts/podman/run-service.sh
           fi
-          sudo chmod +x /opt/uactions/scripts/podman/run-service.sh
+          chmod +x /opt/uactions/scripts/podman/run-service.sh
           
           # Export env vars for script
           export SERVICE_NAME='${{ inputs.service_name }}'

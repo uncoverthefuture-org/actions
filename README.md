@@ -25,7 +25,7 @@ The actions are organized into categories. **Primary user-facing actions** are l
 | Action | Description | Link |
 |--------|-------------|------|
 | **Prepare Ubuntu Host** | Sets up fresh Ubuntu servers for Podman deployments | [README](.github/actions/infra/prepare-ubuntu-host/README.md) |
-| **Setup Podman User** | Configures Podman user and permissions | [README](.github/actions/infra/setup-podman-user/README.md) |
+| **Setup Podman User** _(deprecated)_ | Previously configured Podman user locally; use manual host prep instructions instead | |
 | **Apache Manage VHost** | Creates/updates Apache virtual hosts | [README](.github/actions/infra/apache-manage-vhost/README.md) |
 
 ### Podman Operations
@@ -64,7 +64,7 @@ The actions are organized into categories. **Primary user-facing actions** are l
 │   └── write-remote-env-file/
 ├── infra/              # 🔧 Infrastructure setup (some user-facing)
 │   ├── prepare-ubuntu-host/
-│   ├── setup-podman-user/
+│   ├── setup-podman-user/ _(deprecated)_
 │   ├── apache-manage-vhost/
 │   └── [other internal utilities]
 ├── podman/             # 🐳 Core Podman operations
@@ -90,7 +90,7 @@ Each action has its own detailed README with inputs, outputs, and examples. Star
 
 ### Per-environment ports and Traefik routing
 
-- **Explicit host/container ports**: All app deploy actions accept `host_port` and `container_port`. If omitted, they fall back to environment file values on the host: `WEB_HOST_PORT`/`PORT` for host, `WEB_CONTAINER_PORT`/`TARGET_PORT`/`PORT` for container.
+- **Opinionated defaults**: All app deploy actions accept `host_port` and `container_port`. When you omit them, the scripts now default both ports to `8080` (falling back to `WEB_HOST_PORT`, `WEB_CONTAINER_PORT`, `TARGET_PORT`, or `PORT` when set). Non-Traefik deployments will fail fast with guidance if either port is missing or non-numeric.
 - **Collision avoidance for branches**: If you don't use Traefik and publish host ports instead, assign unique `host_port` per environment/branch in your workflow. Example strategy:
 
   ```yaml
@@ -124,9 +124,9 @@ Each action has its own detailed README with inputs, outputs, and examples. Star
   ```
 
 - **Traefik on/off switch**:
-  - Pass a `domain` or `base_domain` to enable Traefik routing with automatic TLS. Optionally set `enable_traefik: true` (default) to attach labels.
+  - Pass a `domain` or `base_domain` to enable Traefik routing with automatic TLS. Optionally set `enable_traefik: true` (default) to attach labels. When Traefik mode is active, any supplied `host_port` is ignored and a notice is emitted because Traefik terminates traffic on ports 80/443.
   - Omit `domain`/`base_domain` (or set `enable_traefik: false`) to publish `-p host:container` instead. This avoids port 80/443 and lets multiple branches run side-by-side.
-  - When using `prepare_host: true`, Traefik can be provisioned with `install_traefik: true` and `traefik_email` (Let's Encrypt). To open firewall ports during preparation, set `ufw_allow_ports` (e.g., `"22 80 443 3000 3001"`).
+  - When using `prepare_host: true`, Traefik can be provisioned with `install_traefik: true` and `traefik_email` (Let's Encrypt). To open firewall ports during preparation, set `ufw_allow_ports` (e.g., "22 80 443 3000 3001").
 
 ### Example Workflow
 
@@ -158,6 +158,7 @@ jobs:
 - **Checkout Required**: When using these actions in workflows, ensure you have `actions/checkout` before using any local actions (`.github/actions/...`)
 - **Internal Actions**: Actions in `common/` and `version/` directories are internal utilities and should not be used directly
 - **SSH Access**: Ensure your deployment targets have SSH access configured with the specified users and keys
+- **User-Owned Directories**: All scripts now assume deployment paths (e.g. `/var/deployments/<env>/<app>`) are writable by the SSH user. Prefer locations inside the user's home (e.g. `$HOME/deployments`) or adjust ownership (`chown -R <ssh_user> <path>`) before running actions; otherwise the scripts will fail fast with guidance.
 
 ## 🚨 Troubleshooting
 
@@ -186,3 +187,11 @@ Actions are organized by functionality. When adding new actions:
 ## 📚 Documentation
 
 For detailed usage of each action, click the links in the table above or navigate to the action's directory.
+
+> 🔐 **SSH User Enforcement**
+>
+> All remote execution now runs strictly as the `ssh_user` supplied to composite
+> actions. Provision servers with the desired account ahead of time and ensure
+> deployment directories are owned by that user. Avoid workflows that attempt to
+> escalate privileges or create alternate Podman users—those patterns have been
+> removed across the action catalog.
