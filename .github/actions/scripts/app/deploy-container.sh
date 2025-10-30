@@ -120,6 +120,60 @@ if [ ! -w "$ENV_PARENT" ]; then
   exit 1
 fi
 
+HOST_PORT_FILE="${ENV_DIR}/.host-port"
+AUTO_HOST_PORT_ASSIGNED=false
+
+validate_port_number() {
+  local port="$1"
+  if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  if (( port < 1 || port > 65535 )); then
+    return 1
+  fi
+  return 0
+}
+
+port_in_use() {
+  local port="$1"
+  if ! validate_port_number "$port"; then
+    return 1
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -q -E "(:|^)$port$"; then
+      return 0
+    fi
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    if lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+  if command -v netstat >/dev/null 2>&1; then
+    if netstat -tln 2>/dev/null | awk '{print $4}' | grep -q -E "(:|^)$port$"; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+find_available_port() {
+  local start="$1"
+  local limit="${2:-100}"
+  local port="$start"
+  local attempts=0
+  while (( port <= 65535 && attempts <= limit )); do
+    if port_in_use "$port"; then
+      port=$(( port + 1 ))
+      attempts=$(( attempts + 1 ))
+      continue
+    fi
+    echo "$port"
+    return 0
+  done
+  return 1
+}
+
 # --- Helper: run_podman as current user ---------------------------------------------
 run_podman() {
   podman "$@"
@@ -148,19 +202,87 @@ if [[ -z "$CONTAINER_PORT" ]]; then
   fi
 fi
 
-# Host port resolution (reuse prior mapping; final default 8080)
+if ! validate_port_number "$CONTAINER_PORT"; then
+  echo "::error::Invalid container port '$CONTAINER_PORT'. Expected integer between 1-65535." >&2
+  exit 1
+fi
+
+# Host port resolution (reuse prior mapping; persisted fallback; final default 8080)
+HOST_PORT_SOURCE="input"
 HOST_PORT="$HOST_PORT_IN"
-if [[ -z "$HOST_PORT" && "$EXISTING" == "true" ]]; then
-  OLD_PORT_LINE=$(run_podman port "$CONTAINER_NAME" "${CONTAINER_PORT}/tcp" 2>/dev/null || true)
-  if [[ -n "$OLD_PORT_LINE" ]]; then
-    HOST_PORT="$(echo "$OLD_PORT_LINE" | sed -E 's/.*:([0-9]+)$/\1/')"
+OLD_PORT_LINE=""
+if [[ -z "$HOST_PORT" ]]; then
+  HOST_PORT_SOURCE=""
+  if [[ "$EXISTING" == "true" ]]; then
+    OLD_PORT_LINE=$(run_podman port "$CONTAINER_NAME" "${CONTAINER_PORT}/tcp" 2>/dev/null || true)
+    if [[ -n "$OLD_PORT_LINE" ]]; then
+      HOST_PORT="$(echo "$OLD_PORT_LINE" | sed -E 's/.*:([0-9]+)$/\1/')"
+      HOST_PORT_SOURCE="existing"
+    fi
   fi
 fi
+
+if [[ -z "$HOST_PORT" && -f "$HOST_PORT_FILE" ]]; then
+  STORED_PORT="$(tr -d ' \t\r\n' < "$HOST_PORT_FILE" 2>/dev/null || true)"
+  if [[ -n "$STORED_PORT" && validate_port_number "$STORED_PORT" ]]; then
+    HOST_PORT="$STORED_PORT"
+    HOST_PORT_SOURCE="file"
+  elif [[ -n "$STORED_PORT" ]]; then
+    echo "::warning::Ignoring stored host port '$STORED_PORT' in $HOST_PORT_FILE (invalid)." >&2
+  fi
+fi
+
 if [[ -z "$HOST_PORT" ]]; then
   HOST_PORT="${WEB_HOST_PORT:-${PORT:-8080}}"
+  HOST_PORT_SOURCE="default"
+fi
+
+if [[ -z "$HOST_PORT" ]]; then
+  echo "::error::Failed to resolve host port" >&2
+  exit 1
+fi
+
+if ! validate_port_number "$HOST_PORT"; then
+  echo "::warning::Host port '$HOST_PORT' is invalid; defaulting to 8080." >&2
+  HOST_PORT=8080
+  HOST_PORT_SOURCE="default"
+fi
+
+EXISTING_PORT=""
+if [[ -n "$OLD_PORT_LINE" ]]; then
+  EXISTING_PORT="$(echo "$OLD_PORT_LINE" | sed -E 's/.*:([0-9]+)$/\1/')"
+fi
+
+if port_in_use "$HOST_PORT"; then
+  if [[ "$EXISTING" == "true" && "$EXISTING_PORT" = "$HOST_PORT" ]]; then
+    echo "ℹ️  Host port $HOST_PORT currently in use by existing container; will reuse after replacement."
+  else
+    echo "⚠️  Host port $HOST_PORT is already in use; searching for the next available port." >&2
+    NEW_PORT="$(find_available_port "$HOST_PORT" 500)" || true
+    if [[ -z "$NEW_PORT" ]]; then
+      echo "::error::Unable to find an available port starting from $HOST_PORT" >&2
+      exit 1
+    fi
+    echo "🔁 Auto-selected host port $NEW_PORT"
+    HOST_PORT="$NEW_PORT"
+    HOST_PORT_SOURCE="auto"
+  fi
+fi
+
+if [[ "$HOST_PORT_SOURCE" != "input" ]]; then
+  AUTO_HOST_PORT_ASSIGNED=true
+fi
+
+if ! printf '%s\n' "$HOST_PORT" > "$HOST_PORT_FILE"; then
+  echo "::warning::Failed to persist host port to $HOST_PORT_FILE" >&2
+fi
+
+if [[ "$AUTO_HOST_PORT_ASSIGNED" == "true" ]]; then
+  echo "💾 Persisted host port assignment $HOST_PORT in $HOST_PORT_FILE"
 fi
 
 echo "🌐 Service target port (container): $CONTAINER_PORT"
+echo "🌐 Host port candidate: $HOST_PORT (source: ${HOST_PORT_SOURCE:-manual})"
 
 # --- Prepare run args ---------------------------------------------------------------
 IMAGE_REF="${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
@@ -172,9 +294,6 @@ if [[ -z "$DOMAIN" ]]; then DOMAIN="$DOMAIN_DEFAULT"; fi
 
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
   echo "🔀 Traefik mode enabled for domain: $DOMAIN (router: $ROUTER_NAME)"
-  if [[ -n "$HOST_PORT_IN" ]]; then
-    echo "::notice::Host port publishing is disabled while Traefik is enabled; ignoring host_port inputs."
-  fi
   echo "🔖 Traefik labels will advertise container port $CONTAINER_PORT"
   LABEL_ARGS+=(--label "traefik.enable=true")
   LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.rule=Host(\`$DOMAIN\`)")
@@ -182,20 +301,11 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
   LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt")
   LABEL_ARGS+=(--label "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=${CONTAINER_PORT}")
 else
-  if [[ -z "$HOST_PORT" || -z "$CONTAINER_PORT" ]]; then
-    echo '::error::Host port and container port must both resolve for non-Traefik deployment' >&2
-    echo "Hint: Provide host_port/container_port inputs or set WEB_HOST_PORT/WEB_CONTAINER_PORT (or PORT) in the env file." >&2
-    exit 1
-  fi
-  if ! [[ "$HOST_PORT" =~ ^[0-9]+$ && "$CONTAINER_PORT" =~ ^[0-9]+$ ]]; then
-    echo '::error::Host/container ports must be numeric values (e.g., 8080).' >&2
-    echo "Received host_port='${HOST_PORT}' container_port='${CONTAINER_PORT}'." >&2
-    echo "Hint: Strip protocol prefixes or named ports; only raw integers are allowed." >&2
-    exit 1
-  fi
-  echo "🔓 Publishing port mapping host:$HOST_PORT -> container:$CONTAINER_PORT"
-  PORT_ARGS=(-p "${HOST_PORT}:${CONTAINER_PORT}")
+  echo "ℹ️  Traefik disabled; container will rely on host port mapping"
 fi
+
+echo "🔓 Publishing port mapping host:${HOST_PORT} -> container:${CONTAINER_PORT}"
+PORT_ARGS=(-p "${HOST_PORT}:${CONTAINER_PORT}")
 
 # --- Login and pull (optional login, always pull) -----------------------------------
 if [[ "${REGISTRY_LOGIN:-true}" == "true" ]]; then

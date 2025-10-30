@@ -169,7 +169,8 @@ runs:
         fi
 
         # Fetch Traefik container status
-        TRAEFIK_PS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman ps --filter name=traefik --format "table {{.ID}}	{{.Status}}	{{.Names}}	{{.Ports}}" || echo "podman not available"' || true)"
+        TRAEFIK_PS_RAW="$(run_remote 'command -v podman >/dev/null 2>&1 && podman ps --filter name=traefik --format "{{.ID}}|{{.Status}}|{{.Names}}|{{.Ports}}" || echo "podman not available"' || true)"
+        TRAEFIK_PS="$(printf 'ID\tSTATUS\tNAME\tPORTS\n%s\n' "$TRAEFIK_PS_RAW")"
         
         # Fetch Traefik container stats (CPU, memory, I/O)
         TRAEFIK_STATS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman stats traefik --no-stream --format "table {{.Container}}	{{.CPUPerc}}	{{.MemUsage}}" || echo "stats unavailable"' || true)"
@@ -193,10 +194,15 @@ runs:
         ```
         SUMMARY_EOF
         
-        if [ -n "$TRAEFIK_PS" ] && [ "$TRAEFIK_PS" != "SSH_FAILED" ]; then 
-          echo "$TRAEFIK_PS" >> "$GITHUB_STEP_SUMMARY"
-        else 
+        if [ "$TRAEFIK_PS_RAW" = "SSH_FAILED" ]; then
           echo "⚠️  Container status unavailable (SSH timeout or podman not available)" >> "$GITHUB_STEP_SUMMARY"
+        elif [ "$TRAEFIK_PS_RAW" = "podman not available" ]; then
+          echo "⚠️  podman not available on host" >> "$GITHUB_STEP_SUMMARY"
+        elif [ -z "$TRAEFIK_PS_RAW" ]; then
+          echo "⚠️  Traefik container not running" >> "$GITHUB_STEP_SUMMARY"
+          TRAEFIK_NOT_RUNNING=true
+        else
+          echo "$TRAEFIK_PS" >> "$GITHUB_STEP_SUMMARY"
         fi
         
         cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
@@ -221,10 +227,13 @@ runs:
         ```
         SUMMARY_EOF
         
-        if [ -n "$PORTS_LISTEN" ] && [ "$PORTS_LISTEN" != "SSH_FAILED" ]; then 
-          echo "$PORTS_LISTEN" >> "$GITHUB_STEP_SUMMARY"
-        else 
+        if [ "$PORTS_LISTEN" = "SSH_FAILED" ]; then
+          echo "⚠️  Unable to verify port listeners (SSH timeout)" >> "$GITHUB_STEP_SUMMARY"
+        elif [ "$PORTS_LISTEN" = "no listeners" ]; then
           echo "⚠️  No listeners on 80/443" >> "$GITHUB_STEP_SUMMARY"
+          TRAEFIK_NO_PORTS=true
+        else 
+          echo "$PORTS_LISTEN" >> "$GITHUB_STEP_SUMMARY"
         fi
         
         cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
@@ -263,3 +272,13 @@ runs:
         ---
         **Generated at:** `$(date -u +'%Y-%m-%d %H:%M:%S UTC')`
         SUMMARY_EOF
+
+        if [ "${TRAEFIK_NOT_RUNNING:-false}" = "true" ]; then
+          echo '::error::Traefik container is not running after setup.'
+          exit 1
+        fi
+
+        if [ "${TRAEFIK_NO_PORTS:-false}" = "true" ]; then
+          echo '::error::Traefik is not listening on ports 80/443. Review CAP_NET_BIND_SERVICE or authbind configuration.'
+          exit 1
+        fi

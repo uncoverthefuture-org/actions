@@ -60,12 +60,6 @@ inputs:
     default: '22'
   ssh_fingerprint:
     required: false
-  podman_user:
-    required: false
-    default: 'deployer'
-  connect_mode:
-    required: false
-    default: 'auto'
 
   # --- Host preparation toggles ---
   env_dir_path:
@@ -76,9 +70,6 @@ inputs:
   additional_packages:
     required: false
     default: 'jq curl ca-certificates'
-  create_podman_user:
-    required: false
-    default: 'false'
   install_apache:
     required: false
     default: 'false'
@@ -172,13 +163,11 @@ runs:
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
-        connect_mode: ${{ inputs.connect_mode }}
     - name: Validate infra subaction
       run: |
         set -euo pipefail
         SA='${{ inputs.subaction }}'
-        case "$SA" in prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|install-certbot|request-certbot-cert|ensure-certbot-cert|configure-ufw|setup-podman-user|determine-domain|compute-host-port|check-dns-match|ensure-apache-installed|enable-apache-modules|manage-vhost-config|enable-site-reload) :;; *) echo "::error::Unsupported infra subaction '$SA'"; echo "Error: unsupported infra subaction '$SA'" >&2; exit 1;; esac
+        case "$SA" in prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|install-certbot|request-certbot-cert|ensure-certbot-cert|configure-ufw|determine-domain|compute-host-port|check-dns-match|ensure-apache-installed|enable-apache-modules|manage-vhost-config|enable-site-reload) :;; *) echo "::error::Unsupported infra subaction '$SA'"; echo "Error: unsupported infra subaction '$SA'" >&2; exit 1;; esac
       shell: bash
 
     - name: Validate base SSH for infra subactions
@@ -190,7 +179,7 @@ runs:
       run: |
         set -euo pipefail
         case "$SA" in
-          prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|install-certbot|request-certbot-cert|ensure-certbot-cert|configure-ufw|setup-podman-user|compute-host-port)
+          prepare-ubuntu-host|apache-manage-vhost|install-podman|install-apache|install-webmin|install-certbot|request-certbot-cert|ensure-certbot-cert|configure-ufw|compute-host-port)
             for var in SSH_HOST SSH_USER SSH_KEY; do
               val="${!var}"
               if [ -z "$val" ]; then
@@ -204,7 +193,7 @@ runs:
       shell: bash
 
     - name: Run host subaction
-      if: ${{ inputs.subaction == 'prepare-ubuntu-host' || inputs.subaction == 'install-podman' || inputs.subaction == 'install-apache' || inputs.subaction == 'install-webmin' || inputs.subaction == 'configure-ufw' || inputs.subaction == 'setup-podman-user' }}
+      if: ${{ inputs.subaction == 'prepare-ubuntu-host' || inputs.subaction == 'install-podman' || inputs.subaction == 'install-apache' || inputs.subaction == 'install-webmin' || inputs.subaction == 'configure-ufw' }}
       uses: ./.github/actions/infra/host
       with:
         params_json: ${{ inputs.params_json }}
@@ -215,12 +204,9 @@ runs:
         root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
         ssh_port: ${{ steps.remote.outputs.ssh_port }}
         ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
-        podman_user: ${{ steps.remote.outputs.podman_user }}
-        connect_mode: ${{ steps.remote.outputs.connect_mode }}
         env_dir_path: ${{ inputs.env_dir_path }}
         install_podman: ${{ inputs.install_podman }}
         additional_packages: ${{ inputs.additional_packages }}
-        create_podman_user: ${{ inputs.create_podman_user }}
         install_apache: ${{ inputs.install_apache }}
         install_webmin: ${{ inputs.install_webmin }}
         install_certbot: ${{ inputs.install_certbot }}
@@ -240,8 +226,6 @@ runs:
         root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
         ssh_port: ${{ steps.remote.outputs.ssh_port }}
         ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
-        podman_user: ${{ steps.remote.outputs.podman_user }}
-        connect_mode: ${{ steps.remote.outputs.connect_mode }}
         domain: ${{ inputs.domain }}
         base_domain: ${{ inputs.base_domain }}
         env_name: ${{ inputs.env_name }}
@@ -269,8 +253,6 @@ runs:
         root_ssh_key: ${{ steps.remote.outputs.root_ssh_key }}
         ssh_port: ${{ steps.remote.outputs.ssh_port }}
         ssh_fingerprint: ${{ steps.remote.outputs.ssh_fingerprint }}
-        podman_user: ${{ steps.remote.outputs.podman_user }}
-        connect_mode: ${{ steps.remote.outputs.connect_mode }}
         domain: ${{ inputs.domain }}
         certbot_email: ${{ inputs.certbot_email }}
         certbot_extra_domains: ${{ inputs.certbot_extra_domains }}

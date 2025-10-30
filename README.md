@@ -159,6 +159,7 @@ jobs:
 - **Internal Actions**: Actions in `common/` and `version/` directories are internal utilities and should not be used directly
 - **SSH Access**: Ensure your deployment targets have SSH access configured with the specified users and keys
 - **User-Owned Directories**: All scripts now assume deployment paths (e.g. `/var/deployments/<env>/<app>`) are writable by the SSH user. Prefer locations inside the user's home (e.g. `$HOME/deployments`) or adjust ownership (`chown -R <ssh_user> <path>`) before running actions; otherwise the scripts will fail fast with guidance.
+- **Automatic Host Port Mapping**: `ssh-container-deploy` persists the selected host port for each app/env in `.host-port` inside the deployment directory. If the preferred port (default `8080`) is occupied, the deploy script finds the next available port, records it for future runs, and reuses any previously assigned value unless you override `host_port` explicitly.
 
 ## 🚨 Troubleshooting
 
