@@ -224,7 +224,7 @@ fi
 
 if [[ -z "$HOST_PORT" && -f "$HOST_PORT_FILE" ]]; then
   STORED_PORT="$(tr -d ' \t\r\n' < "$HOST_PORT_FILE" 2>/dev/null || true)"
-  if [[ -n "$STORED_PORT" && validate_port_number "$STORED_PORT" ]]; then
+  if [[ -n "$STORED_PORT" ]] && validate_port_number "$STORED_PORT"; then
     HOST_PORT="$STORED_PORT"
     HOST_PORT_SOURCE="file"
   elif [[ -n "$STORED_PORT" ]]; then
@@ -250,7 +250,13 @@ fi
 
 EXISTING_PORT=""
 if [[ -n "$OLD_PORT_LINE" ]]; then
-  EXISTING_PORT="$(echo "$OLD_PORT_LINE" | sed -E 's/.*:([0-9]+)$/\1/')"
+  EXISTING_PORT_COUNT=$(printf '%s\n' "$OLD_PORT_LINE" | wc -l | tr -d ' ')
+  if [[ "$EXISTING_PORT_COUNT" == "1" ]]; then
+    EXISTING_PORT="$(printf '%s\n' "$OLD_PORT_LINE" | sed -E 's/.*:([0-9]+)$/\1/')"
+  else
+    echo "::warning::Multiple host ports found for ${CONTAINER_NAME}:${CONTAINER_PORT}/tcp; unable to auto-reuse." >&2
+    EXISTING_PORT=""
+  fi
 fi
 
 if port_in_use "$HOST_PORT"; then
