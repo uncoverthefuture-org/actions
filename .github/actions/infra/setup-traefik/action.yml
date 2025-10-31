@@ -251,7 +251,9 @@ runs:
         TRAEFIK_LOGS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman logs traefik --tail=50 || echo "logs unavailable"' || true)"
         
         # Fetch port listeners on 80/443
+        PODMAN_PORTS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman port traefik 2>/dev/null || true' || true)"
         PORTS_LISTEN="$(run_remote 'ss -ltnp 2>/dev/null | grep -E ":80|:443" || echo "no listeners"' || true)"
+        PORTS_FROM_PS="$(printf '%s' "$TRAEFIK_PS_RAW" | awk -F'|' 'NF>=4 {print $4}' | head -n1)"
         
         # Fetch legacy proxy status
         APACHE_STATE="$(run_remote 'systemctl is-active apache2 2>/dev/null || echo "inactive"' || true)"
@@ -299,13 +301,24 @@ runs:
         ```
         SUMMARY_EOF
         
-        if [ "$PORTS_LISTEN" = "SSH_FAILED" ]; then
+        HAVE_TRAEFIK_PORTS=false
+        if [ -n "$PODMAN_PORTS" ] && [ "$PODMAN_PORTS" != "SSH_FAILED" ]; then
+          echo "$PODMAN_PORTS" >> "$GITHUB_STEP_SUMMARY"
+          HAVE_TRAEFIK_PORTS=true
+        elif [ -n "$PORTS_FROM_PS" ] && { printf '%s' "$PORTS_FROM_PS" | grep -qE ':80|:443'; }; then
+          echo "$PORTS_FROM_PS" >> "$GITHUB_STEP_SUMMARY"
+          HAVE_TRAEFIK_PORTS=true
+        elif [ "$PORTS_LISTEN" = "SSH_FAILED" ]; then
           echo "⚠️  Unable to verify port listeners (SSH timeout)" >> "$GITHUB_STEP_SUMMARY"
         elif [ "$PORTS_LISTEN" = "no listeners" ]; then
           echo "⚠️  No listeners on 80/443" >> "$GITHUB_STEP_SUMMARY"
-          TRAEFIK_NO_PORTS=true
         else 
           echo "$PORTS_LISTEN" >> "$GITHUB_STEP_SUMMARY"
+          HAVE_TRAEFIK_PORTS=true
+        fi
+
+        if [ "$HAVE_TRAEFIK_PORTS" != "true" ] && [ "$PORTS_LISTEN" = "no listeners" ]; then
+          TRAEFIK_NO_PORTS=true
         fi
         
         cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
