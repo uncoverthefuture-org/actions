@@ -115,12 +115,16 @@ Change `subaction`:
 
 ### "Container already exists"
 ```bash
-ssh root@your-server.com
+ssh <ssh_user>@your-server.com
 podman rm myapp-production
 ```
 
 ### "Domain not accessible"
-- Check DNS: `nslookup api.example.com`
+- Check DNS alignment:
+  - `dig +short api.example.com`
+  - `dig +short @ns1.digitalocean.com api.example.com`
+  - `dig +short @1.1.1.1 api.example.com`
+  - All lookups should resolve to the same IP as your server; if not, update DNS and wait for propagation.
 - Check Traefik: `podman ps | grep traefik`
 - Check firewall allows ports 80, 443
 

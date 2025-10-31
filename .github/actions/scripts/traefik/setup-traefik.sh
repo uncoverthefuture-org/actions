@@ -4,12 +4,17 @@
 # ----------------------------------------------------------------------------
 # Purpose:
 #   Configure and launch Traefik container as podman user.
-#   Enables user Podman socket, determines socket path, starts Traefik.
+#   Enables user Podman socket, determines socket path, reuses existing config,
+#   checks for port conflicts, optionally exposes dashboard, and ensures
+#   persistence via systemd user services.
 #   Assumes system installation already completed by install-traefik.sh.
 #
 # Inputs (environment variables):
-#   TRAEFIK_EMAIL     - Email for Let's Encrypt account (REQUIRED)
-#   TRAEFIK_VERSION   - Traefik image tag (default: v3.1)
+#   TRAEFIK_EMAIL        - Email for Let's Encrypt account (REQUIRED)
+#   TRAEFIK_VERSION      - Traefik image tag (default: v3.5.4)
+#   TRAEFIK_DASHBOARD    - "true" to expose dashboard on port 8080 (default: false)
+#   DASHBOARD_USER       - Basic auth username (required if dashboard enabled)
+#   DASHBOARD_PASS_BCRYPT - Bcrypt hash for dashboard user (required if dashboard enabled)
 #
 # Exit codes:
 #   0 - Success
@@ -20,12 +25,22 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # --- Resolve inputs -----------------------------------------------------------------
 # Get required environment variables with defaults
 TRAEFIK_EMAIL="${TRAEFIK_EMAIL:-}"
-TRAEFIK_VERSION="${TRAEFIK_VERSION:-v3.1}"
+TRAEFIK_VERSION="${TRAEFIK_VERSION:-v3.5.4}"
+TRAEFIK_DASHBOARD="${TRAEFIK_DASHBOARD:-false}"
+DASHBOARD_USER="${DASHBOARD_USER:-}"
+DASHBOARD_PASS_BCRYPT="${DASHBOARD_PASS_BCRYPT:-}"
 
 # Validate required inputs
 if [[ -z "$TRAEFIK_EMAIL" ]]; then
   echo "Error: TRAEFIK_EMAIL is required" >&2
   exit 1
+fi
+
+if [[ "$TRAEFIK_DASHBOARD" == "true" ]]; then
+  if [[ -z "$DASHBOARD_USER" || -z "$DASHBOARD_PASS_BCRYPT" ]]; then
+    echo "Error: DASHBOARD_USER and DASHBOARD_PASS_BCRYPT are required when TRAEFIK_DASHBOARD=true" >&2
+    exit 1
+  fi
 fi
 
 # --- Preconditions ------------------------------------------------------------------
@@ -36,15 +51,13 @@ if ! command -v podman >/dev/null 2>&1; then
 fi
 
 # Verify system installation was completed
-echo "🔍 Verifying Traefik system installation ..."
-if [ ! -f "/etc/traefik/traefik.yml" ]; then
-  echo "Error: Traefik config not found. Run install-traefik.sh first (requires sudo access)." >&2
-  exit 1
-fi
-
-if [ ! -f "/var/lib/traefik/acme.json" ]; then
-  echo "Error: ACME storage not found. Run install-traefik.sh first (requires sudo access)." >&2
-  exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENSURE_CONFIG="$SCRIPT_DIR/ensure-traefik-config.sh"
+if [[ -x "$ENSURE_CONFIG" ]]; then
+  echo "🔍 Ensuring Traefik configuration files exist ..."
+  "$ENSURE_CONFIG"
+else
+  echo "::warning::ensure-traefik-config.sh missing; skipping config reuse check" >&2
 fi
 
 echo "🔍 Checking if current user can bind to low ports (80/443) ..."
@@ -84,7 +97,19 @@ if [[ -S "$SOCK_USER" ]]; then
   echo "🔌 Using user podman socket: $HOST_SOCK"
 else
   HOST_SOCK="$SOCK_ROOT"
-  echo "🔌 Using root podman socket: $HOST_SOCK"
+  echo "🔌 User podman socket unavailable; using root podman socket: $HOST_SOCK"
+  echo "::notice::If this is unexpected, ensure linger is enabled and podman.socket is running for $CURRENT_USER."
+fi
+
+echo "🔍 Checking for existing listeners on ports 80/443 ..."
+CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk '/:(80|443) / {print $0}' || true)"
+if [[ -n "$CONFLICTING_SERVICES" ]]; then
+  echo "❌ ERROR: Detected services already listening on 80/443:" >&2
+  printf '%s\n' "$CONFLICTING_SERVICES" >&2
+  echo "   Stop or reconfigure the conflicting service before continuing." >&2
+  exit 1
+else
+  echo "  ✓ No conflicting listeners detected"
 fi
 
 # --- Container management -------------------------------------------------------------
@@ -105,15 +130,34 @@ else
 fi
 
 echo "🚀 Starting Traefik container (version: ${TRAEFIK_VERSION}) ..."
-if ! podman run -d \
-  --name traefik \
-  --restart unless-stopped \
-  -p 80:80 \
-  -p 443:443 \
-  -v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro \
-  -v /var/lib/traefik/acme.json:/letsencrypt/acme.json \
-  -v "$HOST_SOCK":/var/run/docker.sock \
-  docker.io/traefik:"${TRAEFIK_VERSION}"; then
+RUN_ARGS=(
+  podman run -d
+  --name traefik
+  --restart unless-stopped
+  -p 80:80
+  -p 443:443
+  -v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+  -v /var/lib/traefik/acme.json:/letsencrypt/acme.json
+  -v "$HOST_SOCK":/var/run/docker.sock
+)
+
+if [[ "$TRAEFIK_DASHBOARD" == "true" ]]; then
+  echo "📊 Enabling Traefik dashboard on port 8080"
+  RUN_ARGS+=(
+    -p 8080:8080
+    -e TRAEFIK_API_ENABLED=true
+    -e TRAEFIK_API=true
+    -e TRAEFIK_API_DASHBOARD=true
+    -e TRAEFIK_API_DEBUG=true
+    -e TRAEFIK_API_INSECURE=false
+    -e TRAEFIK_ENTRYPOINTS_DASHBOARD_ADDRESS=:8080
+    -e TRAEFIK_ENTRYPOINTS_DASHBOARD_HTTP_REDIRECTIONS_ENTRYPOINT_TO=websecure
+    -e TRAEFIK_ENTRYPOINTS_DASHBOARD_HTTP_REDIRECTIONS_ENTRYPOINT_SCHEME=https
+    -e TRAEFIK_API_BASIC_AUTH_USERS="${DASHBOARD_USER}:${DASHBOARD_PASS_BCRYPT}"
+  )
+fi
+
+if ! "${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}"; then
   echo "Failed to start Traefik container" >&2
   podman logs traefik 2>&1 || true
   exit 1
@@ -121,5 +165,23 @@ fi
 
 # --- Post status ---------------------------------------------------------------------
 echo "✅ Traefik container started (image: docker.io/traefik:${TRAEFIK_VERSION})"
+if [[ "$TRAEFIK_DASHBOARD" == "true" ]]; then
+  echo "::notice::Traefik dashboard available at https://$(hostname -f 2>/dev/null || echo '<host>'):8080"
+fi
 echo "🔎 podman ps --filter name=traefik"
 podman ps --filter name=traefik
+
+echo "🧾 Generating systemd user service for Traefik ..."
+if podman generate systemd --new --files --name traefik >/dev/null 2>&1; then
+  podman generate systemd --new --files --name traefik
+  mkdir -p "$HOME/.config/systemd/user"
+  if mv container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null; then
+    systemctl --user daemon-reload
+    systemctl --user enable --now container-traefik.service
+    echo "  ✓ Installed container-traefik.service and enabled persistence"
+  else
+    echo "::warning::Failed to install container-traefik.service; check permissions." >&2
+  fi
+else
+  echo "::warning::podman generate systemd not available; skipping persistence." >&2
+fi

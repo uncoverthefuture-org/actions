@@ -24,7 +24,19 @@ inputs:
   traefik_version:
     description: 'Traefik image tag'
     required: false
-    default: 'v3.1'
+    default: 'v3.5.4'
+  enable_dashboard:
+    description: 'Expose Traefik dashboard on port 8080 (requires basic auth hash)'
+    required: false
+    default: 'false'
+  dashboard_user:
+    description: 'Basic auth username for Traefik dashboard (required if dashboard enabled)'
+    required: false
+    default: ''
+  dashboard_password_bcrypt:
+    description: 'Bcrypt hash (htpasswd -nB) for Traefik dashboard user (required if dashboard enabled)'
+    required: false
+    default: ''
   skip_upload:
     description: 'Skip uploading per-script file (assumes scripts are already deployed via deploy-server-scripts)'
     required: false
@@ -75,6 +87,14 @@ runs:
         mkdir -p ${{ runner.temp }}/scripts/traefik
         cp ./.github/actions/scripts/traefik/setup-traefik.sh ${{ runner.temp }}/scripts/traefik/
 
+    - name: Stage ensure-traefik-config script for upload
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ${{ runner.temp }}/scripts/traefik
+        cp ./.github/actions/scripts/traefik/ensure-traefik-config.sh ${{ runner.temp }}/scripts/traefik/
+
     - name: Upload Traefik scripts
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
       uses: appleboy/scp-action@v0.1.4
@@ -83,7 +103,7 @@ runs:
         username: ${{ inputs.ssh_user }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
-        source: ${{ runner.temp }}/scripts/traefik/install-traefik.sh,${{ runner.temp }}/scripts/traefik/setup-traefik.sh
+        source: ${{ runner.temp }}/scripts/traefik/install-traefik.sh,${{ runner.temp }}/scripts/traefik/setup-traefik.sh,${{ runner.temp }}/scripts/traefik/ensure-traefik-config.sh
         target: /tmp
         overwrite: true
         timeout: 15s
@@ -111,6 +131,10 @@ runs:
             mv -f /tmp/setup-traefik.sh /opt/uactions/scripts/traefik/setup-traefik.sh
             chmod +x /opt/uactions/scripts/traefik/setup-traefik.sh
           fi
+          if [ -f /tmp/ensure-traefik-config.sh ]; then
+            mv -f /tmp/ensure-traefik-config.sh /opt/uactions/scripts/traefik/ensure-traefik-config.sh
+            chmod +x /opt/uactions/scripts/traefik/ensure-traefik-config.sh
+          fi
 
           CURRENT_USER="$(id -un)"
           echo "🔎 Remote session user: $CURRENT_USER"
@@ -127,6 +151,9 @@ runs:
 
           echo "🚀 Running Traefik container setup as current user ..."
           export TRAEFIK_VERSION='${{ inputs.traefik_version }}'
+          export TRAEFIK_DASHBOARD='${{ inputs.enable_dashboard }}'
+          export DASHBOARD_USER='${{ inputs.dashboard_user }}'
+          export DASHBOARD_PASS_BCRYPT='${{ inputs.dashboard_password_bcrypt }}'
           /opt/uactions/scripts/traefik/setup-traefik.sh
 
     - name: Traefik status summary

@@ -40,16 +40,12 @@ This installs:
 If you prefer to set up manually:
 
 ```bash
-# SSH into your server
-ssh root@your-server.com
+# SSH into your server with the deploy user configured for GitHub Actions
+ssh <ssh_user>@your-server.com
 
-# Install Podman
-apt-get update
-apt-get install -y podman
-
-# Create deployer user (optional)
-useradd -m -s /bin/bash deployer
-usermod -aG wheel deployer
+# Install Podman (requires sudo)
+sudo apt-get update
+sudo apt-get install -y podman
 
 # Install Traefik (optional)
 # See: https://doc.traefik.io/traefik/getting-started/install-traefik/
@@ -317,7 +313,7 @@ jobs:
 **Cause**: A container with the same name already exists.
 
 **Solution**:
-1. SSH into server: `ssh root@your-server.com`
+1. SSH into server: `ssh <ssh_user>@your-server.com`
 2. Remove old container: `podman rm myapp-production`
 3. Re-run the workflow
 
@@ -327,8 +323,13 @@ jobs:
 
 **Solution**:
 1. Check Traefik is running: `podman ps | grep traefik`
-2. Check DNS points to server: `nslookup api.example.com`
-3. Check firewall allows ports 80 and 443
+2. Validate DNS points to the server:
+   - `dig +short api.example.com`
+   - `dig +short @ns1.digitalocean.com api.example.com` (authoritative)
+   - `dig +short @1.1.1.1 api.example.com` (public)
+   - All commands should return the same IP address as your droplet.
+3. If DNS records differ, update the offending provider and wait for TTL to expire before re-running Traefik.
+4. Check firewall allows ports 80 and 443
 
 ### Environment variables not loaded
 

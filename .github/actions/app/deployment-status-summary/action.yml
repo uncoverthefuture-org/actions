@@ -81,6 +81,49 @@ runs:
 
         SSH_BASE=(ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "${SSH_USER}@${SSH_HOST}")
 
+        DNS_PUBLIC_RECORDS="(skipped)"
+        DNS_AUTH_RECORDS="(skipped)"
+        DNS_AUTHORITY="(skipped)"
+        DNS_MATCH_STATUS="(not evaluated)"
+        REMOTE_IPV4="unknown"
+        if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
+          if command -v dig >/dev/null 2>&1; then
+            DNS_PUBLIC_RECORDS=$(dig +short "${DOMAIN_EFFECTIVE}" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')
+            DNS_AUTHORITY=$(dig +short NS "${DOMAIN_EFFECTIVE}" 2>/dev/null | head -1 | sed 's/\.$//')
+            if [ -n "$DNS_AUTHORITY" ]; then
+              DNS_AUTH_RECORDS=$(dig +short @"$DNS_AUTHORITY" "${DOMAIN_EFFECTIVE}" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')
+            else
+              DNS_AUTH_RECORDS="(no NS records found)"
+            fi
+          else
+            DNS_PUBLIC_RECORDS="(dig unavailable on runner)"
+            DNS_AUTH_RECORDS="(dig unavailable on runner)"
+            DNS_AUTHORITY="(dig unavailable)"
+          fi
+
+          REMOTE_IPV4=$(${SSH_BASE[@]} "hostname -I 2>/dev/null | awk '{print \$1}'" 2>/dev/null || echo "unknown")
+          if [ -z "$REMOTE_IPV4" ]; then
+            REMOTE_IPV4="unknown"
+          fi
+
+          if [ "$REMOTE_IPV4" = "unknown" ]; then
+            DNS_MATCH_STATUS="unknown (remote host IP unavailable)"
+          else
+            FOUND_MATCH="no"
+            for candidate in $DNS_PUBLIC_RECORDS $DNS_AUTH_RECORDS; do
+              if [ -n "$candidate" ] && [ "$candidate" = "$REMOTE_IPV4" ]; then
+                FOUND_MATCH="yes"
+                break
+              fi
+            done
+            if [ "$FOUND_MATCH" = "yes" ]; then
+              DNS_MATCH_STATUS="✅ Records include remote IP ${REMOTE_IPV4}"
+            else
+              DNS_MATCH_STATUS="⚠️ DNS resolves to [$DNS_PUBLIC_RECORDS] (auth: [$DNS_AUTH_RECORDS]); remote host IP is ${REMOTE_IPV4}"
+            fi
+          fi
+        fi
+
         # Privilege visibility
         CURRENT_USER="$(${SSH_BASE[@]} 'whoami' 2>/dev/null || echo 'unknown')"
         CURRENT_UID="$(${SSH_BASE[@]} 'id -u' 2>/dev/null || echo 'unknown')"
@@ -171,6 +214,20 @@ runs:
           echo "- **Host Port**: 127.0.0.1:${HOST_PORT} → ${HTTP_STATUS_PORT}"
           echo "- **In-Container Probe**: 127.0.0.1:${CONT_PORT} inside ${CONT_NAME} → ${IN_CONTAINER_PROBE}"
           echo
+          if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
+            echo "## DNS Diagnostics"
+            echo
+            echo "- **Public resolvers**: ${DNS_PUBLIC_RECORDS}"
+            if [ -n "$DNS_AUTHORITY" ]; then
+              echo "- **Authoritative NS** (${DNS_AUTHORITY:-unknown}): ${DNS_AUTH_RECORDS}"
+            else
+              echo "- **Authoritative NS**: ${DNS_AUTH_RECORDS}"
+            fi
+            echo "- **Remote host IPv4**: ${REMOTE_IPV4}"
+            echo "- **Match status**: ${DNS_MATCH_STATUS}"
+            echo
+          fi
+
           if [ -n "$RECENT_LOGS" ]; then
             echo "## Recent Container Logs (${CONT_NAME})"
             echo

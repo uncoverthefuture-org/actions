@@ -320,6 +320,23 @@ traefik.http.services.<router>.loadbalancer.server.port=8000
 
 **Disable**: Set `enable_traefik: false` to skip Traefik labels.
 
+### Traefik Defaults & Dashboard
+
+- **Default exposure**: `install-traefik.sh` writes `providers.podman.exposedByDefault=false`, so only containers with explicit `traefik.enable=true` labels are routed. This prevents accidental exposure of background containers.
+- **Config reuse**: Every Traefik launch invokes `scripts/traefik/ensure-traefik-config.sh` to verify `/etc/traefik/traefik.yml` and `/var/lib/traefik/acme.json` exist with correct ownership (the rootless Podman user) and readable permissions. If either file is missing or unreadable, the script fails fast with remediation instructions (run `install-traefik.sh` as root or fix permissions).
+- **Port conflict detection**: `setup-traefik.sh` checks `ss -ltnp` for listeners on 80/443 and aborts with the offending process list so operators can disable Apache/Nginx before retrying.
+- **Podman socket detection**: The script prefers `/run/user/<uid>/podman/podman.sock`. If unavailable, it falls back to `/var/run/podman/podman.sock` and emits a notice to enable linger (`loginctl enable-linger <user>`) and restart `podman.socket` under the SSH user to restore fully rootless operation.
+- **Dashboard toggle**: Setting `traefik_dashboard=true` (via the deploy inputs) exposes the Traefik dashboard on port 8080 with HTTP→HTTPS redirection and Basic Auth. Supply `traefik_dashboard_user` and a bcrypt hash (`htpasswd -nB`) as `traefik_dashboard_pass_bcrypt`; the setup script mounts these settings and publishes port 8080 automatically.
+- **Persistence**: After launching the container, `setup-traefik.sh` runs `podman generate systemd --new --files --name traefik`, installs the resulting unit under `~/.config/systemd/user/`, reloads systemd, and enables the user service so Traefik survives reboots.
+
+### Deployment Status Summary & Privilege Visibility
+
+The `app/deployment-status-summary` composite action records the remote identity on every run:
+
+- `whoami`, `id -u`, and a non-interactive `sudo -n true` probe surface whether commands still run as root.
+- When root is detected, the action emits warnings in both the workflow logs and the GitHub Step Summary, providing remediation guidance to reconfigure the SSH user.
+- The summary also includes DNS diagnostics (public vs authoritative `dig` results) when Traefik is enabled, helping identify ACME failures caused by stale DNS records.
+
 ## Parameter Passing
 
 Parameters are passed as JSON in the `params_json` input:
