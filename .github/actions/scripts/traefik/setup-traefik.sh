@@ -251,13 +251,19 @@ echo "🔎 podman ps --filter name=traefik"
 podman ps --filter name=traefik
 
 echo "🧾 Generating systemd user service for Traefik ..."
-if podman generate systemd --new --files --name traefik >/dev/null 2>&1; then
-  podman generate systemd --new --files --name traefik
+if podman generate systemd --files --name traefik >/dev/null 2>&1; then
+  podman generate systemd --files --name traefik
   mkdir -p "$HOME/.config/systemd/user"
   if mv container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null; then
-    systemctl --user daemon-reload
-    systemctl --user enable --now container-traefik.service
-    echo "  ✓ Installed container-traefik.service and enabled persistence"
+    if systemctl --user daemon-reload >/dev/null 2>&1; then
+      if systemctl --user enable --now container-traefik.service >/dev/null 2>&1; then
+        echo "  ✓ Installed container-traefik.service and enabled persistence"
+      else
+        echo "::warning::Failed to enable/start container-traefik.service (user systemd may be unavailable)." >&2
+      fi
+    else
+      echo "::warning::systemctl --user daemon-reload failed; user-level systemd may be unavailable." >&2
+    fi
   else
     echo "::warning::Failed to install container-traefik.service; check permissions." >&2
   fi
