@@ -16,13 +16,13 @@ jobs:
         uses: actions/checkout@v4
 
       - id: build
-        uses: uncoverthefuture-org/actions@v1.0.70
+        uses: uncoverthefuture-org/actions@v1.0.71
         with:
           subaction: build-and-push
 
       - name: Deploy Next.js App
         if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
-        uses: uncoverthefuture-org/actions@v1.0.70
+        uses: uncoverthefuture-org/actions@v1.0.71
         with:
           subaction: ssh-nextjs-deploy
           params_json: |
@@ -37,7 +37,7 @@ jobs:
         # the Apache vhost step is skipped automatically.
 
       # Optional: write env file from the resolved secret (env_name defaults from branch; can omit)
-      # - uses: uncoverthefuture-org/actions@v1.0.70
+      # - uses: uncoverthefuture-org/actions@v1.0.71
       #   with:
       #     subaction: write-remote-env-file
       #     params_json: |
@@ -57,7 +57,7 @@ jobs:
       #     secret_prefix: 'WEB_PREVIEW_ENV_B64_'
       #     required: 'false'
       #
-      # - uses: uncoverthefuture-org/actions@v1.0.70
+      # - uses: uncoverthefuture-org/actions@v1.0.71
       #   with:
       #     subaction: write-remote-env-file
       #     params_json: |
