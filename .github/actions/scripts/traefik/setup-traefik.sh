@@ -189,7 +189,7 @@ else
 fi
 
 if [[ "$TRAEFIK_PING_ENABLED" == "true" ]]; then
-  RUN_ARGS+=(--ping=true -e TRAEFIK_PING_ENTRYPOINT=web)
+  RUN_ARGS+=(-e TRAEFIK_PING=true -e TRAEFIK_PING_ENTRYPOINT=web)
 fi
 
 if [[ "$TRAEFIK_DASHBOARD" == "true" ]]; then

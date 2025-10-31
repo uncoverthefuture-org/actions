@@ -85,8 +85,9 @@ else
 fi
 
 echo "📝 Writing Traefik config to /etc/traefik/traefik.yml ..."
-# Write config file with Podman provider configuration
-$SUDO_CMD tee /etc/traefik/traefik.yml >/dev/null <<EOF
+CONFIG_TMP="$(mktemp)"
+trap 'rm -f "$CONFIG_TMP"' EXIT
+cat >"$CONFIG_TMP" <<EOF
 entryPoints:
   web:
     address: ":80"
@@ -138,6 +139,12 @@ http:
 
   services: {}
 EOF
+
+if [[ -n "$SUDO_CMD" ]]; then
+  $SUDO_CMD cp "$CONFIG_TMP" /etc/traefik/traefik.yml
+else
+  cp "$CONFIG_TMP" /etc/traefik/traefik.yml
+fi
 echo "  ✓ Config written to /etc/traefik/traefik.yml"
 
 echo "👥 Preparing dashboard basic-auth users file ..."
