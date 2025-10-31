@@ -60,6 +60,10 @@ inputs: # All parameters accepted by this action
     description: 'When true and env_b64 not provided, resolve from job env based on env_name'
     required: false
     default: 'true'
+  enable_acme:
+    description: 'When true (default), attach certresolver label for ACME; set false to skip Let''s Encrypt while debugging.'
+    required: false
+    default: 'true'
   env_secret_prefix:
     description: 'Prefix for env secret env var name'
     required: false
@@ -405,6 +409,7 @@ runs: # Composite action implementation
           export RESTART_POLICY='${{ inputs.restart_policy }}'
           export MEMORY_LIMIT='${{ inputs.memory_limit }}'
           export TRAEFIK_ENABLED='${{ inputs.enable_traefik }}'
+          export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
           export DOMAIN_INPUT='${{ inputs.domain }}'
           export DOMAIN_DEFAULT='${{ steps.dfl.outputs.domain_default }}'
           export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'

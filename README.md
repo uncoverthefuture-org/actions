@@ -130,6 +130,8 @@ Each action has its own detailed README with inputs, outputs, and examples. Star
   - Optional dashboard: set `traefik_dashboard: true` together with `traefik_dashboard_user` and `traefik_dashboard_pass_bcrypt` (bcrypt hash from `htpasswd -nB`). The shared setup script automatically maps port 8080, enables HTTPS redirects, and guards the dashboard behind HTTP basic auth.
   - Config reuse: every Traefik run calls `scripts/traefik/ensure-traefik-config.sh` to verify `/etc/traefik/traefik.yml` and `/var/lib/traefik/acme.json` exist with the correct ownership (rootless podman user). If permissions are wrong, the action fails fast with remediation steps.
   - Podman socket detection: if the per-user podman socket is unavailable, the setup script falls back to `/var/run/podman/podman.sock` and logs guidance for enabling linger / restarting `podman.socket` under the SSH user before the next deploy.
+  - Disable ACME temporarily by passing `enable_acme: false`; the deployment action skips the `traefik.http.routers.*.tls.certresolver` label so Traefik runs without hitting Let's Encrypt while you debug port 80. Re-enable once connectivity is restored.
+  - Healthchecks: leave `enable_ping: true` (default) so `podman exec traefik traefik healthcheck` works; the setup script wires the ping entrypoint automatically.
 
 ### Example Workflow
 

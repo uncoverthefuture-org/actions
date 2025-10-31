@@ -25,6 +25,14 @@ inputs:
     description: 'Traefik image tag'
     required: false
     default: 'v3.5.4'
+  enable_acme:
+    description: 'Enable ACME/Let''s Encrypt provisioning (default: true). Set to false to skip cert resolver labels during debugging.'
+    required: false
+    default: 'true'
+  enable_ping:
+    description: 'Expose Traefik ping entrypoint for healthchecks (default: true).'
+    required: false
+    default: 'true'
   enable_dashboard:
     description: 'Expose Traefik dashboard on port 8080 (requires basic auth hash)'
     required: false
@@ -151,6 +159,8 @@ runs:
 
           echo "🚀 Running Traefik container setup as current user ..."
           export TRAEFIK_VERSION='${{ inputs.traefik_version }}'
+          export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
+          export TRAEFIK_PING_ENABLED='${{ inputs.enable_ping }}'
           export TRAEFIK_DASHBOARD='${{ inputs.enable_dashboard }}'
           export DASHBOARD_USER='${{ inputs.dashboard_user }}'
           export DASHBOARD_PASS_BCRYPT='${{ inputs.dashboard_password_bcrypt }}'

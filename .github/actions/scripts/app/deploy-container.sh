@@ -304,7 +304,11 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
   LABEL_ARGS+=(--label "traefik.enable=true")
   LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.rule=Host(\`$DOMAIN\`)")
   LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.entrypoints=websecure")
-  LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt")
+  if [[ "${TRAEFIK_ENABLE_ACME:-true}" == "true" ]]; then
+    LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt")
+  else
+    echo "::notice::Skipping certresolver label for router ${ROUTER_NAME} (ACME disabled)."
+  fi
   LABEL_ARGS+=(--label "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=${CONTAINER_PORT}")
 else
   echo "ℹ️  Traefik disabled; container will rely on host port mapping"

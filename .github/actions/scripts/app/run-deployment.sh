@@ -53,6 +53,7 @@ EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
 TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
+TRAEFIK_ENABLE_ACME="${TRAEFIK_ENABLE_ACME:-true}"
 DOMAIN_INPUT="${DOMAIN_INPUT:-}"
 DOMAIN_DEFAULT="${DOMAIN_DEFAULT:-}"
 ROUTER_NAME="${ROUTER_NAME:-}"
@@ -213,6 +214,7 @@ export TRAEFIK_ENABLED
 export DOMAIN_INPUT
 export DOMAIN_DEFAULT
 export ROUTER_NAME
+export TRAEFIK_ENABLE_ACME
 
 # --- Execute Deployment ---------------------------------------------------------------
 echo "🚀 Executing deployment script..."

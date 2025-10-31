@@ -10,11 +10,13 @@
 #   Assumes system installation already completed by install-traefik.sh.
 #
 # Inputs (environment variables):
-#   TRAEFIK_EMAIL        - Email for Let's Encrypt account (REQUIRED)
-#   TRAEFIK_VERSION      - Traefik image tag (default: v3.5.4)
-#   TRAEFIK_DASHBOARD    - "true" to expose dashboard on port 8080 (default: false)
-#   DASHBOARD_USER       - Basic auth username (required if dashboard enabled)
-#   DASHBOARD_PASS_BCRYPT - Bcrypt hash for dashboard user (required if dashboard enabled)
+#   TRAEFIK_EMAIL          - Email for Let's Encrypt account (required when ACME enabled)
+#   TRAEFIK_VERSION        - Traefik image tag (default: v3.5.4)
+#   TRAEFIK_ENABLE_ACME    - "true" to request certificates via ACME (default: true)
+#   TRAEFIK_PING_ENABLED   - "true" to expose ping healthcheck endpoint (default: true)
+#   TRAEFIK_DASHBOARD      - "true" to expose dashboard on port 8080 (default: false)
+#   DASHBOARD_USER         - Basic auth username (required if dashboard enabled)
+#   DASHBOARD_PASS_BCRYPT  - Bcrypt hash for dashboard user (required if dashboard enabled)
 #
 # Exit codes:
 #   0 - Success
@@ -26,13 +28,15 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # Get required environment variables with defaults
 TRAEFIK_EMAIL="${TRAEFIK_EMAIL:-}"
 TRAEFIK_VERSION="${TRAEFIK_VERSION:-v3.5.4}"
+TRAEFIK_ENABLE_ACME="${TRAEFIK_ENABLE_ACME:-true}"
+TRAEFIK_PING_ENABLED="${TRAEFIK_PING_ENABLED:-true}"
 TRAEFIK_DASHBOARD="${TRAEFIK_DASHBOARD:-false}"
 DASHBOARD_USER="${DASHBOARD_USER:-}"
 DASHBOARD_PASS_BCRYPT="${DASHBOARD_PASS_BCRYPT:-}"
 
 # Validate required inputs
-if [[ -z "$TRAEFIK_EMAIL" ]]; then
-  echo "Error: TRAEFIK_EMAIL is required" >&2
+if [[ "$TRAEFIK_ENABLE_ACME" == "true" && -z "$TRAEFIK_EMAIL" ]]; then
+  echo "Error: TRAEFIK_EMAIL is required when TRAEFIK_ENABLE_ACME=true" >&2
   exit 1
 fi
 
@@ -139,7 +143,22 @@ RUN_ARGS=(
   -v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
   -v /var/lib/traefik/acme.json:/letsencrypt/acme.json
   -v "$HOST_SOCK":/var/run/docker.sock
+  -e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80
+  -e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443
 )
+
+if [[ "$TRAEFIK_ENABLE_ACME" == "true" ]]; then
+  RUN_ARGS+=(
+    -e TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_TO=websecure
+    -e TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_SCHEME=https
+  )
+else
+  echo "::notice::ACME disabled; HTTP traffic will be served without redirect to HTTPS."
+fi
+
+if [[ "$TRAEFIK_PING_ENABLED" == "true" ]]; then
+  RUN_ARGS+=(--ping=true -e TRAEFIK_PING_ENTRYPOINT=web)
+fi
 
 if [[ "$TRAEFIK_DASHBOARD" == "true" ]]; then
   echo "📊 Enabling Traefik dashboard on port 8080"
