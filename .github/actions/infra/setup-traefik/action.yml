@@ -33,6 +33,34 @@ inputs:
     description: 'Expose Traefik ping entrypoint for healthchecks (default: true).'
     required: false
     default: 'true'
+  use_host_network:
+    description: 'Run Traefik with --network host (bypasses publish, useful for debugging port 80 reachability).'
+    required: false
+    default: 'false'
+  network_name:
+    description: 'Shared Podman network name to join after container start (default: traefik-network).'
+    required: false
+    default: 'traefik-network'
+  enable_metrics:
+    description: 'Enable Prometheus metrics exposure (default: false).'
+    required: false
+    default: 'false'
+  metrics_entrypoint:
+    description: 'Entry point name for metrics when enabled (default: metrics).'
+    required: false
+    default: 'metrics'
+  metrics_address:
+    description: 'Bind address for metrics entry point (default: :8082).'
+    required: false
+    default: ':8082'
+  acme_dns_provider:
+    description: 'Optional ACME DNS challenge provider identifier.'
+    required: false
+    default: ''
+  acme_dns_resolvers:
+    description: 'Optional comma-separated DNS resolvers for ACME DNS challenge.'
+    required: false
+    default: ''
   enable_dashboard:
     description: 'Expose Traefik dashboard on port 8080 (requires basic auth hash)'
     required: false
@@ -161,6 +189,13 @@ runs:
           export TRAEFIK_VERSION='${{ inputs.traefik_version }}'
           export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
           export TRAEFIK_PING_ENABLED='${{ inputs.enable_ping }}'
+          export TRAEFIK_USE_HOST_NETWORK='${{ inputs.use_host_network }}'
+          export TRAEFIK_NETWORK_NAME='${{ inputs.network_name }}'
+          export TRAEFIK_ENABLE_METRICS='${{ inputs.enable_metrics }}'
+          export TRAEFIK_METRICS_ENTRYPOINT='${{ inputs.metrics_entrypoint }}'
+          export TRAEFIK_METRICS_ADDRESS='${{ inputs.metrics_address }}'
+          export TRAEFIK_ACME_DNS_PROVIDER='${{ inputs.acme_dns_provider }}'
+          export TRAEFIK_ACME_DNS_RESOLVERS='${{ inputs.acme_dns_resolvers }}'
           export TRAEFIK_DASHBOARD='${{ inputs.enable_dashboard }}'
           export DASHBOARD_USER='${{ inputs.dashboard_user }}'
           export DASHBOARD_PASS_BCRYPT='${{ inputs.dashboard_password_bcrypt }}'

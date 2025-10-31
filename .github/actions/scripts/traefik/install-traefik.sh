@@ -8,8 +8,10 @@
 #   Validates system readiness for user-level Traefik operation.
 #
 # Inputs (environment variables):
-#   TRAEFIK_EMAIL     - Email for Let's Encrypt account (REQUIRED)
-#   PODMAN_USER       - Linux user that runs containers (default: deployer)
+#   TRAEFIK_EMAIL       - Email for Let's Encrypt account (REQUIRED)
+#   PODMAN_USER         - Linux user that runs containers (default: deployer)
+#   DASHBOARD_USER      - Optional username for Traefik dashboard basic auth (default: admin)
+#   DASHBOARD_PASS_BCRYPT - Optional bcrypt hash (htpasswd -nB) for dashboard user; if absent a placeholder file is created
 #
 # Exit codes:
 #   0 - Success
@@ -21,6 +23,8 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # Get required environment variables with defaults
 TRAEFIK_EMAIL="${TRAEFIK_EMAIL:-}"
 PODMAN_USER="${PODMAN_USER:-deployer}"
+DASHBOARD_USER="${DASHBOARD_USER:-admin}"
+DASHBOARD_PASS_BCRYPT="${DASHBOARD_PASS_BCRYPT:-}"
 
 # Validate required inputs
 if [[ -z "$TRAEFIK_EMAIL" ]]; then
@@ -88,12 +92,25 @@ entryPoints:
     address: ":80"
   websecure:
     address: ":443"
+  dashboard:
+    address: ":8080"
+  metrics:
+    address: ":8082"
 
 providers:
   podman:
-    # Traefik will be given access to the Podman API socket via /var/run/docker.sock
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
+
+api:
+  dashboard: true
+  insecure: false
+
+metrics:
+  prometheus:
+    entryPoint: "metrics"
+    addRoutersLabels: true
+    addServicesLabels: true
 
 certificatesResolvers:
   letsencrypt:
@@ -102,8 +119,43 @@ certificatesResolvers:
       storage: /letsencrypt/acme.json
       httpChallenge:
         entryPoint: web
+
+http:
+  middlewares:
+    internal-dashboard-auth:
+      basicAuth:
+        usersFile: "/etc/traefik/dashboard-users"
+
+  routers:
+    internal-dashboard:
+      entryPoints:
+        - dashboard
+      rule: "PathPrefix(`/`)"
+      middlewares:
+        - internal-dashboard-auth
+      service: "api@internal"
+      tls: {}
+
+  services: {}
 EOF
 echo "  ✓ Config written to /etc/traefik/traefik.yml"
+
+echo "👥 Preparing dashboard basic-auth users file ..."
+DASHBOARD_USERS_FILE="/etc/traefik/dashboard-users"
+if [[ -n "$DASHBOARD_PASS_BCRYPT" ]]; then
+  DASHBOARD_ENTRY="${DASHBOARD_USER}:${DASHBOARD_PASS_BCRYPT}"
+  printf '%s\n' "$DASHBOARD_ENTRY" | $SUDO_CMD tee "$DASHBOARD_USERS_FILE" >/dev/null
+  echo "  ✓ Dashboard credentials written for user '${DASHBOARD_USER}'"
+else
+  $SUDO_CMD tee "$DASHBOARD_USERS_FILE" >/dev/null <<'EOF'
+# Add bcrypt entries (htpasswd -nB <user>) to enable dashboard access.
+# Example:
+# admin:$2y$05$abcdefghijklmnopqrstuv1234567890abcdefghijklmno
+EOF
+  echo "::warning::No DASHBOARD_PASS_BCRYPT provided; wrote placeholder dashboard-users file. Update it with htpasswd entries before enabling dashboard."
+fi
+$SUDO_CMD chmod 640 "$DASHBOARD_USERS_FILE"
+$SUDO_CMD chown "$PODMAN_USER:$PODMAN_USER" "$DASHBOARD_USERS_FILE"
 
 echo "🔐 Preparing ACME storage ..."
 # Check if ACME file exists and has correct permissions

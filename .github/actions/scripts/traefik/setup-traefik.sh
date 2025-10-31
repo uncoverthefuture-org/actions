@@ -31,6 +31,13 @@ TRAEFIK_VERSION="${TRAEFIK_VERSION:-v3.5.4}"
 TRAEFIK_ENABLE_ACME="${TRAEFIK_ENABLE_ACME:-true}"
 TRAEFIK_PING_ENABLED="${TRAEFIK_PING_ENABLED:-true}"
 TRAEFIK_DASHBOARD="${TRAEFIK_DASHBOARD:-false}"
+TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-traefik-network}"
+TRAEFIK_USE_HOST_NETWORK="${TRAEFIK_USE_HOST_NETWORK:-false}"
+TRAEFIK_ENABLE_METRICS="${TRAEFIK_ENABLE_METRICS:-false}"
+TRAEFIK_METRICS_ENTRYPOINT="${TRAEFIK_METRICS_ENTRYPOINT:-metrics}"
+TRAEFIK_METRICS_ADDRESS="${TRAEFIK_METRICS_ADDRESS:-:8082}"
+TRAEFIK_ACME_DNS_PROVIDER="${TRAEFIK_ACME_DNS_PROVIDER:-}"
+TRAEFIK_ACME_DNS_RESOLVERS="${TRAEFIK_ACME_DNS_RESOLVERS:-}"
 DASHBOARD_USER="${DASHBOARD_USER:-}"
 DASHBOARD_PASS_BCRYPT="${DASHBOARD_PASS_BCRYPT:-}"
 
@@ -138,20 +145,45 @@ RUN_ARGS=(
   podman run -d
   --name traefik
   --restart unless-stopped
-  -p 80:80
-  -p 443:443
-  -v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-  -v /var/lib/traefik/acme.json:/letsencrypt/acme.json
-  -v "$HOST_SOCK":/var/run/docker.sock
-  -e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80
-  -e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443
 )
+
+if [[ "$TRAEFIK_USE_HOST_NETWORK" == "true" ]]; then
+  echo "🌐 Using host network for Traefik"
+  RUN_ARGS+=(--network host)
+else
+  RUN_ARGS+=(-p 80:80 -p 443:443)
+  if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
+    if ! podman network exists "$TRAEFIK_NETWORK_NAME" >/dev/null 2>&1; then
+      echo "🌐 Creating Podman network: $TRAEFIK_NETWORK_NAME"
+      podman network create "$TRAEFIK_NETWORK_NAME"
+    else
+      echo "🌐 Podman network already exists: $TRAEFIK_NETWORK_NAME"
+    fi
+    RUN_ARGS+=(--network "$TRAEFIK_NETWORK_NAME")
+  fi
+fi
+
+RUN_ARGS+=(-v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro)
+RUN_ARGS+=(-v /var/lib/traefik/acme.json:/letsencrypt/acme.json)
+RUN_ARGS+=(-v "$HOST_SOCK":/var/run/docker.sock)
+RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80)
+RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443)
 
 if [[ "$TRAEFIK_ENABLE_ACME" == "true" ]]; then
   RUN_ARGS+=(
     -e TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_TO=websecure
     -e TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_SCHEME=https
+    -e TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_EMAIL="$TRAEFIK_EMAIL"
+    -e TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_STORAGE=/letsencrypt/acme.json
+    -e TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_HTTPCHALLENGE_ENTRYPOINT=web
+    -e TRAEFIK_ENTRYPOINTS_WEBSECURE_HTTP_TLS_CERTRESOLVER=le
   )
+  if [[ -n "$TRAEFIK_ACME_DNS_PROVIDER" ]]; then
+    RUN_ARGS+=(-e TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_DNSCHALLENGE_PROVIDER="$TRAEFIK_ACME_DNS_PROVIDER")
+    if [[ -n "$TRAEFIK_ACME_DNS_RESOLVERS" ]]; then
+      RUN_ARGS+=(-e TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_DNSCHALLENGE_RESOLVERS="${TRAEFIK_ACME_DNS_RESOLVERS//,/\,}")
+    fi
+  fi
 else
   echo "::notice::ACME disabled; HTTP traffic will be served without redirect to HTTPS."
 fi
@@ -162,8 +194,10 @@ fi
 
 if [[ "$TRAEFIK_DASHBOARD" == "true" ]]; then
   echo "📊 Enabling Traefik dashboard on port 8080"
+  if [[ "$TRAEFIK_USE_HOST_NETWORK" != "true" ]]; then
+    RUN_ARGS+=(-p 8080:8080)
+  fi
   RUN_ARGS+=(
-    -p 8080:8080
     -e TRAEFIK_API_ENABLED=true
     -e TRAEFIK_API=true
     -e TRAEFIK_API_DASHBOARD=true
@@ -174,6 +208,24 @@ if [[ "$TRAEFIK_DASHBOARD" == "true" ]]; then
     -e TRAEFIK_ENTRYPOINTS_DASHBOARD_HTTP_REDIRECTIONS_ENTRYPOINT_SCHEME=https
     -e TRAEFIK_API_BASIC_AUTH_USERS="${DASHBOARD_USER}:${DASHBOARD_PASS_BCRYPT}"
   )
+fi
+
+if [[ "$TRAEFIK_ENABLE_METRICS" == "true" ]]; then
+  METRICS_PORT="${TRAEFIK_METRICS_ADDRESS##*:}"
+  if [[ -z "$METRICS_PORT" ]]; then
+    METRICS_PORT="8082"
+  fi
+  echo "📈 Enabling Prometheus metrics on entrypoint '${TRAEFIK_METRICS_ENTRYPOINT}' (${TRAEFIK_METRICS_ADDRESS})"
+  RUN_ARGS+=(
+    -e TRAEFIK_METRICS_PROMETHEUS=true
+    -e TRAEFIK_METRICS_PROMETHEUS_ADDROUTERSLABELS=true
+    -e TRAEFIK_METRICS_PROMETHEUS_ADDSERVICESLABELS=true
+    -e TRAEFIK_METRICS_PROMETHEUS_ENTRYPOINT="${TRAEFIK_METRICS_ENTRYPOINT}"
+    -e TRAEFIK_ENTRYPOINTS_METRICS_ADDRESS="${TRAEFIK_METRICS_ADDRESS}"
+  )
+  if [[ "$TRAEFIK_USE_HOST_NETWORK" != "true" ]]; then
+    RUN_ARGS+=(-p "${METRICS_PORT}:${METRICS_PORT}")
+  fi
 fi
 
 if ! "${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}"; then

@@ -298,18 +298,22 @@ LABEL_ARGS=()
 DOMAIN="$DOMAIN_INPUT"
 if [[ -z "$DOMAIN" ]]; then DOMAIN="$DOMAIN_DEFAULT"; fi
 
+TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-}"
+
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
   echo "🔀 Traefik mode enabled for domain: $DOMAIN (router: $ROUTER_NAME)"
   echo "🔖 Traefik labels will advertise container port $CONTAINER_PORT"
   LABEL_ARGS+=(--label "traefik.enable=true")
   LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.rule=Host(\`$DOMAIN\`)")
-  LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.entrypoints=websecure")
   if [[ "${TRAEFIK_ENABLE_ACME:-true}" == "true" ]]; then
+    LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.entrypoints=websecure")
     LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt")
   else
+    LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.entrypoints=web")
     echo "::notice::Skipping certresolver label for router ${ROUTER_NAME} (ACME disabled)."
   fi
   LABEL_ARGS+=(--label "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=${CONTAINER_PORT}")
+fi
 else
   echo "ℹ️  Traefik disabled; container will rely on host port mapping"
 fi
@@ -337,10 +341,20 @@ podman rm   "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 # --- Run container -----------------------------------------------------------------
 echo "🚀 Starting container: $CONTAINER_NAME"
+NETWORK_ARGS=()
+if [[ "$TRAEFIK_ENABLED" == "true" && -n "$TRAEFIK_NETWORK_NAME" ]]; then
+  if ! podman network exists "$TRAEFIK_NETWORK_NAME" >/dev/null 2>&1; then
+    echo "🌐 Creating Traefik network $TRAEFIK_NETWORK_NAME"
+    podman network create "$TRAEFIK_NETWORK_NAME"
+  fi
+  NETWORK_ARGS+=(--network "$TRAEFIK_NETWORK_NAME")
+fi
+
 podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
   "${PORT_ARGS[@]}" \
   --restart="$RESTART_POLICY" \
   --memory="$MEMORY_LIMIT" --memory-swap="$MEMORY_LIMIT" \
+  "${NETWORK_ARGS[@]}" \
   ${EXTRA_RUN_ARGS:+$EXTRA_RUN_ARGS} \
   "${LABEL_ARGS[@]}" \
   "$IMAGE_REF"

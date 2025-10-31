@@ -64,6 +64,10 @@ inputs: # All parameters accepted by this action
     description: 'When true (default), attach certresolver label for ACME; set false to skip Let''s Encrypt while debugging.'
     required: false
     default: 'true'
+  traefik_network_name:
+    description: 'Podman network to connect service containers to when Traefik is enabled (default: traefik-network).'
+    required: false
+    default: 'traefik-network'
   env_secret_prefix:
     description: 'Prefix for env secret env var name'
     required: false
@@ -410,6 +414,7 @@ runs: # Composite action implementation
           export MEMORY_LIMIT='${{ inputs.memory_limit }}'
           export TRAEFIK_ENABLED='${{ inputs.enable_traefik }}'
           export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
+          export TRAEFIK_NETWORK_NAME='${{ inputs.traefik_network_name }}'
           export DOMAIN_INPUT='${{ inputs.domain }}'
           export DOMAIN_DEFAULT='${{ steps.dfl.outputs.domain_default }}'
           export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'
