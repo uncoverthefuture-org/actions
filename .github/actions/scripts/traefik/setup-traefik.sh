@@ -103,13 +103,18 @@ fi
 USER_RUNTIME_DIR="/run/user/$PUID"
 SOCK_USER="$USER_RUNTIME_DIR/podman/podman.sock"
 SOCK_ROOT="/var/run/podman/podman.sock"
-if [[ -S "$SOCK_USER" ]]; then
-  HOST_SOCK="$SOCK_USER"
-  echo "🔌 Using user podman socket: $HOST_SOCK"
-else
+if [[ "$CURRENT_USER" == "root" ]]; then
   HOST_SOCK="$SOCK_ROOT"
-  echo "🔌 User podman socket unavailable; using root podman socket: $HOST_SOCK"
-  echo "::notice::If this is unexpected, ensure linger is enabled and podman.socket is running for $CURRENT_USER."
+  echo "🔌 Running as root; using system podman socket: $HOST_SOCK"
+else
+  if [[ -S "$SOCK_USER" ]]; then
+    HOST_SOCK="$SOCK_USER"
+    echo "🔌 Using user podman socket: $HOST_SOCK"
+  else
+    HOST_SOCK="$SOCK_ROOT"
+    echo "🔌 User podman socket unavailable; using system podman socket: $HOST_SOCK"
+    echo "::notice::If this is unexpected, ensure linger is enabled and podman.socket is running for $CURRENT_USER."
+  fi
 fi
 
 echo "🔍 Checking for existing listeners on ports 80/443 ..."
@@ -147,25 +152,28 @@ RUN_ARGS=(
   --restart unless-stopped
 )
 
+if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
+  if ! podman network exists "$TRAEFIK_NETWORK_NAME" >/dev/null 2>&1; then
+    echo "🌐 Creating Podman network: $TRAEFIK_NETWORK_NAME"
+    podman network create "$TRAEFIK_NETWORK_NAME"
+  else
+    echo "🌐 Podman network already exists: $TRAEFIK_NETWORK_NAME"
+  fi
+fi
+
 if [[ "$TRAEFIK_USE_HOST_NETWORK" == "true" ]]; then
   echo "🌐 Using host network for Traefik"
   RUN_ARGS+=(--network host)
 else
   RUN_ARGS+=(-p 80:80 -p 443:443)
   if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
-    if ! podman network exists "$TRAEFIK_NETWORK_NAME" >/dev/null 2>&1; then
-      echo "🌐 Creating Podman network: $TRAEFIK_NETWORK_NAME"
-      podman network create "$TRAEFIK_NETWORK_NAME"
-    else
-      echo "🌐 Podman network already exists: $TRAEFIK_NETWORK_NAME"
-    fi
     RUN_ARGS+=(--network "$TRAEFIK_NETWORK_NAME")
   fi
 fi
 
 RUN_ARGS+=(-v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro)
 RUN_ARGS+=(-v /var/lib/traefik/acme.json:/letsencrypt/acme.json)
-RUN_ARGS+=(-v "$HOST_SOCK":/var/run/docker.sock)
+RUN_ARGS+=(-v "$HOST_SOCK":/var/run/docker.sock:Z)
 RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80)
 RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443)
 
