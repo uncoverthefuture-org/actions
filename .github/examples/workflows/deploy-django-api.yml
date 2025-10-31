@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Deploy Django API over SSH (Podman)
-        uses: uncoverthefuture-org/actions@v1.0.63
+        uses: uncoverthefuture-org/actions@v1.0.64
         with:
           subaction: ssh-django-api-deploy
           params_json: |
