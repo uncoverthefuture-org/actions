@@ -33,6 +33,9 @@ inputs:
   container_port:
     required: false
     default: '8080'
+  router_name:
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -52,6 +55,7 @@ runs:
         DOMAIN_EFFECTIVE: ${{ inputs.domain_effective }}
         HOST_PORT_IN: ${{ inputs.host_port }}
         CONTAINER_PORT_IN: ${{ inputs.container_port }}
+        ROUTER_NAME_IN: ${{ inputs.router_name }}
       run: |
         set -euo pipefail
 
@@ -72,6 +76,7 @@ runs:
         fi
         HOST_PORT="$HOST_PORT_IN"
         CONT_PORT="$CONTAINER_PORT_IN"
+        ROUTER_NAME="$ROUTER_NAME_IN"
 
         if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
           URL_LABEL="https://${DOMAIN_EFFECTIVE}"
@@ -151,8 +156,13 @@ runs:
         CONT_PRESENT=$(${SSH_BASE[@]} "podman ps -a --format '{{.Names}}' | grep -Fx '${CONT_NAME}' >/dev/null && echo yes || echo no" 2>/dev/null || echo no)
 
         HTTP_STATUS_DOMAIN="N/A"
+        DOMAIN_TIMING="N/A"
+        DOMAIN_PROTO="N/A"
         if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
-          HTTP_STATUS_DOMAIN="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w '%{http_code}' --max-time 5 'https://${DOMAIN_EFFECTIVE}'" 2>/dev/null || echo "ERR")"
+          HTTP_STATUS_DOMAIN="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 'https://${DOMAIN_EFFECTIVE}'" 2>/dev/null || echo "ERR")"
+          # Capture timing and HTTP version (best-effort)
+          DOMAIN_TIMING="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w '%{time_total}' --max-time 10 'https://${DOMAIN_EFFECTIVE}'" 2>/dev/null || echo "N/A")"
+          DOMAIN_PROTO="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w 'HTTP/%{http_version}' --max-time 10 'https://${DOMAIN_EFFECTIVE}'" 2>/dev/null || echo "N/A")"
         fi
         HTTP_STATUS_PORT="$(${SSH_BASE[@]} "curl -fsS -o /dev/null -w '%{http_code}' --max-time 5 'http://127.0.0.1:${HOST_PORT}'" 2>/dev/null || echo "ERR")"
 
@@ -211,9 +221,38 @@ runs:
           echo "## Endpoint Checks"
           echo
           echo "- **Traefik URL**: ${DOMAIN_EFFECTIVE:-N/A} → ${HTTP_STATUS_DOMAIN}"
+          if [ -n "${DOMAIN_EFFECTIVE}" ] && [ "${HTTP_STATUS_DOMAIN}" != "N/A" ]; then
+            echo "- **Traefik Timing/Proto**: ${DOMAIN_TIMING}s, ${DOMAIN_PROTO}"
+          fi
           echo "- **Host Port**: 127.0.0.1:${HOST_PORT} → ${HTTP_STATUS_PORT}"
           echo "- **In-Container Probe**: 127.0.0.1:${CONT_PORT} inside ${CONT_NAME} → ${IN_CONTAINER_PROBE}"
           echo
+          if [ -n "$ROUTER_NAME" ]; then
+            echo "## Traefik API (best-effort)"
+            echo
+            TRAEFIK_API_CODE=$(${SSH_BASE[@]} "curl -fsS -o /dev/null -w '%{http_code}' --max-time 4 http://127.0.0.1:8080/api/http/routers" 2>/dev/null || echo "ERR")
+            echo "- **API /http/routers**: ${TRAEFIK_API_CODE}"
+            if [ "$TRAEFIK_API_CODE" = "200" ]; then
+              # Try to detect router presence for this app
+              ROUTER_MATCH=$(${SSH_BASE[@]} "curl -fsS --max-time 4 http://127.0.0.1:8080/api/http/routers 2>/dev/null | tr -d '\n' | grep -o '"name":"[^\"]*"' | grep -c '\\"${ROUTER_NAME}@docker\\"'" 2>/dev/null || echo 0)
+              if [ "${ROUTER_MATCH:-0}" -gt 0 ]; then
+                echo "- **Router presence**: ${ROUTER_NAME}@docker found"
+              else
+                echo "- **Router presence**: ${ROUTER_NAME}@docker not found"
+              fi
+              SERVICE_MATCH=$(${SSH_BASE[@]} "curl -fsS --max-time 4 http://127.0.0.1:8080/api/http/services 2>/dev/null | tr -d '\n' | grep -o '"name":"[^\"]*"' | grep -c '\\"${ROUTER_NAME}@docker\\"'" 2>/dev/null || echo 0)
+              if [ "${SERVICE_MATCH:-0}" -gt 0 ]; then
+                echo "- **Service presence**: ${ROUTER_NAME}@docker found"
+              else
+                echo "- **Service presence**: ${ROUTER_NAME}@docker not found"
+              fi
+            elif [ "$TRAEFIK_API_CODE" = "401" ]; then
+              echo "- **Note**: API reachable but requires auth (dashboard protected)."
+            else
+              echo "- **Note**: API not reachable (dashboard not exposed)."
+            fi
+            echo
+          fi
           if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
             echo "## DNS Diagnostics"
             echo

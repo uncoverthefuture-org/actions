@@ -337,6 +337,20 @@ runs: # Composite action implementation
         image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }} # Image path
         image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }} # Tag
 
+    - name: Traefik preflight health (fail fast)
+      if: ${{ inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: user
+        inline_script: |
+          set -euo pipefail
+          /opt/uactions/scripts/traefik/probe-traefik.sh preflight
+
     - name: Stage run-deployment script for upload
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
       shell: bash
@@ -348,6 +362,18 @@ runs: # Composite action implementation
         mkdir -p "$WORKSPACE/.uactions_cache"
         SRC_REL="../../scripts/app/run-deployment.sh"
         cp "$ACTION_PATH/$SRC_REL" "$WORKSPACE/.uactions_cache/run-deployment.sh"
+
+    - name: Stage deploy-container script for upload
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$WORKSPACE/.uactions_cache"
+        SRC_REL="../../scripts/app/deploy-container.sh"
+        cp "$ACTION_PATH/$SRC_REL" "$WORKSPACE/.uactions_cache/deploy-container.sh"
 
     - name: Upload deployment scripts
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
@@ -389,6 +415,10 @@ runs: # Composite action implementation
             mv -f /tmp/run-deployment.sh /opt/uactions/scripts/app/run-deployment.sh
             chmod +x /opt/uactions/scripts/app/run-deployment.sh
           fi
+          if [ -f /tmp/deploy-container.sh ]; then
+            mv -f /tmp/deploy-container.sh /opt/uactions/scripts/app/deploy-container.sh
+            chmod +x /opt/uactions/scripts/app/deploy-container.sh
+          fi
 
           # Export deployment variables for run-deployment.sh
           export PODMAN_USER='${{ inputs.podman_user }}'
@@ -422,6 +452,23 @@ runs: # Composite action implementation
           # Execute deployment runner script
           /opt/uactions/scripts/app/run-deployment.sh
 
+    - name: Traefik post-deploy routing check
+      if: ${{ inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: user
+        inline_script: |
+          set -euo pipefail
+          ROUTER='${{ steps.dfl.outputs.traefik_router }}'
+          DOMAIN_EFFECTIVE='${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }}'
+          SERVICE_PORT='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'
+          /opt/uactions/scripts/traefik/probe-traefik.sh post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT"
+
     - name: Deployment status summary
       uses: ./.github/actions/app/deployment-status-summary
       with:
@@ -432,8 +479,12 @@ runs: # Composite action implementation
         ssh_port: ${{ inputs.ssh_port }}
         app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        
+        #  Status summary requires the app slug, container name and ports to
+        #  summarize endpoint reachability among other more detailed metrics
         container_name: ${{ inputs.container_name }}
         enable_traefik: ${{ inputs.enable_traefik }}
         domain_effective: ${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }}
         host_port: ${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}
         container_port: ${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}
+        router_name: ${{ steps.dfl.outputs.traefik_router }}

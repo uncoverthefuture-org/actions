@@ -303,30 +303,40 @@ TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-}"
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
   echo "🔀 Traefik mode enabled for domain: $DOMAIN (router: $ROUTER_NAME)"
   echo "🔖 Traefik labels will advertise container port $CONTAINER_PORT"
-  LABEL_ARGS+=(--label "traefik.enable=true")
-
-  printf -v ROUTER_RULE_LABEL 'traefik.http.routers.%s.rule=Host(`%s`)' "$ROUTER_NAME" "$DOMAIN"
-  LABEL_ARGS+=(--label "$ROUTER_RULE_LABEL")
-  printf -v ROUTER_SERVICE_LABEL 'traefik.http.routers.%s.service=%s' "$ROUTER_NAME" "$ROUTER_NAME"
-  LABEL_ARGS+=(--label "$ROUTER_SERVICE_LABEL")
-
-  ENTRYPOINTS_VALUE="web,websecure"
-  if [[ "${TRAEFIK_ENABLE_ACME:-true}" == "true" ]]; then
-    ENTRYPOINTS_VALUE="websecure,web"
-    LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt")
+  if [[ -x "/opt/uactions/scripts/app/build-traefik-labels.sh" ]]; then
+    mapfile -t BUILT_LABELS < <(/opt/uactions/scripts/app/build-traefik-labels.sh "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME:-true}")
+    LABEL_ARGS+=("${BUILT_LABELS[@]}")
   else
-    echo "::notice::Skipping certresolver label for router ${ROUTER_NAME} (ACME disabled)."
+    LABEL_ARGS+=(--label "traefik.enable=true")
+
+    printf -v ROUTER_RULE_LABEL 'traefik.http.routers.%s.rule=Host(`%s`)' "$ROUTER_NAME" "$DOMAIN"
+    LABEL_ARGS+=(--label "$ROUTER_RULE_LABEL")
+    printf -v ROUTER_SERVICE_LABEL 'traefik.http.routers.%s.service=%s' "$ROUTER_NAME" "$ROUTER_NAME"
+    LABEL_ARGS+=(--label "$ROUTER_SERVICE_LABEL")
+
+    ENTRYPOINTS_VALUE="web,websecure"
+    if [[ "${TRAEFIK_ENABLE_ACME:-true}" == "true" ]]; then
+      ENTRYPOINTS_VALUE="websecure,web"
+      LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt")
+    else
+      echo "::notice::Skipping certresolver label for router ${ROUTER_NAME} (ACME disabled)."
+    fi
+    printf -v ROUTER_ENTRYPOINT_LABEL 'traefik.http.routers.%s.entrypoints=%s' "$ROUTER_NAME" "$ENTRYPOINTS_VALUE"
+    LABEL_ARGS+=(--label "$ROUTER_ENTRYPOINT_LABEL")
+    printf -v SERVICE_PORT_LABEL 'traefik.http.services.%s.loadbalancer.server.port=%s' "$ROUTER_NAME" "$CONTAINER_PORT"
+    LABEL_ARGS+=(--label "$SERVICE_PORT_LABEL")
   fi
-  printf -v ROUTER_ENTRYPOINT_LABEL 'traefik.http.routers.%s.entrypoints=%s' "$ROUTER_NAME" "$ENTRYPOINTS_VALUE"
-  LABEL_ARGS+=(--label "$ROUTER_ENTRYPOINT_LABEL")
-  printf -v SERVICE_PORT_LABEL 'traefik.http.services.%s.loadbalancer.server.port=%s' "$ROUTER_NAME" "$CONTAINER_PORT"
-  LABEL_ARGS+=(--label "$SERVICE_PORT_LABEL")
 else
   echo "ℹ️  Traefik disabled; container will rely on host port mapping"
 fi
 
-echo "🔓 Publishing port mapping host:${HOST_PORT} -> container:${CONTAINER_PORT}"
-PORT_ARGS=(-p "${HOST_PORT}:${CONTAINER_PORT}")
+if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
+  echo "🔒 Skipping host port publish (Traefik handles ingress on 80/443)"
+  PORT_ARGS=()
+else
+  echo "🔓 Publishing port mapping host:${HOST_PORT} -> container:${CONTAINER_PORT}"
+  PORT_ARGS=(-p "${HOST_PORT}:${CONTAINER_PORT}")
+fi
 
 # --- Login and pull (optional login, always pull) -----------------------------------
 if [[ "${REGISTRY_LOGIN:-true}" == "true" ]]; then

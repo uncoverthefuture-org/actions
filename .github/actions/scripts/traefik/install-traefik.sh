@@ -99,7 +99,7 @@ entryPoints:
     address: ":8082"
 
 providers:
-  podman:
+  docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
 

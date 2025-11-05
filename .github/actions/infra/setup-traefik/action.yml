@@ -65,6 +65,14 @@ inputs:
     description: 'Expose Traefik dashboard on port 8080 (requires basic auth hash)'
     required: false
     default: 'false'
+  mode:
+    description: 'Setup mode: container (default) or quadlet (socket activation)'
+    required: false
+    default: 'container'
+  quadlet_enable_http3:
+    description: 'When mode=quadlet, also bind UDP 443 and enable HTTP/3 (default: false)'
+    required: false
+    default: 'false'
   dashboard_user:
     description: 'Basic auth username for Traefik dashboard (required if dashboard enabled)'
     required: false
@@ -131,6 +139,22 @@ runs:
         mkdir -p ${{ runner.temp }}/scripts/traefik
         cp ./.github/actions/scripts/traefik/ensure-traefik-config.sh ${{ runner.temp }}/scripts/traefik/
 
+    - name: Stage quadlet installer script for upload
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ${{ runner.temp }}/scripts/traefik
+        cp ./.github/actions/scripts/traefik/install-quadlet-sockets.sh ${{ runner.temp }}/scripts/traefik/
+
+    - name: Stage assert-socket-and-selinux script for upload
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ${{ runner.temp }}/scripts/traefik
+        cp ./.github/actions/scripts/traefik/assert-socket-and-selinux.sh ${{ runner.temp }}/scripts/traefik/
+
     - name: Upload Traefik scripts
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
       uses: appleboy/scp-action@v0.1.4
@@ -139,7 +163,7 @@ runs:
         username: ${{ inputs.ssh_user }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
-        source: ${{ runner.temp }}/scripts/traefik/install-traefik.sh,${{ runner.temp }}/scripts/traefik/setup-traefik.sh,${{ runner.temp }}/scripts/traefik/ensure-traefik-config.sh
+        source: ${{ runner.temp }}/scripts/traefik/install-traefik.sh,${{ runner.temp }}/scripts/traefik/setup-traefik.sh,${{ runner.temp }}/scripts/traefik/ensure-traefik-config.sh,${{ runner.temp }}/scripts/traefik/assert-socket-and-selinux.sh,${{ runner.temp }}/scripts/traefik/install-quadlet-sockets.sh
         target: /tmp
         overwrite: true
         timeout: 15s
@@ -171,6 +195,14 @@ runs:
             mv -f /tmp/ensure-traefik-config.sh /opt/uactions/scripts/traefik/ensure-traefik-config.sh
             chmod +x /opt/uactions/scripts/traefik/ensure-traefik-config.sh
           fi
+          if [ -f /tmp/assert-socket-and-selinux.sh ]; then
+            mv -f /tmp/assert-socket-and-selinux.sh /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh
+            chmod +x /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh
+          fi
+          if [ -f /tmp/install-quadlet-sockets.sh ]; then
+            mv -f /tmp/install-quadlet-sockets.sh /opt/uactions/scripts/traefik/install-quadlet-sockets.sh
+            chmod +x /opt/uactions/scripts/traefik/install-quadlet-sockets.sh
+          fi
 
           CURRENT_USER="$(id -un)"
           echo "🔎 Remote session user: $CURRENT_USER"
@@ -185,7 +217,7 @@ runs:
             echo "::notice::Run install-traefik.sh manually as a privileged user to complete system setup."
           fi
 
-          echo "🚀 Running Traefik container setup as current user ..."
+          echo "🚀 Running Traefik setup (mode='${{ inputs.mode }}') as current user ..."
           export TRAEFIK_VERSION='${{ inputs.traefik_version }}'
           export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
           export TRAEFIK_PING_ENABLED='${{ inputs.enable_ping }}'
@@ -199,7 +231,14 @@ runs:
           export TRAEFIK_DASHBOARD='${{ inputs.enable_dashboard }}'
           export DASHBOARD_USER='${{ inputs.dashboard_user }}'
           export DASHBOARD_PASS_BCRYPT='${{ inputs.dashboard_password_bcrypt }}'
-          /opt/uactions/scripts/traefik/setup-traefik.sh
+          export QUADLET_ENABLE_HTTP3='${{ inputs.quadlet_enable_http3 }}'
+
+          MODE='${{ inputs.mode }}'
+          if [ "$MODE" = "quadlet" ]; then
+            /opt/uactions/scripts/traefik/install-quadlet-sockets.sh
+          else
+            /opt/uactions/scripts/traefik/setup-traefik.sh
+          fi
 
     - name: Traefik status summary
       if: always()

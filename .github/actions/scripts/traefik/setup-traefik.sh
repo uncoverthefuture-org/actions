@@ -72,14 +72,35 @@ else
 fi
 
 echo "🔍 Checking if current user can bind to low ports (80/443) ..."
-if ! timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/80' 2>/dev/null && \
-   ! python3 -c 'import socket; s=socket.socket(); s.bind(("", 80)); s.close()' 2>/dev/null; then
-  echo "❌ ERROR: Current user cannot bind to port 80." >&2
-  echo "   Traefik requires CAP_NET_BIND_SERVICE or authbind." >&2
-  echo "   To fix this:" >&2
-  echo "   1. Grant CAP_NET_BIND_SERVICE to podman: sudo setcap cap_net_bind_service=+ep \$(which podman)" >&2
-  echo "   2. Or use authbind: sudo apt install authbind && sudo touch /etc/authbind/byport/80 /etc/authbind/byport/443 && sudo chown \$(id -un) /etc/authbind/byport/*" >&2
-  exit 1
+CAN_BIND=false
+if timeout 3 bash -c 'exec 3<>/dev/tcp/localhost/80' 2>/dev/null || \
+   python3 -c 'import socket; s=socket.socket(); s.bind(("", 80)); s.close()' 2>/dev/null; then
+  CAN_BIND=true
+fi
+
+CURRENT_USER_LOG="$(id -un) (uid:$(id -u))"
+SUDO_AVAILABLE=no
+if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO_AVAILABLE=yes; fi
+echo "👤 User: ${CURRENT_USER_LOG}; sudo: ${SUDO_AVAILABLE}"
+if command -v getcap >/dev/null 2>&1; then
+  echo "🔐 getcap $(command -v podman): $(getcap "$(command -v podman)" 2>/dev/null || true)"
+fi
+
+if [ "$CAN_BIND" != "true" ]; then
+  echo "::notice::Current user cannot bind to port 80 directly. Traefik may still work via rootless port forwarding."
+  if [ "$SUDO_AVAILABLE" = "yes" ]; then
+    echo "::notice::Attempting to grant CAP_NET_BIND_SERVICE to podman via sudo setcap ..."
+    if sudo setcap cap_net_bind_service=+ep "$(command -v podman)" 2>/dev/null; then
+      echo "  ✓ setcap applied to podman"
+      if command -v getcap >/dev/null 2>&1; then
+        echo "🔐 getcap $(command -v podman): $(getcap "$(command -v podman)" 2>/dev/null || true)"
+      fi
+    else
+      echo "::warning::Failed to apply setcap; consider authbind or allowing low ports (net.ipv4.ip_unprivileged_port_start=80)."
+    fi
+  else
+    echo "::notice::sudo not available; consider authbind or enabling low ports for rootless."
+  fi
 fi
 
 echo "🧩 Enabling linger and Podman user socket for current user ..."
@@ -115,6 +136,10 @@ else
     echo "🔌 User podman socket unavailable; using system podman socket: $HOST_SOCK"
     echo "::notice::If this is unexpected, ensure linger is enabled and podman.socket is running for $CURRENT_USER."
   fi
+fi
+
+if [[ -x "/opt/uactions/scripts/traefik/assert-socket-and-selinux.sh" ]]; then
+  /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh
 fi
 
 echo "🔍 Checking for existing listeners on ports 80/443 ..."
@@ -172,7 +197,7 @@ else
 fi
 
 RUN_ARGS+=(-v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro)
-RUN_ARGS+=(-v /var/lib/traefik/acme.json:/letsencrypt/acme.json)
+RUN_ARGS+=(-v /var/lib/traefik/acme.json:/letsencrypt/acme.json:Z)
 RUN_ARGS+=(-v "$HOST_SOCK":/var/run/docker.sock:Z)
 RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80)
 RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443)
@@ -181,15 +206,15 @@ if [[ "$TRAEFIK_ENABLE_ACME" == "true" ]]; then
   RUN_ARGS+=(
     -e TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_TO=websecure
     -e TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_SCHEME=https
-    -e TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_EMAIL="$TRAEFIK_EMAIL"
-    -e TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_STORAGE=/letsencrypt/acme.json
-    -e TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_HTTPCHALLENGE_ENTRYPOINT=web
-    -e TRAEFIK_ENTRYPOINTS_WEBSECURE_HTTP_TLS_CERTRESOLVER=le
+    -e TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL="$TRAEFIK_EMAIL"
+    -e TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_STORAGE=/letsencrypt/acme.json
+    -e TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_HTTPCHALLENGE_ENTRYPOINT=web
+    -e TRAEFIK_ENTRYPOINTS_WEBSECURE_HTTP_TLS_CERTRESOLVER=letsencrypt
   )
   if [[ -n "$TRAEFIK_ACME_DNS_PROVIDER" ]]; then
-    RUN_ARGS+=(-e TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_DNSCHALLENGE_PROVIDER="$TRAEFIK_ACME_DNS_PROVIDER")
+    RUN_ARGS+=(-e TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_PROVIDER="$TRAEFIK_ACME_DNS_PROVIDER")
     if [[ -n "$TRAEFIK_ACME_DNS_RESOLVERS" ]]; then
-      RUN_ARGS+=(-e TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_DNSCHALLENGE_RESOLVERS="${TRAEFIK_ACME_DNS_RESOLVERS//,/\,}")
+      RUN_ARGS+=(-e TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_RESOLVERS="${TRAEFIK_ACME_DNS_RESOLVERS//,/\,}")
     fi
   fi
 else
@@ -249,6 +274,21 @@ if [[ "$TRAEFIK_DASHBOARD" == "true" ]]; then
 fi
 echo "🔎 podman ps --filter name=traefik"
 podman ps --filter name=traefik
+
+echo "⏳ Waiting for Traefik listeners on ports 80/443 ..."
+ok=false
+for i in {1..10}; do
+  if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
+     ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
+    ok=true; break
+  fi
+  sleep 2
+done
+if ! $ok; then
+  echo "::error::Traefik did not open ports 80/443 after start."
+  podman logs --tail=120 traefik 2>/dev/null || true
+  exit 1
+fi
 
 echo "🧾 Generating systemd user service for Traefik ..."
 if podman generate systemd --files --name traefik >/dev/null 2>&1; then
