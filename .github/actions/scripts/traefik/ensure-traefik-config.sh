@@ -49,6 +49,7 @@ providers:
     exposedByDefault: false
 
 api: {}
+accessLog: {}
 YAML
     echo "🆕 Created minimal Traefik config at $CONFIG_PATH"
   fi

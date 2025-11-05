@@ -107,6 +107,8 @@ api:
   dashboard: true
   insecure: false
 
+accessLog: {}
+
 metrics:
   prometheus:
     entryPoint: "metrics"

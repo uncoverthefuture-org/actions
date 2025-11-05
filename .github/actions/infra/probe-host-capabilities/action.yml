@@ -17,6 +17,9 @@ outputs:
   has_ufw:
     description: 'true if ufw present'
     value: ${{ steps.probe.outputs.has_ufw }}
+  has_webmin:
+    description: 'true if webmin package present'
+    value: ${{ steps.probe.outputs.has_webmin }}
   listen_80:
     description: 'true if TCP 80 has a listener'
     value: ${{ steps.probe.outputs.listen_80 }}
@@ -75,6 +78,9 @@ runs:
           HAS_UFW=false
           if command -v ufw >/dev/null 2>&1; then HAS_UFW=true; fi
 
+          HAS_WEBMIN=false
+          if dpkg -s webmin >/dev/null 2>&1; then HAS_WEBMIN=true; fi
+
           listen() {
             local port="$1"
             if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)$port$"; then return 0; fi
@@ -100,6 +106,7 @@ runs:
             echo "has_apache=$HAS_APACHE"
             echo "has_nginx=$HAS_NGINX"
             echo "has_ufw=$HAS_UFW"
+            echo "has_webmin=$HAS_WEBMIN"
             echo "listen_80=$L80"
             echo "listen_443=$L443"
             echo "traefik_mode=$TMODE"
