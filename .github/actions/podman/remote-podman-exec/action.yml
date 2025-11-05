@@ -256,12 +256,21 @@ runs:
             echo "::warning::Remote commands are executing as root; verify this is intended." >&2
           fi
 
-          if ! command -v podman >/dev/null 2>&1; then
-            echo '::error::podman is not installed on the remote host'
-            echo 'Error: podman is not installed on the remote host.' >&2
-            echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
-            exit 1
+          PODMAN_AVAILABLE="no"
+          if command -v podman >/dev/null 2>&1; then
+            PODMAN_AVAILABLE="yes"
+          else
+            echo '::notice::podman is not installed on the remote host; continuing (non-podman scripts may still run)'
           fi
+
+          run_podman() {
+            if command -v podman >/dev/null 2>&1; then
+              podman "$@"
+            else
+              echo '::error::podman not available; install podman or enable prepare_host in the calling action' >&2
+              return 127
+            fi
+          }
 
           cd /
 

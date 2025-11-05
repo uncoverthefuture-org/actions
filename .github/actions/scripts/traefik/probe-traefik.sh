@@ -56,10 +56,10 @@ check_listeners_80_443() {
 }
 
 preflight() {
-  require_cmd podman
   notice "Checking Traefik container status ..."
-  local has_container=false st="unknown" sockets_active=false
-  if podman container exists traefik >/dev/null 2>&1; then
+  local has_podman=false has_container=false st="unknown" sockets_active=false
+  if command -v podman >/dev/null 2>&1; then has_podman=true; fi
+  if $has_podman && podman container exists traefik >/dev/null 2>&1; then
     has_container=true
     st=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || echo unknown)
   fi
@@ -72,19 +72,19 @@ preflight() {
   if [ "$has_container" = "true" ]; then
     if [ "$st" != "running" ] && [ "$sockets_active" != "true" ]; then
       err "Traefik is not running (status: $st) and socket-activation not detected"
-      podman ps --filter name=traefik || true
-      podman logs --tail=80 traefik 2>/dev/null || true
+      $has_podman && podman ps --filter name=traefik || true
+      $has_podman && podman logs --tail=80 traefik 2>/dev/null || true
       exit 1
     fi
     if [ "$st" != "running" ] && [ "$sockets_active" = "true" ]; then
       notice "Traefik container not running, but systemd sockets are active (quadlet mode)."
     fi
   else
-    if [ "$sockets_active" != "true" ]; then
-      err "Traefik container not found and systemd sockets are not active"
-      exit 1
+    if [ "$sockets_active" = "true" ]; then
+      notice "Traefik container absent but systemd sockets are active (quadlet mode)."
+    else
+      notice "Traefik container not found and sockets inactive; verifying listeners regardless ..."
     fi
-    notice "Traefik container absent but systemd sockets are active (quadlet mode)."
   fi
 
   notice "Verifying listeners on 80/443 ..."
@@ -113,7 +113,6 @@ post() {
     err "Domain is required for post-deploy probe"
     exit 4
   fi
-  require_cmd podman
   require_cmd curl
 
   local tries=12 delay=5 i=1 code=""
@@ -130,8 +129,12 @@ post() {
   done
 
   err "Domain probe failed after $tries attempts (last HTTP $code)"
-  notice "Recent Traefik logs:"
-  podman logs --tail=120 traefik 2>/dev/null || true
+  if command -v podman >/dev/null 2>&1; then
+    notice "Recent Traefik logs:"
+    podman logs --tail=120 traefik 2>/dev/null || true
+  else
+    notice "Traefik logs unavailable (podman not installed)"
+  fi
   if [ -n "$router" ]; then
     notice "Router hint: $router (service port $port)"
   fi

@@ -208,6 +208,24 @@ runs:
               chmod +x "$TARGET_DIR/$SCRIPT_NAME" || true
             fi
           fi
+          if [ ! -x "$TARGET_DIR/$SCRIPT_NAME" ]; then
+            # Fallback: create a diagnostics log so the summary can show actionable info
+            TS=$(date -u +"%Y%m%d_%H%M%S")
+            LOG="/tmp/uactions_diag_${TS}.log"
+            {
+              echo "uactions routing diagnostics | $(date -u +"%Y-%m-%dT%H:%M:%SZ") UTC"
+              echo
+              echo "==== Summary ===="
+              printf "%-32s %s\n" "DNS matches server IP:" "unknown"
+              printf "%-32s %s\n" "80/443 listeners:" "FAIL"
+              printf "%-32s %s\n" "Traefik container:" "FAIL"
+              printf "%-32s %s\n" "App container:" "FAIL"
+              echo
+              echo "(Note: diagnostics script missing on host; upload may have failed)"
+            } > "$LOG"
+            ln -sf "$LOG" /tmp/uactions_diag_latest.log 2>/dev/null || true
+            exit 0
+          fi
           export DIAG_DOMAIN='${{ inputs.domain_effective }}'
           export DIAG_APP_CONTAINER='${{ steps.name.outputs.name }}'
           export DIAG_TRAEFIK_CONTAINER='${{ inputs.traefik_container }}'
@@ -286,8 +304,8 @@ runs:
       uses: ./.github/actions/infra/setup-traefik
       with:
         ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
+        ssh_user: ${{ steps.conn.outputs.username }}
+        ssh_key: ${{ steps.conn.outputs.key }}
         ssh_port: ${{ inputs.ssh_port }}
         traefik_email: ${{ inputs.traefik_email }}
         network_name: ${{ inputs.traefik_network_name }}
@@ -327,7 +345,21 @@ runs:
             sleep $((attempt*2))
           done
           if [ "$OK" != "true" ]; then
-            echo "Diagnostics post-fix execution did not complete successfully after retries." >&2
+            # Fallback log when post-fix execution fails
+            TS=$(date -u +"%Y%m%d_%H%M%S")
+            LOG="/tmp/uactions_diag_${TS}.log"
+            {
+              echo "uactions routing diagnostics | $(date -u +"%Y-%m-%dT%H:%M:%SZ") UTC"
+              echo
+              echo "==== Summary ===="
+              printf "%-32s %s\n" "DNS matches server IP:" "unknown"
+              printf "%-32s %s\n" "80/443 listeners:" "FAIL"
+              printf "%-32s %s\n" "Traefik container:" "FAIL"
+              printf "%-32s %s\n" "App container:" "FAIL"
+              echo
+              echo "(Note: diagnostics execution did not complete successfully after retries)"
+            } > "$LOG"
+            ln -sf "$LOG" /tmp/uactions_diag_latest.log 2>/dev/null || true
           fi
 
     - name: Append diagnostics to summary and enforce failure policy

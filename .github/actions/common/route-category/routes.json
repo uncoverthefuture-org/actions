@@ -15,6 +15,7 @@
     "install-webmin",
     "install-certbot",
     "request-certbot-cert",
+    "setup-traefik",
     "configure-ufw",
     "setup-podman-user",
     "determine-domain",
@@ -23,6 +24,7 @@
     "ensure-apache-installed",
     "enable-apache-modules",
     "manage-vhost-config",
+    "diagnose-routing",
     "enable-site-reload"
   ],
   "app": [

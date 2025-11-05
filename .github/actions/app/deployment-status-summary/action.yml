@@ -495,8 +495,14 @@ runs:
         fi
         chmod 600 "$KEY_FILE"
         LOG_FILE="$RUNNER_TEMP/uactions_diag_tail_final.log"
-        ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-          "tail -n 250 /tmp/uactions_diag_latest.log 2>/dev/null" > "$LOG_FILE" 2>/dev/null || true
+        # Retry fetching the log up to 3 times
+        for attempt in 1 2 3; do
+          if ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o ConnectionAttempts=2 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+            "tail -n 250 /tmp/uactions_diag_latest.log 2>/dev/null" > "$LOG_FILE" 2>/dev/null; then
+            break
+          fi
+          sleep $((attempt*2))
+        done
 
         FAIL_REASONS=()
         if [ -s "$LOG_FILE" ]; then
