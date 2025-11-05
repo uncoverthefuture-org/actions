@@ -54,6 +54,14 @@ inputs:
   ssh_fingerprint:
     description: 'Server SSH host key fingerprint for verification. Optional but recommended for security'
     required: false
+  root_ssh_key:
+    description: 'Root SSH private key (optional, forwarded from callers; not used directly)'
+    required: false
+    default: ''
+  connect_mode:
+    description: "Connection mode: auto|root|user (forwarded to sub-steps where applicable)"
+    required: false
+    default: 'user'
 
   # ========================================================================
   # PODMAN CONFIGURATION
@@ -63,6 +71,14 @@ inputs:
     description: 'Install Podman and dependencies. Default: true. Set false if already installed'
     required: false
     default: 'true'
+  create_podman_user:
+    description: 'Create a dedicated podman user if missing (forwarded input)'
+    required: false
+    default: 'false'
+  podman_user:
+    description: 'Podman user on remote host (forwarded input)'
+    required: false
+    default: ''
 
   # ========================================================================
   # DIRECTORY CONFIGURATION
@@ -197,6 +213,7 @@ runs:
         ssh_key: ${{ inputs.ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: ${{ inputs.connect_mode }}
         inline_script: |
           set -euo pipefail
           TARGET_DIR='${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.defaults.outputs.env_dir_path }}'

@@ -49,72 +49,88 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Probe host
+    - name: Probe host (SSH and set outputs)
       id: probe
-      uses: ./.github/actions/podman/remote-podman-exec
-      with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        connect_mode: user
-        source_env: 'false'
-        fail_if_env_missing: 'false'
-        inline_script: |
-          set -euo pipefail
-          bool() { [ "$1" -eq 0 ] && echo true || echo false; }
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
 
-          HAS_PODMAN=false
-          PV=""
-          if command -v podman >/dev/null 2>&1; then
-            HAS_PODMAN=true
-            PV=$(podman --version 2>/dev/null || true)
+        read -r -d '' REMOTE_SCRIPT <<'RS'
+        set -euo pipefail
+        bool() { [ "$1" -eq 0 ] && echo true || echo false; }
+
+        HAS_PODMAN=false
+        PV=""
+        if command -v podman >/dev/null 2>&1; then
+          HAS_PODMAN=true
+          PV=$(podman --version 2>/dev/null || true)
+        fi
+
+        dpkgq() { dpkg -s "$1" >/dev/null 2>&1 || dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q installed; }
+        HAS_APACHE=false
+        if dpkgq apache2 || systemctl is-enabled apache2 >/dev/null 2>&1 || systemctl is-active apache2 >/dev/null 2>&1; then HAS_APACHE=true; fi
+        HAS_NGINX=false
+        if dpkgq nginx || systemctl is-enabled nginx >/dev/null 2>&1 || systemctl is-active nginx >/dev/null 2>&1; then HAS_NGINX=true; fi
+
+        HAS_UFW=false
+        if command -v ufw >/dev/null 2>&1; then HAS_UFW=true; fi
+
+        HAS_WEBMIN=false
+        if dpkg -s webmin >/dev/null 2>&1; then HAS_WEBMIN=true; fi
+
+        HAS_USERMIN=false
+        if dpkg -s usermin >/dev/null 2>&1; then HAS_USERMIN=true; fi
+
+        listen() {
+          local port="$1"
+          if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)$port$"; then return 0; fi
+          return 1
+        }
+        L80=$(bool $(listen 80; echo $?))
+        L443=$(bool $(listen 443; echo $?))
+
+        # Traefik mode detection
+        TMODE=none
+        if command -v podman >/dev/null 2>&1 && podman container exists traefik >/dev/null 2>&1; then
+          TMODE=container
+        fi
+        if command -v systemctl >/dev/null 2>&1; then
+          if systemctl --user is-enabled --quiet http.socket 2>/dev/null || systemctl --user is-enabled --quiet https.socket 2>/dev/null; then
+            TMODE=quadlet
           fi
+        fi
 
-          dpkgq() { dpkg -s "$1" >/dev/null 2>&1 || dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q installed; }
-          HAS_APACHE=false
-          if dpkgq apache2 || systemctl is-enabled apache2 >/dev/null 2>&1 || systemctl is-active apache2 >/dev/null 2>&1; then HAS_APACHE=true; fi
-          HAS_NGINX=false
-          if dpkgq nginx || systemctl is-enabled nginx >/dev/null 2>&1 || systemctl is-active nginx >/dev/null 2>&1; then HAS_NGINX=true; fi
+        printf '%s\n' \
+          "has_podman=$HAS_PODMAN" \
+          "podman_version=$PV" \
+          "has_apache=$HAS_APACHE" \
+          "has_nginx=$HAS_NGINX" \
+          "has_ufw=$HAS_UFW" \
+          "has_webmin=$HAS_WEBMIN" \
+          "has_usermin=$HAS_USERMIN" \
+          "listen_80=$L80" \
+          "listen_443=$L443" \
+          "traefik_mode=$TMODE"
+        RS
 
-          HAS_UFW=false
-          if command -v ufw >/dev/null 2>&1; then HAS_UFW=true; fi
-
-          HAS_WEBMIN=false
-          if dpkg -s webmin >/dev/null 2>&1; then HAS_WEBMIN=true; fi
-
-          HAS_USERMIN=false
-          if dpkg -s usermin >/dev/null 2>&1; then HAS_USERMIN=true; fi
-
-          listen() {
-            local port="$1"
-            if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)$port$"; then return 0; fi
-            return 1
-          }
-          L80=$(bool $(listen 80; echo $?))
-          L443=$(bool $(listen 443; echo $?))
-
-          # Traefik mode detection
-          TMODE=none
-          if podman container exists traefik >/dev/null 2>&1; then
-            TMODE=container
-          fi
-          if command -v systemctl >/dev/null 2>&1; then
-            if systemctl --user is-enabled --quiet http.socket 2>/dev/null || systemctl --user is-enabled --quiet https.socket 2>/dev/null; then
-              TMODE=quadlet
-            fi
-          fi
-
-          {
-            echo "has_podman=$HAS_PODMAN"
-            echo "podman_version=$PV"
-            echo "has_apache=$HAS_APACHE"
-            echo "has_nginx=$HAS_NGINX"
-            echo "has_ufw=$HAS_UFW"
-            echo "has_webmin=$HAS_WEBMIN"
-            echo "has_usermin=$HAS_USERMIN"
-            echo "listen_80=$L80"
-            echo "listen_443=$L443"
-            echo "traefik_mode=$TMODE"
-          } >> "$GITHUB_OUTPUT"
+        OUT=$(ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "bash -s" <<< "$REMOTE_SCRIPT" 2>/dev/null || true)
+        # Write parsed lines to GITHUB_OUTPUT
+        while IFS= read -r line; do
+          case "$line" in
+            has_podman=*|podman_version=*|has_apache=*|has_nginx=*|has_ufw=*|has_webmin=*|has_usermin=*|listen_80=*|listen_443=*|traefik_mode=*)
+              echo "$line" >> "$GITHUB_OUTPUT" ;;
+          esac
+        done <<< "$OUT"

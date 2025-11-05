@@ -182,7 +182,7 @@ inputs: # All parameters accepted by this action
     default: ''
   include_www_alias: # When true and domain is set, also include www.<domain> as alias
     required: false
-    default: 'false'
+    default: 'true'
 
 runs: # Composite action implementation
   using: 'composite'
