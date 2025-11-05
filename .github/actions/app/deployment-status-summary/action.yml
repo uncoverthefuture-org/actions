@@ -36,6 +36,12 @@ inputs:
   router_name:
     required: false
     default: ''
+  whoami_probe:
+    required: false
+    default: 'false'
+  traefik_network_name:
+    required: false
+    default: 'traefik-network'
 
 runs:
   using: 'composite'
@@ -56,6 +62,8 @@ runs:
         HOST_PORT_IN: ${{ inputs.host_port }}
         CONTAINER_PORT_IN: ${{ inputs.container_port }}
         ROUTER_NAME_IN: ${{ inputs.router_name }}
+        WHOAMI_PROBE: ${{ inputs.whoami_probe }}
+        TRAEFIK_NETWORK_NAME: ${{ inputs.traefik_network_name }}
       run: |
         set -euo pipefail
 
@@ -163,6 +171,13 @@ runs:
           # Capture timing and HTTP version (best-effort)
           DOMAIN_TIMING="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w '%{time_total}' --max-time 10 'https://${DOMAIN_EFFECTIVE}'" 2>/dev/null || echo "N/A")"
           DOMAIN_PROTO="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w 'HTTP/%{http_version}' --max-time 10 'https://${DOMAIN_EFFECTIVE}'" 2>/dev/null || echo "N/A")"
+          # Runner-side probe to seed access logs with an external client and capture headers
+          RUNNER_HTTP_STATUS_DOMAIN=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "https://${DOMAIN_EFFECTIVE}" || echo "ERR")
+          RUNNER_DOMAIN_TIMING=$(curl -ksS -o /dev/null -w '%{time_total}' --max-time 10 "https://${DOMAIN_EFFECTIVE}" || echo "N/A")
+          RUNNER_HEADERS=$(curl -ksSI --max-time 10 "https://${DOMAIN_EFFECTIVE}" 2>/dev/null || true)
+          HDR_XFF=$(printf '%s\n' "$RUNNER_HEADERS" | grep -i '^X-Forwarded-For:' | head -n1 | sed 's/^X-Forwarded-For:[[:space:]]*//I')
+          HDR_XRI=$(printf '%s\n' "$RUNNER_HEADERS" | grep -i '^X-Real-Ip:' | head -n1 | sed 's/^X-Real-Ip:[[:space:]]*//I')
+          HDR_FWD=$(printf '%s\n' "$RUNNER_HEADERS" | grep -i '^Forwarded:' | head -n1 | sed 's/^Forwarded:[[:space:]]*//I')
         fi
         HTTP_STATUS_PORT="$(${SSH_BASE[@]} "curl -fsS -o /dev/null -w '%{http_code}' --max-time 5 'http://127.0.0.1:${HOST_PORT}'" 2>/dev/null || echo "ERR")"
 
@@ -171,9 +186,48 @@ runs:
           IN_CONTAINER_PROBE="$(${SSH_BASE[@]} "podman exec '${CONT_NAME}' sh -lc 'if command -v curl >/dev/null 2>&1; then curl -fsS -o /dev/null -w \"%{http_code}\" http://127.0.0.1:${CONT_PORT} --max-time 5; elif command -v wget >/dev/null 2>&1; then wget -qO- --server-response http://127.0.0.1:${CONT_PORT} 2>&1 | awk \"/HTTP\/{print \$2; exit}\"; else echo NO_CURL_WGET; fi'" 2>/dev/null || echo "ERR")"
         fi
 
+        # App container routing context: labels and networks
+        APP_LABELS=""
+        APP_NETWORKS=""
+        TRAEFIK_NETWORKS=""
+        NETWORK_JOIN_CHECK="unknown"
+        IN_CONTAINER_LISTENERS=""
+        if [ "$CONT_PRESENT" = "yes" ]; then
+          APP_LABELS=$(${SSH_BASE[@]} "podman inspect -f '{{ range $k, $v := .Config.Labels }}{{ $k }}={{ $v }}{{ printf \"\\n\" }}{{ end }}' '${CONT_NAME}' 2>/dev/null | grep '^traefik\.' || true" 2>/dev/null || echo "")
+          APP_NETWORKS=$(${SSH_BASE[@]} "podman inspect -f '{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }} {{ end }}' '${CONT_NAME}' 2>/dev/null | sed 's/ *$//'" 2>/dev/null || echo "")
+          TRAEFIK_NETWORKS=$(${SSH_BASE[@]} "podman inspect -f '{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }} {{ end }}' traefik 2>/dev/null | sed 's/ *$//'" 2>/dev/null || echo "")
+          IN_CONTAINER_LISTENERS=$(${SSH_BASE[@]} "podman exec '${CONT_NAME}' sh -lc 'ss -ltnp 2>/dev/null | head -n 60 || netstat -ltnp 2>/dev/null | head -n 60'" 2>/dev/null || echo "")
+          if printf '%s' "$APP_NETWORKS" | grep -qw "${TRAEFIK_NETWORK_NAME}" && printf '%s' "$TRAEFIK_NETWORKS" | grep -qw "${TRAEFIK_NETWORK_NAME}"; then
+            NETWORK_JOIN_CHECK="✅ both containers on ${TRAEFIK_NETWORK_NAME}"
+          else
+            NETWORK_JOIN_CHECK="⚠️ check networks: app=[${APP_NETWORKS:-none}] traefik=[${TRAEFIK_NETWORKS:-none}]"
+          fi
+        fi
+
         RECENT_LOGS=""
         if [ "$CONT_PRESENT" = "yes" ]; then
           RECENT_LOGS="$(${SSH_BASE[@]} "podman logs --tail 80 '${CONT_NAME}' 2>/dev/null" || true)"
+        fi
+
+        # Traefik access logs: prefer container logs, fallback to journal (quadlet)
+        TRA_LOG_SRC="none"
+        TRAEFIK_LOGS=""
+        TRAEFIK_CONT_EXISTS=$(${SSH_BASE[@]} "podman container exists traefik >/dev/null 2>&1 && echo yes || echo no" 2>/dev/null || echo no)
+        if [ "$TRAEFIK_CONT_EXISTS" = "yes" ]; then
+          TRAEFIK_LOGS="$(${SSH_BASE[@]} "podman logs --tail 200 traefik 2>/dev/null" || true)"
+          if [ -n "$TRAEFIK_LOGS" ]; then TRA_LOG_SRC="container"; fi
+        fi
+        if [ -z "$TRAEFIK_LOGS" ]; then
+          JLOGS="$(${SSH_BASE[@]} "journalctl --user -u traefik -n 200 --no-pager 2>/dev/null" || true)"
+          if [ -n "$JLOGS" ]; then
+            TRAEFIK_LOGS="$JLOGS"
+            TRA_LOG_SRC="journal"
+          fi
+        fi
+
+        CLIENT_IPS=""
+        if [ -n "$TRAEFIK_LOGS" ]; then
+          CLIENT_IPS=$(printf '%s\n' "$TRAEFIK_LOGS" | grep -Eo '([0-9]{1,3}[.]){3}[0-9]{1,3}' | grep -v '^127\.0\.0\.1$' | tail -n 200 | sort -u | tr '\n' ' ' | sed 's/ *$//')
         fi
 
         now_utc=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
@@ -226,6 +280,17 @@ runs:
           fi
           echo "- **Host Port**: 127.0.0.1:${HOST_PORT} → ${HTTP_STATUS_PORT}"
           echo "- **In-Container Probe**: 127.0.0.1:${CONT_PORT} inside ${CONT_NAME} → ${IN_CONTAINER_PROBE}"
+          if [ -n "${DOMAIN_EFFECTIVE}" ]; then
+            echo "- **Runner → Domain**: https://${DOMAIN_EFFECTIVE} → ${RUNNER_HTTP_STATUS_DOMAIN} (${RUNNER_DOMAIN_TIMING}s)"
+            if [ -n "$HDR_XFF$HDR_XRI$HDR_FWD" ]; then
+              echo "  - **Headers**:"
+              if [ -n "$HDR_XFF" ]; then echo "    - X-Forwarded-For: ${HDR_XFF}"; fi
+              if [ -n "$HDR_XRI" ]; then echo "    - X-Real-Ip: ${HDR_XRI}"; fi
+              if [ -n "$HDR_FWD" ]; then echo "    - Forwarded: ${HDR_FWD}"; fi
+            else
+              echo "  - **Headers**: (no X-Forwarded-For/X-Real-Ip/Forwarded provided by app)"
+            fi
+          fi
           echo
           if [ -n "$ROUTER_NAME" ]; then
             echo "## Traefik API (best-effort)"
@@ -253,6 +318,29 @@ runs:
             fi
             echo
           fi
+          echo "## Container Routing Diagnostics"
+          echo
+          echo "- **Network join**: ${NETWORK_JOIN_CHECK}"
+          if [ -n "$APP_NETWORKS$TRAEFIK_NETWORKS" ]; then
+            echo "- **App networks**: ${APP_NETWORKS:-none}"
+            echo "- **Traefik networks**: ${TRAEFIK_NETWORKS:-none}"
+          fi
+          if [ -n "$APP_LABELS" ]; then
+            echo
+            echo "### App Traefik Labels"
+            echo
+            echo '```'
+            sanitize_output "$APP_LABELS"
+            echo '```'
+          fi
+          if [ -n "$IN_CONTAINER_LISTENERS" ]; then
+            echo
+            echo "### In-Container Listeners (Top 60)"
+            echo
+            echo '```'
+            sanitize_output "$IN_CONTAINER_LISTENERS"
+            echo '```'
+          fi
           if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
             echo "## DNS Diagnostics"
             echo
@@ -267,12 +355,76 @@ runs:
             echo
           fi
 
+          # Optional whoami probe (ephemeral) under PathPrefix /__whoami
+          if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ] && [ "${WHOAMI_PROBE}" = "true" ]; then
+            echo "## Traefik whoami Probe" 
+            echo
+            WHOAMI_NAME="whoami-probe-${ENV_CANON}"
+            WHOAMI_ROUTER="whoami-${ENV_CANON}"
+            # Clean up any stale instance
+            ${SSH_BASE[@]} "podman rm -f '$WHOAMI_NAME' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
+            # Build labels: Host(`domain`) && PathPrefix(`/__whoami`)
+            L1="traefik.enable=true"
+            L2="traefik.http.routers.${WHOAMI_ROUTER}.rule=Host(\`${DOMAIN_EFFECTIVE}\`) && PathPrefix(\`/__whoami\`)"
+            L3="traefik.http.routers.${WHOAMI_ROUTER}.entrypoints=websecure,web"
+            L4="traefik.http.routers.${WHOAMI_ROUTER}.tls.certresolver=letsencrypt"
+            L5="traefik.http.services.${WHOAMI_ROUTER}.loadbalancer.server.port=80"
+            # Start ephemeral whoami container
+            ${SSH_BASE[@]} "podman run -d --name '$WHOAMI_NAME' --network '${TRAEFIK_NETWORK_NAME}' \
+              --label '$L1' --label '$L2' --label '$L3' --label '$L4' --label '$L5' \
+              docker.io/traefik/whoami:v1.10.1" >/dev/null 2>&1 || true
+            # Probe
+            PROBE_CODE=""
+            PROBE_BODY=""
+            for i in 1 2 3 4 5; do
+              PROBE_CODE=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 "https://${DOMAIN_EFFECTIVE}/__whoami" || echo "000")
+              if [ "$PROBE_CODE" -ge 200 ] && [ "$PROBE_CODE" -lt 400 ]; then break; fi
+              sleep 2
+            done
+            if [ "$PROBE_CODE" -ge 200 ] && [ "$PROBE_CODE" -lt 400 ]; then
+              PROBE_BODY=$(curl -ksSL --max-time 8 "https://${DOMAIN_EFFECTIVE}/__whoami" 2>/dev/null | head -n 80 || true)
+              echo "- **Status**: ✅ ${PROBE_CODE}"
+              # Extract key lines
+              W_REMOTE=$(printf '%s\n' "$PROBE_BODY" | grep -i '^RemoteAddr:' | head -n1 | sed 's/^RemoteAddr:[[:space:]]*//')
+              W_XFF=$(printf '%s\n' "$PROBE_BODY" | grep -i '^X-Forwarded-For:' | head -n1 | sed 's/^X-Forwarded-For:[[:space:]]*//I')
+              W_XRI=$(printf '%s\n' "$PROBE_BODY" | grep -i '^X-Real-Ip:' | head -n1 | sed 's/^X-Real-Ip:[[:space:]]*//I')
+              echo "  - RemoteAddr: ${W_REMOTE:-unknown}"
+              if [ -n "$W_XFF$W_XRI" ]; then
+                if [ -n "$W_XFF" ]; then echo "  - X-Forwarded-For: ${W_XFF}"; fi
+                if [ -n "$W_XRI" ]; then echo "  - X-Real-Ip: ${W_XRI}"; fi
+              fi
+            else
+              echo "- **Status**: ❌ ${PROBE_CODE}"
+            fi
+            # Cleanup
+            ${SSH_BASE[@]} "podman rm -f '$WHOAMI_NAME' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
+            echo
+          fi
+
           if [ -n "$RECENT_LOGS" ]; then
             echo "## Recent Container Logs (${CONT_NAME})"
             echo
             echo '```'
             sanitize_output "$RECENT_LOGS"
             echo '```'
+            echo
+          fi
+
+          if [ -n "$TRAEFIK_LOGS" ]; then
+            echo "## Traefik Access Logs (last 200) [source: ${TRA_LOG_SRC}]"
+            echo
+            if [ -n "$CLIENT_IPS" ]; then
+              echo "- **Client IPs seen**: ${CLIENT_IPS}"
+              echo
+            fi
+            echo '```'
+            sanitize_output "$TRAEFIK_LOGS"
+            echo '```'
+            echo
+          else
+            echo "## Traefik Access Logs"
+            echo
+            echo "- **Note**: No Traefik logs captured (container and journal sources empty)."
             echo
           fi
         } >> "$GITHUB_STEP_SUMMARY"

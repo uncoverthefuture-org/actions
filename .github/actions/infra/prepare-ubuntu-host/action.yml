@@ -225,7 +225,7 @@ runs:
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
 
     - name: Install Webmin/Usermin
-      if: ${{ inputs.install_webmin == 'true' || inputs.install_usermin == 'true' }}
+      if: ${{ (inputs.install_webmin == 'true' && steps.probe.outputs.has_webmin != 'true') || (inputs.install_usermin == 'true' && steps.probe.outputs.has_usermin != 'true') }}
       uses: ./.github/actions/infra/install-webmin
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -236,8 +236,39 @@ runs:
         install_webmin: ${{ inputs.install_webmin }}
         install_usermin: ${{ inputs.install_usermin }}
 
-    - name: Configure UFW
+    - name: Evaluate UFW changes needed
+      id: ufwcheck
       if: ${{ inputs.configure_ufw == 'true' }}
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        inline_script: |
+          set -euo pipefail
+          PORTS_RAW='${{ inputs.ufw_allow_ports }}'
+          if [ -z "$PORTS_RAW" ]; then PORTS_RAW='22 80 443 10000 20000'; fi
+          needs_changes=false
+          if ! command -v ufw >/dev/null 2>&1; then
+            needs_changes=true
+          else
+            status_out=$(ufw status 2>/dev/null || true)
+            if ! printf '%s' "$status_out" | grep -qi '^Status: active'; then
+              needs_changes=true
+            fi
+            for p in $PORTS_RAW; do
+              if ! printf '%s' "$status_out" | grep -E "(^|[[:space:]])${p}(/tcp)?[[:space:]]+ALLOW" >/dev/null 2>&1; then
+                needs_changes=true
+                break
+              fi
+            done
+          fi
+          echo "ufw_needs_changes=$needs_changes" >> "$GITHUB_OUTPUT"
+
+    - name: Configure UFW
+      if: ${{ inputs.configure_ufw == 'true' && steps.ufwcheck.outputs.ufw_needs_changes == 'true' }}
       uses: ./.github/actions/infra/configure-ufw
       with:
         ssh_host: ${{ inputs.ssh_host }}

@@ -489,3 +489,5 @@ runs: # Composite action implementation
         host_port: ${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}
         container_port: ${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}
         router_name: ${{ steps.dfl.outputs.traefik_router }}
+        whoami_probe: ${{ inputs.enable_traefik }}
+        traefik_network_name: ${{ inputs.traefik_network_name }}
