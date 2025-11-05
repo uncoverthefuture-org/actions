@@ -211,6 +211,7 @@ runs:
 
           if [ "$CURRENT_USER" = "root" ]; then
             echo "🔧 Running Traefik system installation (requires root) ..."
+            export PODMAN_USER="$CURRENT_USER"
             /opt/uactions/scripts/traefik/install-traefik.sh
           else
             echo "::notice::Skipping install-traefik.sh because it requires root privileges."
@@ -232,6 +233,11 @@ runs:
           export DASHBOARD_USER='${{ inputs.dashboard_user }}'
           export DASHBOARD_PASS_BCRYPT='${{ inputs.dashboard_password_bcrypt }}'
           export QUADLET_ENABLE_HTTP3='${{ inputs.quadlet_enable_http3 }}'
+
+          # Ensure user-scoped config/ACME exist before starting Traefik
+          if [ -x /opt/uactions/scripts/traefik/ensure-traefik-config.sh ]; then
+            /opt/uactions/scripts/traefik/ensure-traefik-config.sh
+          fi
 
           MODE='${{ inputs.mode }}'
           if [ "$MODE" = "quadlet" ]; then

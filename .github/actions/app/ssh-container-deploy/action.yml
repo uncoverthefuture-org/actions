@@ -421,7 +421,6 @@ runs: # Composite action implementation
           fi
 
           # Export deployment variables for run-deployment.sh
-          export PODMAN_USER='${{ inputs.podman_user }}'
           export IMAGE_REGISTRY='${{ inputs.registry }}'
           export IMAGE_NAME='${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}'
           export IMAGE_TAG='${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}'
@@ -436,7 +435,9 @@ runs: # Composite action implementation
           export APP_SLUG='${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}'
           export ENV_NAME='${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}'
           export CONTAINER_NAME_IN='${{ inputs.container_name }}'
-          export ENV_FILE_PATH_BASE='${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }}'
+          if [ -n '${{ inputs.env_file_path }}' ]; then
+            export ENV_FILE_PATH_BASE='${{ inputs.env_file_path }}'
+          fi
           export HOST_PORT_IN='${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}'
           export CONTAINER_PORT_IN='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'
           export EXTRA_RUN_ARGS='${{ inputs.extra_run_args }}'

@@ -58,42 +58,46 @@ runs:
       run: |
         set -euo pipefail
         python - <<'PY'
-import json
-import os
+        import json
+        import os
 
-params_json = os.environ.get('PARAMS_JSON', '')
-if not params_json:
-    params_json = '{}'
-params = json.loads(params_json)
+        params_json = os.environ.get('PARAMS_JSON', '')
+        if not params_json:
+            params_json = '{}'
+        params = json.loads(params_json)
 
-def stringify(value):
-    if isinstance(value, bool):
-        return 'true' if value else 'false'
-    return '' if value is None else str(value)
+        def stringify(value):
+            if isinstance(value, bool):
+                return 'true' if value else 'false'
+            return '' if value is None else str(value)
 
-defaults = {
-    'ssh_host': '',
-    'ssh_user': '',
-    'ssh_key': '',
-    'root_ssh_key': '',
-    'ssh_port': '22',
-    'ssh_fingerprint': '',
-    'podman_user': 'deployer',
-    'connect_mode': 'auto',
-}
+        defaults = {
+            'ssh_host': '',
+            'ssh_user': '',
+            'ssh_key': '',
+            'root_ssh_key': '',
+            'ssh_port': '22',
+            'ssh_fingerprint': '',
+            'podman_user': '',
+            'connect_mode': 'auto',
+        }
 
-outputs = {}
-for key in defaults:
-    env_val = os.environ.get(f'IN_{key.upper()}', '')
-    json_val = stringify(params.get(key))
-    if env_val:
-        outputs[key] = env_val
-    elif json_val:
-        outputs[key] = json_val
-    else:
-        outputs[key] = defaults[key]
+        outputs = {}
+        for key in defaults:
+            env_val = os.environ.get(f'IN_{key.upper()}', '')
+            json_val = stringify(params.get(key))
+            if env_val:
+                outputs[key] = env_val
+            elif json_val:
+                outputs[key] = json_val
+            else:
+                outputs[key] = defaults[key]
 
-with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-    for key, value in outputs.items():
-        fh.write(f"{key}={value}\n")
-PY
+        # Ensure podman_user defaults to ssh_user when unspecified
+        if not outputs.get('podman_user'):
+            outputs['podman_user'] = outputs.get('ssh_user', '')
+
+        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+            for key, value in outputs.items():
+                fh.write(f"{key}={value}\n")
+        PY

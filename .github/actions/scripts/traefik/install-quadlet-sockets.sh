@@ -111,10 +111,10 @@ ContainerName=traefik
 # SELinux: disable label separation for socket volume access under rootless
 SecurityLabelDisable=true
 
-# Volumes: static config and ACME storage
-Volume=/etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-Volume=/var/lib/traefik/acme.json:/letsencrypt/acme.json:Z
-# Podman (Docker-compatible) socket for provider discovery
+# Volumes: static config and ACME storage (user-scoped)
+Volume=%h/.config/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+Volume=%h/.local/share/traefik/acme.json:/letsencrypt/acme.json:Z
+# Podman (Docker-compatible) socket for provider discovery (user-scoped)
 Volume=%t/podman/podman.sock:/var/run/docker.sock:Z
 
 # Network join

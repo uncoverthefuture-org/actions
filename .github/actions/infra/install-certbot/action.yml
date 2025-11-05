@@ -100,6 +100,11 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
+          # Short-circuit if certbot already installed
+          if command -v certbot >/dev/null 2>&1 || dpkg -s certbot >/dev/null 2>&1; then
+            echo "✅ certbot already installed; skipping installation"
+            exit 0
+          fi
           # Move script from /tmp to /opt/uactions/scripts/
           sudo mkdir -p /opt/uactions/scripts/infra
           if [ -f /tmp/install-certbot.sh ]; then

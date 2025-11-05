@@ -17,21 +17,41 @@
 # ----------------------------------------------------------------------------
 set -euo pipefail
 
-CONFIG_PATH="/etc/traefik/traefik.yml"
-ACME_PATH="/var/lib/traefik/acme.json"
+CONFIG_PATH="$HOME/.config/traefik/traefik.yml"
+ACME_PATH="$HOME/.local/share/traefik/acme.json"
+SYS_CONFIG="/etc/traefik/traefik.yml"
+SYS_ACME="/var/lib/traefik/acme.json"
+
+mkdir -p "$(dirname "$CONFIG_PATH")" "$(dirname "$ACME_PATH")"
 
 if [[ -f "$CONFIG_PATH" ]]; then
   if [[ -r "$CONFIG_PATH" ]]; then
     echo "📄 Reusing existing Traefik config: $CONFIG_PATH"
   else
     echo "❌ ERROR: Traefik config exists at $CONFIG_PATH but is not readable by $(id -un)." >&2
-    echo "   Run install-traefik.sh as a privileged user to correct ownership/permissions." >&2
     exit 1
   fi
 else
-  echo "❌ ERROR: Traefik config missing at $CONFIG_PATH." >&2
-  echo "   Run install-traefik.sh as a privileged user before executing setup-traefik.sh." >&2
-  exit 1
+  if [[ -r "$SYS_CONFIG" ]]; then
+    cp "$SYS_CONFIG" "$CONFIG_PATH"
+    echo "📄 Copied system config to user scope: $CONFIG_PATH"
+  else
+    cat >"$CONFIG_PATH" <<'YAML'
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+
+api: {}
+YAML
+    echo "🆕 Created minimal Traefik config at $CONFIG_PATH"
+  fi
 fi
 
 if [[ -f "$ACME_PATH" ]]; then
@@ -39,16 +59,21 @@ if [[ -f "$ACME_PATH" ]]; then
     PERMS=$(stat -c '%a' "$ACME_PATH" 2>/dev/null || echo "unknown")
     if [[ "$PERMS" != "600" ]]; then
       echo "⚠️  Warning: $ACME_PATH permissions are $PERMS (expected 600)." >&2
-      echo "    Update with: sudo chmod 600 $ACME_PATH" >&2
+      chmod 600 "$ACME_PATH" >/dev/null 2>&1 || true
     fi
     echo "🔐 Reusing existing ACME storage: $ACME_PATH"
   else
     echo "❌ ERROR: Traefik ACME storage exists at $ACME_PATH but is not readable by $(id -un)." >&2
-    echo "   Run install-traefik.sh as a privileged user to correct ownership/permissions." >&2
     exit 1
   fi
 else
-  echo "❌ ERROR: Traefik ACME storage missing at $ACME_PATH." >&2
-  echo "   Run install-traefik.sh as a privileged user before executing setup-traefik.sh." >&2
-  exit 1
+  if [[ -r "$SYS_ACME" ]]; then
+    cp "$SYS_ACME" "$ACME_PATH"
+    chmod 600 "$ACME_PATH" >/dev/null 2>&1 || true
+    echo "🔐 Copied system ACME storage to user scope: $ACME_PATH"
+  else
+    printf '{}' > "$ACME_PATH"
+    chmod 600 "$ACME_PATH" >/dev/null 2>&1 || true
+    echo "🆕 Created new ACME storage at $ACME_PATH (600)"
+  fi
 fi

@@ -196,8 +196,8 @@ else
   fi
 fi
 
-RUN_ARGS+=(-v /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro)
-RUN_ARGS+=(-v /var/lib/traefik/acme.json:/letsencrypt/acme.json:Z)
+RUN_ARGS+=(-v "$HOME/.config/traefik/traefik.yml":/etc/traefik/traefik.yml:ro)
+RUN_ARGS+=(-v "$HOME/.local/share/traefik/acme.json":/letsencrypt/acme.json:Z)
 RUN_ARGS+=(-v "$HOST_SOCK":/var/run/docker.sock:Z)
 RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80)
 RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443)

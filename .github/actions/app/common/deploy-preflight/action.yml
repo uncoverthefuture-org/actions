@@ -59,7 +59,7 @@ inputs:
   podman_user:
     description: 'Remote user for Podman commands'
     required: false
-    default: 'deployer'
+    default: ''
   connect_mode:
     description: "Connection mode: auto, root, or user"
     required: false
@@ -255,7 +255,7 @@ runs:
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
+        podman_user: ${{ inputs.ssh_user }}
         connect_mode: ${{ inputs.connect_mode }}
         install_podman: ${{ inputs.install_podman }}
         create_podman_user: ${{ inputs.create_podman_user }}
@@ -275,7 +275,7 @@ runs:
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
+        podman_user: ${{ inputs.ssh_user }}
         connect_mode: ${{ inputs.connect_mode }}
         env_name: ${{ inputs.env_name }}
         env_file_path: ${{ inputs.env_file_path }}
@@ -293,7 +293,7 @@ runs:
         root_ssh_key: ${{ inputs.root_ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user }}
+        podman_user: ${{ inputs.ssh_user }}
         connect_mode: ${{ inputs.connect_mode }}
         registry: ${{ inputs.registry }}
         registry_username: ${{ inputs.registry_username }}

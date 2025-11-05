@@ -168,8 +168,18 @@ runs:
       id: defaults
       uses: ./.github/actions/app/common/compute-defaults
 
+    - name: Probe host capabilities
+      id: probe
+      uses: ./.github/actions/infra/probe-host-capabilities
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+
     - name: Install Podman
-      if: ${{ inputs.install_podman == 'true' }}
+      if: ${{ inputs.install_podman == 'true' && steps.probe.outputs.has_podman != 'true' }}
       uses: ./.github/actions/infra/install-podman
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -205,7 +215,7 @@ runs:
           fi
 
     - name: Install Apache
-      if: ${{ inputs.install_apache == 'true' }}
+      if: ${{ inputs.install_apache == 'true' && steps.probe.outputs.has_apache != 'true' }}
       uses: ./.github/actions/infra/install-apache
       with:
         ssh_host: ${{ inputs.ssh_host }}

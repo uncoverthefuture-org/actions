@@ -24,7 +24,7 @@ inputs:
   podman_user:
     description: 'User on remote host'
     required: false
-    default: 'deployer'
+    default: ''
   connect_mode:
     description: "How to connect: 'auto' (default), 'root', or 'user'"
     required: false
@@ -105,6 +105,11 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
+          # Short-circuit if Apache already installed/enabled
+          if dpkg -s apache2 >/dev/null 2>&1 || systemctl is-enabled apache2 >/dev/null 2>&1; then
+            echo "✅ apache2 already installed/enabled; skipping installation"
+            exit 0
+          fi
           # Move script from /tmp to /opt/uactions/scripts/
           sudo mkdir -p /opt/uactions/scripts/infra
           if [ -f /tmp/install-apache.sh ]; then

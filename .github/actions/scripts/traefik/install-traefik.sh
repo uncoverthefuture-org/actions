@@ -22,7 +22,7 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # --- Resolve inputs -----------------------------------------------------------------
 # Get required environment variables with defaults
 TRAEFIK_EMAIL="${TRAEFIK_EMAIL:-}"
-PODMAN_USER="${PODMAN_USER:-deployer}"
+PODMAN_USER="${PODMAN_USER:-$(id -un)}"
 DASHBOARD_USER="${DASHBOARD_USER:-admin}"
 DASHBOARD_PASS_BCRYPT="${DASHBOARD_PASS_BCRYPT:-}"
 

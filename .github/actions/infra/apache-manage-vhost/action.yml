@@ -24,7 +24,7 @@ inputs:
   podman_user:
     description: 'User on remote host (for env sourcing only)'
     required: false
-    default: 'deployer'
+    default: ''
   connect_mode:
     description: "How to connect: 'auto' (default), 'root', or 'user'"
     required: false

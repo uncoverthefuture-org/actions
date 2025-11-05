@@ -61,7 +61,7 @@ inputs:
     required: false
   podman_user:
     required: false
-    default: 'deployer'
+    default: ''
   connect_mode:
     required: false
     default: 'auto'

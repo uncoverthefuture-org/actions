@@ -1,0 +1,106 @@
+name: 'infra: probe-host-capabilities'
+description: 'Probe host for installed packages, services, listeners, and Traefik mode without making changes.'
+
+outputs:
+  has_podman:
+    description: 'true if podman is installed'
+    value: ${{ steps.probe.outputs.has_podman }}
+  podman_version:
+    description: 'podman --version output or empty'
+    value: ${{ steps.probe.outputs.podman_version }}
+  has_apache:
+    description: 'true if apache2 package/service present'
+    value: ${{ steps.probe.outputs.has_apache }}
+  has_nginx:
+    description: 'true if nginx package/service present'
+    value: ${{ steps.probe.outputs.has_nginx }}
+  has_ufw:
+    description: 'true if ufw present'
+    value: ${{ steps.probe.outputs.has_ufw }}
+  listen_80:
+    description: 'true if TCP 80 has a listener'
+    value: ${{ steps.probe.outputs.listen_80 }}
+  listen_443:
+    description: 'true if TCP 443 has a listener'
+    value: ${{ steps.probe.outputs.listen_443 }}
+  traefik_mode:
+    description: 'none|container|quadlet (best-effort)'
+    value: ${{ steps.probe.outputs.traefik_mode }}
+
+inputs:
+  ssh_host:
+    required: true
+  ssh_user:
+    required: true
+  ssh_key:
+    required: true
+  ssh_port:
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Probe host
+      id: probe
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: user
+        source_env: 'false'
+        fail_if_env_missing: 'false'
+        inline_script: |
+          set -euo pipefail
+          bool() { [ "$1" -eq 0 ] && echo true || echo false; }
+
+          HAS_PODMAN=false
+          PV=""
+          if command -v podman >/dev/null 2>&1; then
+            HAS_PODMAN=true
+            PV=$(podman --version 2>/dev/null || true)
+          fi
+
+          dpkgq() { dpkg -s "$1" >/dev/null 2>&1 || dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q installed; }
+          HAS_APACHE=false
+          if dpkgq apache2 || systemctl is-enabled apache2 >/dev/null 2>&1 || systemctl is-active apache2 >/dev/null 2>&1; then HAS_APACHE=true; fi
+          HAS_NGINX=false
+          if dpkgq nginx || systemctl is-enabled nginx >/dev/null 2>&1 || systemctl is-active nginx >/dev/null 2>&1; then HAS_NGINX=true; fi
+
+          HAS_UFW=false
+          if command -v ufw >/dev/null 2>&1; then HAS_UFW=true; fi
+
+          listen() {
+            local port="$1"
+            if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)$port$"; then return 0; fi
+            return 1
+          }
+          L80=$(bool $(listen 80; echo $?))
+          L443=$(bool $(listen 443; echo $?))
+
+          # Traefik mode detection
+          TMODE=none
+          if podman container exists traefik >/dev/null 2>&1; then
+            TMODE=container
+          fi
+          if command -v systemctl >/dev/null 2>&1; then
+            if systemctl --user is-enabled --quiet http.socket 2>/dev/null || systemctl --user is-enabled --quiet https.socket 2>/dev/null; then
+              TMODE=quadlet
+            fi
+          fi
+
+          {
+            echo "has_podman=$HAS_PODMAN"
+            echo "podman_version=$PV"
+            echo "has_apache=$HAS_APACHE"
+            echo "has_nginx=$HAS_NGINX"
+            echo "has_ufw=$HAS_UFW"
+            echo "listen_80=$L80"
+            echo "listen_443=$L443"
+            echo "traefik_mode=$TMODE"
+          } >> "$GITHUB_OUTPUT"
