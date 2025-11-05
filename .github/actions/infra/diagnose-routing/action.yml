@@ -1,0 +1,393 @@
+name: 'infra: diagnose-routing'
+description: 'Run server-side diagnostics to troubleshoot domain→container routing. Escalates with sudo when available. Read-only.'
+
+inputs:
+  ssh_host:
+    description: 'Remote host to connect to'
+    required: true
+  ssh_user:
+    description: 'SSH username'
+    required: true
+  ssh_key:
+    description: 'SSH private key for ssh_user'
+    required: true
+  root_ssh_key:
+    description: 'Optional SSH private key for root (if direct root login is allowed)'
+    required: false
+    default: ''
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    description: 'Optional server fingerprint verification'
+    required: false
+  app_slug:
+    description: 'Application slug'
+    required: true
+  env_name:
+    description: 'Environment name'
+    required: true
+  container_name:
+    description: 'Container name override (defaults to <app_slug>-<env_name>)'
+    required: false
+    default: ''
+  domain_effective:
+    description: 'Domain used by Traefik (if any)'
+    required: false
+    default: ''
+  traefik_container:
+    description: 'Traefik container name'
+    required: false
+    default: 'traefik'
+  host_port:
+    description: 'Expected host port (fallback when Traefik disabled)'
+    required: false
+    default: '8080'
+  container_port:
+    description: 'Expected container port'
+    required: false
+    default: '3000'
+  skip_upload:
+    description: 'Skip uploading the diagnostics script (assumes it already exists on the host)'
+    required: false
+    default: 'false'
+  fail_on_issues:
+    description: 'Fail the job when diagnostics detect issues'
+    required: false
+    default: 'true'
+  attempt_auto_fix:
+    description: 'Attempt best-effort automatic remediation before failing'
+    required: false
+    default: 'true'
+  enable_traefik:
+    description: 'Whether Traefik is enabled for this deployment'
+    required: false
+    default: 'true'
+  traefik_network_name:
+    description: 'Traefik network name to ensure/connect'
+    required: false
+    default: 'traefik-network'
+  traefik_email:
+    description: "Email for Let's Encrypt when auto-installing Traefik (optional)"
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        APP_SLUG: ${{ inputs.app_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+      run: |
+        set -euo pipefail
+        [ -n "$SSH_HOST" ] || { echo '::error::ssh_host is required'; exit 1; }
+        [ -n "$SSH_USER" ] || { echo '::error::ssh_user is required'; exit 1; }
+        [ -n "$SSH_KEY" ]  || { echo '::error::ssh_key is required'; exit 1; }
+        [ -n "$APP_SLUG" ] || { echo '::error::app_slug is required'; exit 1; }
+        [ -n "$ENV_NAME" ] || { echo '::error::env_name is required'; exit 1; }
+
+    - name: Resolve connection
+      id: conn
+      shell: bash
+      env:
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        ROOT_KEY: ${{ inputs.root_ssh_key }}
+      run: |
+        set -euo pipefail
+        if [ -n "$ROOT_KEY" ]; then
+          USERNAME="root"
+          KEY_VALUE="$ROOT_KEY"
+        else
+          USERNAME="$SSH_USER"
+          KEY_VALUE="$SSH_KEY"
+        fi
+        printf 'username=%s\n' "$USERNAME" >> "$GITHUB_OUTPUT"
+        printf 'key<<EOF\n%s\nEOF\n' "$KEY_VALUE" >> "$GITHUB_OUTPUT"
+
+    - name: Probe SSH reachability
+      id: reach
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        SSH_USER_EFF: ${{ steps.conn.outputs.username }}
+        SSH_KEY_EFF: ${{ steps.conn.outputs.key }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        printf '%s\n' "$SSH_KEY_EFF" > "$KEY_FILE"
+        chmod 600 "$KEY_FILE"
+        REACH=false
+        for attempt in 1 2 3; do
+          if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o ConnectionAttempts=2 -p "${SSH_PORT:-22}" "$SSH_USER_EFF@$SSH_HOST" true 2>/dev/null; then
+            REACH=true
+            break
+          fi
+          sleep $((attempt*2))
+        done
+        if $REACH; then echo "reachable=true" >> "$GITHUB_OUTPUT"; else echo "reachable=false" >> "$GITHUB_OUTPUT"; fi
+
+    - name: Stage diagnostics script for upload
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ${{ runner.temp }}/scripts/infra
+        cp ./.github/actions/scripts/infra/diagnose-routing.sh ${{ runner.temp }}/scripts/infra/
+
+    - name: Upload diagnostics script
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ steps.conn.outputs.username }}
+        key: ${{ steps.conn.outputs.key }}
+        port: ${{ inputs.ssh_port }}
+        source: ${{ runner.temp }}/scripts/infra/diagnose-routing.sh
+        target: /tmp
+        overwrite: true
+        timeout: 30s
+        command_timeout: 60s
+
+    - name: Compute container name
+      id: name
+      shell: bash
+      env:
+        APP_SLUG: ${{ inputs.app_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+        CONT_IN: ${{ inputs.container_name }}
+      run: |
+        set -euo pipefail
+        ENV_CANON=$(printf '%s' "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
+        if [ -n "$CONT_IN" ]; then
+          CONT_NAME="$CONT_IN"
+        else
+          CONT_NAME="${APP_SLUG}-${ENV_CANON}"
+        fi
+        echo "name=$CONT_NAME" >> "$GITHUB_OUTPUT"
+
+    - name: Run diagnostics remotely
+      if: ${{ steps.reach.outputs.reachable == 'true' }}
+      continue-on-error: true
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ steps.conn.outputs.username }}
+        key: ${{ steps.conn.outputs.key }}
+        port: ${{ inputs.ssh_port }}
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          set -euo pipefail
+          TARGET_DIR="/opt/uactions/scripts/infra"
+          ALT_DIR="$HOME/.uactions/scripts/infra"
+          SCRIPT_NAME="diagnose-routing.sh"
+          as_root() {
+            if [ "$(id -u)" -eq 0 ]; then
+              bash -c "$*"
+            elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+              sudo bash -c "$*"
+            else
+              return 1
+            fi
+          }
+          if ! as_root "mkdir -p '$TARGET_DIR'"; then
+            mkdir -p "$ALT_DIR"
+            TARGET_DIR="$ALT_DIR"
+          fi
+          if [ -f "/tmp/$SCRIPT_NAME" ]; then
+            if ! as_root "mv -f '/tmp/$SCRIPT_NAME' '$TARGET_DIR/$SCRIPT_NAME' && chmod +x '$TARGET_DIR/$SCRIPT_NAME'"; then
+              mv -f "/tmp/$SCRIPT_NAME" "$TARGET_DIR/$SCRIPT_NAME"
+              chmod +x "$TARGET_DIR/$SCRIPT_NAME" || true
+            fi
+          fi
+          export DIAG_DOMAIN='${{ inputs.domain_effective }}'
+          export DIAG_APP_CONTAINER='${{ steps.name.outputs.name }}'
+          export DIAG_TRAEFIK_CONTAINER='${{ inputs.traefik_container }}'
+          export DIAG_HOST_PORT='${{ inputs.host_port }}'
+          export DIAG_CONTAINER_PORT='${{ inputs.container_port }}'
+          RUN_CMD="bash '$TARGET_DIR/$SCRIPT_NAME'"
+          if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            RUN_CMD="sudo -E bash '$TARGET_DIR/$SCRIPT_NAME'"
+          fi
+          echo "Running diagnostics via: $RUN_CMD"
+          OK=false
+          for attempt in 1 2 3; do
+            if eval "$RUN_CMD"; then
+              OK=true
+              break
+            fi
+            echo "Retrying diagnostics run in $((attempt*2))s (attempt $attempt/3) ..." >&2
+            sleep $((attempt*2))
+          done
+          if [ "$OK" != "true" ]; then
+            echo "Diagnostics execution did not complete successfully after retries." >&2
+          fi
+          echo "--- uactions diagnostics hint ---"
+          if [ "$(id -u)" -ne 0 ] && { ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; }; then
+            echo "Not running as root and sudo not available without password. For full checks, run as root:" 
+            echo "  DIAG_DOMAIN='${{ inputs.domain_effective }}' DIAG_APP_CONTAINER='${{ steps.name.outputs.name }}' DIAG_TRAEFIK_CONTAINER='${{ inputs.traefik_container }}' DIAG_HOST_PORT='${{ inputs.host_port }}' DIAG_CONTAINER_PORT='${{ inputs.container_port }}' bash '$TARGET_DIR/$SCRIPT_NAME'"
+          fi
+
+    - name: Attempt auto-fix (best-effort quick repairs)
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.attempt_auto_fix == 'true' }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ steps.conn.outputs.username }}
+        key: ${{ steps.conn.outputs.key }}
+        port: ${{ inputs.ssh_port }}
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          set -euo pipefail
+          APP_CTN='${{ steps.name.outputs.name }}'
+          TRAEFIK_CTN='${{ inputs.traefik_container }}'
+          ENABLE_TRAEFIK='${{ inputs.enable_traefik }}'
+          HOST_PORT='${{ inputs.host_port }}'
+          CONT_PORT='${{ inputs.container_port }}'
+          NET_NAME='${{ inputs.traefik_network_name }}'
+          as_root() { [ "$(id -u)" -eq 0 ] && bash -lc "$*" || ( command -v sudo >/dev/null 2>&1 && sudo -n bash -lc "$*" ); }
+          # UFW port openings
+          if command -v ufw >/dev/null 2>&1; then
+            if [ "$ENABLE_TRAEFIK" = "true" ]; then
+              as_root "ufw allow 80/tcp" || true
+              as_root "ufw allow 443/tcp" || true
+            else
+              as_root "ufw allow ${HOST_PORT}/tcp" || true
+            fi
+          fi
+          # Ensure network exists
+          if command -v podman >/dev/null 2>&1; then
+            podman network inspect "$NET_NAME" >/dev/null 2>&1 || podman network create "$NET_NAME" >/dev/null 2>&1 || true
+            # Connect app to network if running
+            if podman container exists "$APP_CTN" >/dev/null 2>&1; then
+              podman inspect -f '{{ range $k,$v := .NetworkSettings.Networks }}{{ $k }} {{ end }}' "$APP_CTN" | grep -qw "$NET_NAME" || podman network connect "$NET_NAME" "$APP_CTN" >/dev/null 2>&1 || true
+              # Start app if stopped
+              if [ "$(podman inspect -f '{{ .State.Running }}' "$APP_CTN" 2>/dev/null || echo false)" != "true" ]; then
+                podman start "$APP_CTN" >/dev/null 2>&1 || true
+              fi
+            fi
+            # Start traefik if present
+            if [ "$ENABLE_TRAEFIK" = "true" ] && podman container exists "$TRAEFIK_CTN" >/dev/null 2>&1; then
+              podman inspect -f '{{ .State.Running }}' "$TRAEFIK_CTN" 2>/dev/null | grep -q true || podman start "$TRAEFIK_CTN" >/dev/null 2>&1 || true
+              podman inspect -f '{{ range $k,$v := .NetworkSettings.Networks }}{{ $k }} {{ end }}' "$TRAEFIK_CTN" | grep -qw "$NET_NAME" || podman network connect "$NET_NAME" "$TRAEFIK_CTN" >/dev/null 2>&1 || true
+            fi
+          fi
+
+    - name: Ensure Traefik via setup-traefik (auto-fix)
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.attempt_auto_fix == 'true' && inputs.enable_traefik == 'true' && inputs.traefik_email != '' }}
+      uses: ./.github/actions/infra/setup-traefik
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        traefik_email: ${{ inputs.traefik_email }}
+        network_name: ${{ inputs.traefik_network_name }}
+        skip_upload: 'false'
+
+    - name: Re-run diagnostics remotely (post-fix)
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.attempt_auto_fix == 'true' }}
+      continue-on-error: true
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ steps.conn.outputs.username }}
+        key: ${{ steps.conn.outputs.key }}
+        port: ${{ inputs.ssh_port }}
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          set -euo pipefail
+          TARGET_DIR="/opt/uactions/scripts/infra"
+          [ -x "$TARGET_DIR/diagnose-routing.sh" ] || TARGET_DIR="$HOME/.uactions/scripts/infra"
+          export DIAG_DOMAIN='${{ inputs.domain_effective }}'
+          export DIAG_APP_CONTAINER='${{ steps.name.outputs.name }}'
+          export DIAG_TRAEFIK_CONTAINER='${{ inputs.traefik_container }}'
+          export DIAG_HOST_PORT='${{ inputs.host_port }}'
+          export DIAG_CONTAINER_PORT='${{ inputs.container_port }}'
+          RUN_CMD="bash '$TARGET_DIR/diagnose-routing.sh'"
+          if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            RUN_CMD="sudo -E bash '$TARGET_DIR/diagnose-routing.sh'"
+          fi
+          echo "Running diagnostics (post-fix) via: $RUN_CMD"
+          OK=false
+          for attempt in 1 2 3; do
+            if eval "$RUN_CMD"; then
+              OK=true
+              break
+            fi
+            echo "Retrying diagnostics (post-fix) in $((attempt*2))s (attempt $attempt/3) ..." >&2
+            sleep $((attempt*2))
+          done
+          if [ "$OK" != "true" ]; then
+            echo "Diagnostics post-fix execution did not complete successfully after retries." >&2
+          fi
+
+    - name: Append diagnostics to summary and enforce failure policy
+      if: ${{ always() }}
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        SSH_USER_EFF: ${{ steps.conn.outputs.username }}
+        SSH_KEY_EFF: ${{ steps.conn.outputs.key }}
+        DOMAIN_EFFECTIVE: ${{ inputs.domain_effective }}
+        FAIL_ON_ISSUES: ${{ inputs.fail_on_issues }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        printf '%s\n' "$SSH_KEY_EFF" > "$KEY_FILE"
+        chmod 600 "$KEY_FILE"
+        LOG_FILE="$RUNNER_TEMP/uactions_diag_tail.log"
+        # Retry fetching the log up to 3 times
+        for attempt in 1 2 3; do
+          if ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o ConnectionAttempts=2 -p "${SSH_PORT:-22}" "$SSH_USER_EFF@$SSH_HOST" \
+            "tail -n 250 /tmp/uactions_diag_latest.log 2>/dev/null" > "$LOG_FILE" 2>/dev/null; then
+            break
+          fi
+          sleep $((attempt*2))
+        done
+
+        echo '## Server Diagnostics (uactions)' >> "$GITHUB_STEP_SUMMARY"
+        echo >> "$GITHUB_STEP_SUMMARY"
+        echo '```' >> "$GITHUB_STEP_SUMMARY"
+        if [ -s "$LOG_FILE" ]; then
+          cat "$LOG_FILE" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo 'No diagnostics log found' >> "$GITHUB_STEP_SUMMARY"
+        fi
+        echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+        # Parse failures
+        FAIL_REASONS=()
+        if [ -s "$LOG_FILE" ]; then
+          if grep -qE '^Traefik container:\s*FAIL' "$LOG_FILE"; then FAIL_REASONS+=("Traefik container missing"); fi
+          if grep -qE '^App container:\s*FAIL' "$LOG_FILE"; then FAIL_REASONS+=("App container missing"); fi
+          if [ -n "${DOMAIN_EFFECTIVE}" ]; then
+            if grep -qE '^80/443 listeners:\s*FAIL' "$LOG_FILE"; then FAIL_REASONS+=("No listeners on 80/443 while domain is set"); fi
+            if grep -qE '^DNS matches server IP:\s*(mismatch|unknown)' "$LOG_FILE"; then FAIL_REASONS+=("DNS does not match server public IP"); fi
+          fi
+        else
+          FAIL_REASONS+=("Diagnostics log unavailable or host unreachable")
+        fi
+
+        if [ "${FAIL_ON_ISSUES}" = "true" ] && [ ${#FAIL_REASONS[@]} -gt 0 ]; then
+          for r in "${FAIL_REASONS[@]}"; do
+            echo "::error::Diagnostics: ${r}"
+          done
+          exit 1
+        fi
+
+    - name: Diagnostics skipped (unreachable)
+      if: ${{ steps.reach.outputs.reachable != 'true' }}
+      shell: bash
+      run: |
+        echo "::notice::SSH host not reachable; skipping diagnostics."

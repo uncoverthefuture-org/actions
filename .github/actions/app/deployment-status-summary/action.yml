@@ -43,9 +43,55 @@ inputs:
     required: false
     default: 'traefik-network'
 
+  run_diagnostics:
+    required: false
+    default: 'true'
+  diagnostics_skip_upload:
+    required: false
+    default: 'false'
+  root_ssh_key:
+    required: false
+    default: ''
+  traefik_container:
+    required: false
+    default: 'traefik'
+  diagnostics_fail_on_issues:
+    required: false
+    default: 'true'
+  diagnostics_attempt_auto_fix:
+    required: false
+    default: 'true'
+  diagnostics_traefik_email:
+    required: false
+    default: ''
+
 runs:
   using: 'composite'
   steps:
+    - name: Server diagnostics (domain->container)
+      if: ${{ inputs.reachable == 'true' && inputs.run_diagnostics == 'true' }}
+      continue-on-error: true
+      uses: ./.github/actions/infra/diagnose-routing
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        app_slug: ${{ inputs.app_slug }}
+        env_name: ${{ inputs.env_name }}
+        container_name: ${{ inputs.container_name }}
+        domain_effective: ${{ inputs.domain_effective }}
+        traefik_container: ${{ inputs.traefik_container }}
+        host_port: ${{ inputs.host_port }}
+        container_port: ${{ inputs.container_port }}
+        skip_upload: ${{ inputs.diagnostics_skip_upload }}
+        fail_on_issues: ${{ inputs.diagnostics_fail_on_issues }}
+        attempt_auto_fix: ${{ inputs.diagnostics_attempt_auto_fix }}
+        enable_traefik: ${{ inputs.enable_traefik }}
+        traefik_network_name: ${{ inputs.traefik_network_name }}
+        traefik_email: ${{ inputs.diagnostics_traefik_email }}
+
     - name: Deployment status summary
       if: ${{ inputs.reachable == 'true' }}
       shell: bash
@@ -428,6 +474,49 @@ runs:
             echo
           fi
         } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Fail on diagnostics issues (after summary)
+      if: ${{ always() && inputs.reachable == 'true' && inputs.run_diagnostics == 'true' && inputs.diagnostics_fail_on_issues == 'true' }}
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        DOMAIN_EFFECTIVE: ${{ inputs.domain_effective }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+        LOG_FILE="$RUNNER_TEMP/uactions_diag_tail_final.log"
+        ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+          "tail -n 250 /tmp/uactions_diag_latest.log 2>/dev/null" > "$LOG_FILE" 2>/dev/null || true
+
+        FAIL_REASONS=()
+        if [ -s "$LOG_FILE" ]; then
+          if grep -qE '^Traefik container:\s*FAIL' "$LOG_FILE"; then FAIL_REASONS+=("Traefik container missing"); fi
+          if grep -qE '^App container:\s*FAIL' "$LOG_FILE"; then FAIL_REASONS+=("App container missing"); fi
+          if [ -n "${DOMAIN_EFFECTIVE}" ]; then
+            if grep -qE '^80/443 listeners:\s*FAIL' "$LOG_FILE"; then FAIL_REASONS+=("No listeners on 80/443 while domain is set"); fi
+            if grep -qE '^DNS matches server IP:\s*(mismatch|unknown)' "$LOG_FILE"; then FAIL_REASONS+=("DNS does not match server public IP"); fi
+          fi
+        else
+          # No log: do not fail here; summary already explains reachability
+          exit 0
+        fi
+
+        if [ ${#FAIL_REASONS[@]} -gt 0 ]; then
+          for r in "${FAIL_REASONS[@]}"; do
+            echo "::error::Diagnostics: ${r}"
+          done
+          exit 1
+        fi
 
     - name: Deployment summary (unreachable)
       if: ${{ inputs.reachable != 'true' }}
