@@ -217,6 +217,9 @@ export DOMAIN_DEFAULT
 export ROUTER_NAME
 export TRAEFIK_ENABLE_ACME
 export TRAEFIK_NETWORK_NAME
+# Domain aliases for Traefik Host() rule (optional)
+export DOMAIN_ALIASES
+export INCLUDE_WWW_ALIAS
 
 # --- Execute Deployment ---------------------------------------------------------------
 echo "🚀 Executing deployment script..."

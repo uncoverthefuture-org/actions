@@ -268,7 +268,7 @@ runs:
           echo "ufw_needs_changes=$needs_changes" >> "$GITHUB_OUTPUT"
 
     - name: Configure UFW
-      if: ${{ inputs.configure_ufw == 'true' && steps.ufwcheck.outputs.ufw_needs_changes == 'true' }}
+      if: ${{ inputs.configure_ufw == 'true' && (steps.ufwcheck.outputs.ufw_needs_changes == 'true' || inputs.install_traefik == 'true') }}
       uses: ./.github/actions/infra/configure-ufw
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -277,6 +277,11 @@ runs:
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         ufw_allow_ports: ${{ inputs.ufw_allow_ports }}
+        enable_podman_forward: 'true'
+        route_ports: '80 443'
+        set_forward_policy_accept: 'true'
+        wan_iface: ''
+        podman_iface: ''
 
     - name: Setup Traefik reverse proxy
       if: ${{ inputs.install_traefik == 'true' }}

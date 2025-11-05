@@ -4,6 +4,11 @@ set -euo pipefail
 
 UFW_ALLOW_PORTS="${UFW_ALLOW_PORTS:-}"
 SSH_PORT="${SSH_PORT:-22}"
+ENABLE_PODMAN_FORWARD="${ENABLE_PODMAN_FORWARD:-true}"
+ROUTE_PORTS="${ROUTE_PORTS:-80 443}"
+SET_FORWARD_POLICY_ACCEPT="${SET_FORWARD_POLICY_ACCEPT:-true}"
+WAN_IFACE_IN="${WAN_IFACE:-}"
+PODMAN_IFACE_IN="${PODMAN_IFACE:-}"
 
 SUDO=""
 if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
@@ -21,6 +26,21 @@ fi
 rule_exists() {
   local needle="$1"
   $SUDO ufw status | grep -Fq "$needle"
+}
+
+# Detect interfaces if not provided
+detect_wan_iface() {
+  local wan
+  wan=$(ip route get 1.1.1.1 2>/dev/null | awk 'NR==1{print $5}') || true
+  if [ -z "$wan" ]; then wan="eth0"; fi
+  echo "$wan"
+}
+
+detect_podman_iface() {
+  local piface
+  piface=$(ip -br link 2>/dev/null | awk '$1 ~ /^podman[0-9]+/ {print $1; exit}') || true
+  if [ -z "$piface" ]; then piface="podman1"; fi
+  echo "$piface"
 }
 
 echo "🔒 Ensuring SSH access is allowed (OpenSSH or 22/tcp) ..."
@@ -49,6 +69,36 @@ if [ -n "$UFW_ALLOW_PORTS" ]; then
       $SUDO ufw allow "$port" || true
     fi
   done
+fi
+
+# Optionally set DEFAULT_FORWARD_POLICY to ACCEPT for NAT/bridging
+if [ "${SET_FORWARD_POLICY_ACCEPT}" = "true" ]; then
+  if [ -f /etc/default/ufw ]; then
+    if ! grep -q '^DEFAULT_FORWARD_POLICY="ACCEPT"' /etc/default/ufw; then
+      echo "🛠️ Setting DEFAULT_FORWARD_POLICY=\"ACCEPT\" in /etc/default/ufw"
+      $SUDO sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw || true
+    fi
+  fi
+fi
+
+# Add UFW route rules to allow forwarding from WAN -> Podman bridge on key ports
+if [ "${ENABLE_PODMAN_FORWARD}" = "true" ]; then
+  WAN_IFACE_USE="$WAN_IFACE_IN"
+  PODMAN_IFACE_USE="$PODMAN_IFACE_IN"
+  [ -z "$WAN_IFACE_USE" ] && WAN_IFACE_USE="$(detect_wan_iface)"
+  [ -z "$PODMAN_IFACE_USE" ] && PODMAN_IFACE_USE="$(detect_podman_iface)"
+  echo "🌉 Forwarding in on ${WAN_IFACE_USE} -> out on ${PODMAN_IFACE_USE} for ports: ${ROUTE_PORTS}"
+  for p in $ROUTE_PORTS; do
+    [ -z "$p" ] && continue
+    # best-effort idempotence check
+    if $SUDO ufw status verbose | grep -iq "in on ${WAN_IFACE_USE} .*out on ${PODMAN_IFACE_USE}.* ${p}/tcp"; then
+      :
+    else
+      $SUDO ufw route allow in on "${WAN_IFACE_USE}" out on "${PODMAN_IFACE_USE}" proto tcp to any port "$p" || true
+    fi
+  done
+  # Reload to ensure route rules are active
+  $SUDO ufw reload || true
 fi
 
 echo "✅ UFW configured"

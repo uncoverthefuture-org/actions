@@ -16,6 +16,8 @@ DOMAIN="${DOMAIN:-${2:-}}"
 CONTAINER_PORT="${CONTAINER_PORT:-${3:-}}"
 ENABLE_ACME_RAW="${ENABLE_ACME:-${4:-true}}"
 RESOLVER_NAME="${RESOLVER_NAME:-letsencrypt}"
+DOMAIN_ALIASES_RAW="${DOMAIN_ALIASES:-${ALIASES:-}}"
+INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}"
 
 # Normalize ACME toggle to true|false
 case "${ENABLE_ACME_RAW,,}" in
@@ -37,10 +39,50 @@ else
   ENTRYPOINTS_VALUE="web,websecure"
 fi
 
+# Build host list for rule
+HOSTS=()
+HOSTS+=("$DOMAIN")
+
+# Parse aliases (comma or whitespace separated)
+if [[ -n "$DOMAIN_ALIASES_RAW" ]]; then
+  # Replace commas with spaces, then iterate
+  IFS=' ' read -r -a _aliases <<< "$(echo "$DOMAIN_ALIASES_RAW" | tr ',' ' ')"
+  for a in "${_aliases[@]}"; do
+    [[ -z "$a" ]] && continue
+    HOSTS+=("$a")
+  done
+fi
+
+# Optional www alias
+case "${INCLUDE_WWW_ALIAS,,}" in
+  1|y|yes|true)
+    HOSTS+=("www.${DOMAIN}")
+    ;;
+esac
+
+# De-duplicate while preserving order
+UNIQ_HOSTS=()
+seen=""
+for h in "${HOSTS[@]}"; do
+  [[ -z "$h" ]] && continue
+  if [[ ",${seen}," != *",${h},"* ]]; then
+    UNIQ_HOSTS+=("$h")
+    seen+="${seen:+,}${h}"
+  fi
+done
+
+# Compose Host(`a`,`b`) argument
+HOST_RULE_ARGS=""
+for idx in "${!UNIQ_HOSTS[@]}"; do
+  d="${UNIQ_HOSTS[$idx]}"
+  if [[ $idx -gt 0 ]]; then HOST_RULE_ARGS+=","; fi
+  HOST_RULE_ARGS+="\`${d}\`"
+done
+
 # Emit labels (newline-separated) with proper quoting
 printf '%s\n' \
   "--label" "traefik.enable=true" \
-  "--label" "traefik.http.routers.${ROUTER_NAME}.rule=Host(\`${DOMAIN}\`)" \
+  "--label" "traefik.http.routers.${ROUTER_NAME}.rule=Host(${HOST_RULE_ARGS})" \
   "--label" "traefik.http.routers.${ROUTER_NAME}.service=${ROUTER_NAME}" \
   "--label" "traefik.http.routers.${ROUTER_NAME}.entrypoints=${ENTRYPOINTS_VALUE}" \
   "--label" "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=${CONTAINER_PORT}"

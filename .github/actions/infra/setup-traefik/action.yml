@@ -412,3 +412,17 @@ runs:
           echo '::error::Traefik is not listening on ports 80/443. Review CAP_NET_BIND_SERVICE or authbind configuration.'
           exit 1
         fi
+
+    - name: Configure UFW for Traefik dashboard
+      if: ${{ inputs.enable_dashboard == 'true' }}
+      uses: ./.github/actions/infra/configure-ufw
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        enable_podman_forward: 'true'
+        route_ports: '8080'
+        set_forward_policy_accept: 'true'
+        skip_upload: 'false'

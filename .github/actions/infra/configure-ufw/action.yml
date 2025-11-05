@@ -33,6 +33,26 @@ inputs:
     description: 'Space-separated list of ports to allow (e.g., "80 443 22")'
     required: false
     default: ''
+  enable_podman_forward:
+    description: 'Enable ufw route allow for WAN->Podman bridge ports'
+    required: false
+    default: 'true'
+  route_ports:
+    description: 'Space-separated list of ports to forward (e.g., "80 443")'
+    required: false
+    default: '80 443'
+  set_forward_policy_accept:
+    description: 'Set DEFAULT_FORWARD_POLICY="ACCEPT" in /etc/default/ufw'
+    required: false
+    default: 'true'
+  wan_iface:
+    description: 'Override WAN interface name (auto-detect if empty)'
+    required: false
+    default: ''
+  podman_iface:
+    description: 'Override Podman bridge interface name (auto-detect if empty)'
+    required: false
+    default: ''
   skip_upload:
     description: 'Skip staging/upload (assumes scripts deployed via deploy-server-scripts)'
     required: false
@@ -109,16 +129,18 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          # Move script from /tmp to /opt/uactions/scripts/
           sudo mkdir -p /opt/uactions/scripts/infra
           if [ -f /tmp/configure-ufw.sh ]; then
             sudo mv -f /tmp/configure-ufw.sh /opt/uactions/scripts/infra/configure-ufw.sh
           fi
           sudo chmod +x /opt/uactions/scripts/infra/configure-ufw.sh
-          
-          # Export env vars for script
+
           export SSH_PORT='${{ inputs.ssh_port }}'
           export UFW_ALLOW_PORTS='${{ inputs.ufw_allow_ports }}'
-          
-          # Execute server-managed script
+          export ENABLE_PODMAN_FORWARD='${{ inputs.enable_podman_forward }}'
+          export ROUTE_PORTS='${{ inputs.route_ports }}'
+          export SET_FORWARD_POLICY_ACCEPT='${{ inputs.set_forward_policy_accept }}'
+          export WAN_IFACE='${{ inputs.wan_iface }}'
+          export PODMAN_IFACE='${{ inputs.podman_iface }}'
+
           /opt/uactions/scripts/infra/configure-ufw.sh

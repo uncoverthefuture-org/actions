@@ -177,6 +177,12 @@ inputs: # All parameters accepted by this action
   require_dns_match: # (Reserved) Gate changes behind DNS match
     required: false
     default: 'true'
+  domain_aliases: # Optional comma or space-separated aliases (e.g., www.example.com, api.example.com)
+    required: false
+    default: ''
+  include_www_alias: # When true and domain is set, also include www.<domain> as alias
+    required: false
+    default: 'false'
 
 runs: # Composite action implementation
   using: 'composite'
@@ -449,6 +455,8 @@ runs: # Composite action implementation
           export DOMAIN_INPUT='${{ inputs.domain }}'
           export DOMAIN_DEFAULT='${{ steps.dfl.outputs.domain_default }}'
           export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'
+          export DOMAIN_ALIASES='${{ inputs.domain_aliases }}'
+          export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
 
           # Execute deployment runner script
           /opt/uactions/scripts/app/run-deployment.sh

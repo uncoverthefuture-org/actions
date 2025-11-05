@@ -309,7 +309,39 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
   else
     LABEL_ARGS+=(--label "traefik.enable=true")
 
-    printf -v ROUTER_RULE_LABEL 'traefik.http.routers.%s.rule=Host(`%s`)' "$ROUTER_NAME" "$DOMAIN"
+    # Build Host() list with optional aliases and www
+    HOSTS=("$DOMAIN")
+    if [[ -n "${DOMAIN_ALIASES:-}" ]]; then
+      # commas to spaces
+      read -r -a _aliases <<< "$(echo "${DOMAIN_ALIASES}" | tr ',' ' ')"
+      for a in "${_aliases[@]}"; do
+        [[ -z "$a" ]] && continue
+        HOSTS+=("$a")
+      done
+    fi
+    case "${INCLUDE_WWW_ALIAS,,}" in
+      1|y|yes|true)
+        HOSTS+=("www.${DOMAIN}")
+        ;;
+    esac
+    # De-duplicate
+    UNIQ_HOSTS=()
+    seen=""
+    for h in "${HOSTS[@]}"; do
+      [[ -z "$h" ]] && continue
+      if [[ ",${seen}," != *",${h},"* ]]; then
+        UNIQ_HOSTS+=("$h")
+        seen+="${seen:+,}${h}"
+      fi
+    done
+    # Compose Host(`a`,`b`)
+    HOST_RULE_ARGS=""
+    for idx in "${!UNIQ_HOSTS[@]}"; do
+      d="${UNIQ_HOSTS[$idx]}"
+      if [[ $idx -gt 0 ]]; then HOST_RULE_ARGS+=","; fi
+      HOST_RULE_ARGS+="\`${d}\`"
+    done
+    printf -v ROUTER_RULE_LABEL 'traefik.http.routers.%s.rule=Host(%s)' "$ROUTER_NAME" "$HOST_RULE_ARGS"
     LABEL_ARGS+=(--label "$ROUTER_RULE_LABEL")
     printf -v ROUTER_SERVICE_LABEL 'traefik.http.routers.%s.service=%s' "$ROUTER_NAME" "$ROUTER_NAME"
     LABEL_ARGS+=(--label "$ROUTER_SERVICE_LABEL")
