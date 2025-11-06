@@ -131,6 +131,9 @@ runs:
         tags: |
           type=raw,value=${{ inputs.image_tag }}
 
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
     # ========================================================================
     # STEP 4: Build and push Docker image
     # ========================================================================
@@ -158,3 +161,5 @@ runs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
