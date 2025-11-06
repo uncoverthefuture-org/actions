@@ -120,55 +120,65 @@ runs:
     - name: Stage Traefik script for upload
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
       shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        WORKSPACE: ${{ github.workspace }}
       run: |
         set -euo pipefail
-        mkdir -p ${{ runner.temp }}/scripts/traefik
-        cp ./.github/actions/scripts/traefik/install-traefik.sh ${{ runner.temp }}/scripts/traefik/
+        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
+        cp ./.github/actions/scripts/traefik/install-traefik.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/"
 
     - name: Stage setup-traefik script for upload
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
       shell: bash
       run: |
         set -euo pipefail
-        mkdir -p ${{ runner.temp }}/scripts/traefik
-        cp ./.github/actions/scripts/traefik/setup-traefik.sh ${{ runner.temp }}/scripts/traefik/
+        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
+        cp ./.github/actions/scripts/traefik/setup-traefik.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/"
 
     - name: Stage ensure-traefik-config script for upload
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
       shell: bash
       run: |
         set -euo pipefail
-        mkdir -p ${{ runner.temp }}/scripts/traefik
-        cp ./.github/actions/scripts/traefik/ensure-traefik-config.sh ${{ runner.temp }}/scripts/traefik/
+        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
+        cp ./.github/actions/scripts/traefik/ensure-traefik-config.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/"
 
     - name: Stage quadlet installer script for upload
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
       shell: bash
       run: |
         set -euo pipefail
-        mkdir -p ${{ runner.temp }}/scripts/traefik
-        cp ./.github/actions/scripts/traefik/install-quadlet-sockets.sh ${{ runner.temp }}/scripts/traefik/
+        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
+        cp ./.github/actions/scripts/traefik/install-quadlet-sockets.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/"
 
     - name: Stage assert-socket-and-selinux script for upload
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
       shell: bash
       run: |
         set -euo pipefail
-        mkdir -p ${{ runner.temp }}/scripts/traefik
-        cp ./.github/actions/scripts/traefik/assert-socket-and-selinux.sh ${{ runner.temp }}/scripts/traefik/
+        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
+        cp ./.github/actions/scripts/traefik/assert-socket-and-selinux.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/"
+
+    - name: Verify staged scripts exist
+      id: ckstage
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        dir="$GITHUB_WORKSPACE/.uactions_cache/traefik"
+        if [ -d "$dir" ] && ls -1 "$dir"/*.sh >/dev/null 2>&1; then
+          echo "have=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "have=false" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Upload Traefik scripts
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' && steps.ckstage.outputs.have == 'true' }}
       uses: appleboy/scp-action@v0.1.4
       with:
         host: ${{ inputs.ssh_host }}
         username: ${{ inputs.ssh_user }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
-        source: ${{ runner.temp }}/scripts/traefik/install-traefik.sh,${{ runner.temp }}/scripts/traefik/setup-traefik.sh,${{ runner.temp }}/scripts/traefik/ensure-traefik-config.sh,${{ runner.temp }}/scripts/traefik/assert-socket-and-selinux.sh,${{ runner.temp }}/scripts/traefik/install-quadlet-sockets.sh
+        source: ".uactions_cache/traefik/*"
         target: /tmp
         overwrite: true
         timeout: 15s
