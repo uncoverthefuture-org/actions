@@ -35,6 +35,13 @@
 # ----------------------------------------------------------------------------
 set -euo pipefail
 
+LOG_FILE="/tmp/uactions_diag_latest.log"
+{ printf '===== run-deployment.sh start %s =====\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"; } >> "$LOG_FILE"
+exec > >(tee -a "$LOG_FILE") 2>&1
+trap 'code=$?; printf "run-deployment.sh error exit %s at %s\n" "$code" "$(date -u "+%Y-%m-%d %H:%M:%S UTC")" >> "$LOG_FILE"; exit "$code"' ERR
+trap '{ printf "===== run-deployment.sh end %s =====\n" "$(date -u "+%Y-%m-%d %H:%M:%S UTC")"; }' EXIT
+if [ "${DEBUG:-false}" = "true" ]; then set -x; fi
+
 # --- Resolve inputs -----------------------------------------------------------------
 # Get all environment variables with defaults
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-}"

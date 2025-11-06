@@ -397,9 +397,34 @@ runs: # Composite action implementation
           set -euo pipefail
           /opt/uactions/scripts/traefik/probe-traefik.sh preflight
 
+    - name: Check remote deploy scripts presence
+      id: rchk
+      if: ${{ steps.reach.outputs.reachable == 'true' }}
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"; trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+        if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+          'test -x /opt/uactions/scripts/app/run-deployment.sh || test -x /opt/uactions/scripts/app/deploy-container.sh'; then
+          echo "have_remote=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "have_remote=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Stage deployment scripts for upload
       id: stage_deploy_scripts
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
+      if: ${{ steps.reach.outputs.reachable == 'true' && (inputs.skip_upload != 'true' || steps.rchk.outputs.have_remote != 'true') }}
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -418,7 +443,7 @@ runs: # Composite action implementation
         echo "have_scripts=$have" >> "$GITHUB_OUTPUT"
 
     - name: Upload deployment scripts
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' && steps.stage_deploy_scripts.outputs.have_scripts == 'true' }}
+      if: ${{ steps.reach.outputs.reachable == 'true' && steps.stage_deploy_scripts.outputs.have_scripts == 'true' && (inputs.skip_upload != 'true' || steps.rchk.outputs.have_remote != 'true') }}
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ inputs.ssh_host }}
@@ -496,12 +521,22 @@ runs: # Composite action implementation
           export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
           export DEBUG='${{ inputs.debug }}'
 
-          # Execute deployment runner script
-          /opt/uactions/scripts/app/run-deployment.sh
+          # Execute deployment: prefer run-deployment.sh; fallback to deploy-container.sh
+          if [ -x /opt/uactions/scripts/app/run-deployment.sh ]; then
+            /opt/uactions/scripts/app/run-deployment.sh
+          elif [ -x /opt/uactions/scripts/app/deploy-container.sh ]; then
+            echo '::warning::run-deployment.sh not found; falling back to deploy-container.sh'
+            /opt/uactions/scripts/app/deploy-container.sh
+          else
+            echo '::error::No deployment scripts found under /opt/uactions/scripts/app' >&2
+            ls -la /opt/uactions/scripts/app || true
+            exit 1
+          fi
 
     - name: Traefik post-deploy routing check
       if: ${{ inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
+      continue-on-error: true
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
