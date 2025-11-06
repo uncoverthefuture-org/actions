@@ -416,7 +416,7 @@ runs: # Composite action implementation
         fi
         chmod 600 "$KEY_FILE"
         if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-          'test -x /opt/uactions/scripts/app/run-deployment.sh || test -x /opt/uactions/scripts/app/deploy-container.sh'; then
+          'test -x /opt/uactions/scripts/app/run-deployment.sh && test -x /opt/uactions/scripts/app/deploy-container.sh'; then
           echo "have_remote=true" >> "$GITHUB_OUTPUT"
         else
           echo "have_remote=false" >> "$GITHUB_OUTPUT"
@@ -573,3 +573,4 @@ runs: # Composite action implementation
         router_name: ${{ steps.dfl.outputs.traefik_router }}
         whoami_probe: ${{ inputs.enable_traefik }}
         traefik_network_name: ${{ inputs.traefik_network_name }}
+        diagnostics_fail_on_issues: 'false'
