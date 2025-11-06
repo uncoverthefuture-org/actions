@@ -58,6 +58,12 @@ inputs: # All parameters accepted by this action
     # WEB_CONTAINER_PORT/TARGET_PORT/PORT in the remote .env) so labels map correctly.
     default: '8080'
 
+  # Deployment directories
+  deployment_base_dir:
+    description: 'Base directory for deployments on remote server. Default: ~/deployments (user-writable, no sudo required)'
+    required: false
+    default: '~/deployments'
+
   # Auto env secret resolution (reads job env like PROD_ENV_B64/STAGING_ENV_B64/DEV_ENV_B64)
   auto_fetch_env:
     description: 'When true and env_b64 not provided, resolve from job env based on env_name'
@@ -508,6 +514,8 @@ runs: # Composite action implementation
           export CONTAINER_NAME_IN='${{ inputs.container_name }}'
           if [ -n '${{ inputs.env_file_path }}' ]; then
             export ENV_FILE_PATH_BASE='${{ inputs.env_file_path }}'
+          else
+            export ENV_FILE_PATH_BASE='${{ inputs.deployment_base_dir }}'
           fi
           export HOST_PORT_IN='${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}'
           export CONTAINER_PORT_IN='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'

@@ -53,7 +53,7 @@ REGISTRY_TOKEN="${REGISTRY_TOKEN:-}"
 APP_SLUG="${APP_SLUG:-}"
 ENV_NAME="${ENV_NAME:-}"
 CONTAINER_NAME_IN="${CONTAINER_NAME_IN:-}"
-ENV_FILE_PATH_BASE="${ENV_FILE_PATH_BASE:-/var/deployments}"
+ENV_FILE_PATH_BASE="${ENV_FILE_PATH_BASE:-${HOME}/deployments}"
 HOST_PORT_IN="${HOST_PORT_IN:-}"
 # NOTE: Project standard default container port is 8080. Override via
 #   - input `container_port`, or

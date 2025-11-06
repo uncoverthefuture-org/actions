@@ -72,8 +72,9 @@ inputs:
     description: 'Environment name (production, staging, development). Required. Used in file path'
     required: true
   env_file_path:
-    description: 'Base directory for env files. Default: /var/deployments. Final path: <env_file_path>/<env_name>/<app_slug>/.env'
+    description: 'Base directory for env files. Default: ~/deployments (user-writable, no sudo required). Final path: <env_file_path>/<env_name>/<app_slug>/.env'
     required: false
+    default: '~/deployments'
   app_slug:
     description: 'Application slug for directory structure. Auto-derived from repo if not provided. Example: myapp'
     required: false
