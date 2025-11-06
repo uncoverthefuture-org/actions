@@ -455,9 +455,11 @@ runs:
         
         SUMMARY_EOF
         
-        ---
-        **Generated at:** `$(date -u +'%Y-%m-%d %H:%M:%S UTC')`
-        SUMMARY_EOF
+        TS="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+        {
+          echo '---'
+          printf '**Generated at:** `%s`\n' "$TS"
+        } >> "$GITHUB_STEP_SUMMARY"
 
         if [ "${TRAEFIK_NOT_RUNNING:-false}" = "true" ]; then
           echo '::error::Traefik container is not running after setup.'

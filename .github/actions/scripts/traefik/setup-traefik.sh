@@ -143,6 +143,85 @@ if [[ -x "/opt/uactions/scripts/traefik/assert-socket-and-selinux.sh" ]]; then
   /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh
 fi
 
+CFG_PATH="$HOME/.config/traefik/traefik.yml"
+if command -v sha256sum >/dev/null 2>&1; then
+  CFG_SHA="$(sha256sum "$CFG_PATH" 2>/dev/null | awk '{print $1}')"
+else
+  CFG_SHA="$(shasum -a 256 "$CFG_PATH" 2>/dev/null | awk '{print $1}')"
+fi
+: "${CFG_SHA:=missing}"
+CONFIG_SRC="$(printf '%s\n' \
+  "v:$TRAEFIK_VERSION" \
+  "acme:$TRAEFIK_ENABLE_ACME:$TRAEFIK_EMAIL:$TRAEFIK_ACME_DNS_PROVIDER:$TRAEFIK_ACME_DNS_RESOLVERS" \
+  "ping:$TRAEFIK_PING_ENABLED" \
+  "dash:$TRAEFIK_DASHBOARD:$DASHBOARD_USER" \
+  "metrics:$TRAEFIK_ENABLE_METRICS:$TRAEFIK_METRICS_ENTRYPOINT:$TRAEFIK_METRICS_ADDRESS" \
+  "net:$TRAEFIK_USE_HOST_NETWORK:$TRAEFIK_NETWORK_NAME" \
+  "dns:$TRAEFIK_DNS_SERVERS" \
+  "cfg:$CFG_SHA")"
+if command -v sha256sum >/dev/null 2>&1; then
+  CONFIG_HASH="$(printf '%s' "$CONFIG_SRC" | sha256sum | awk '{print $1}')"
+else
+  CONFIG_HASH="$(printf '%s' "$CONFIG_SRC" | shasum -a 256 | awk '{print $1}')"
+fi
+
+if podman container exists traefik >/dev/null 2>&1; then
+  EXIST_HASH="$(podman inspect -f '{{ index .Config.Labels "org.uactions.traefik.confighash" }}' traefik 2>/dev/null || true)"
+  STATUS="$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)"
+  if [[ "$EXIST_HASH" = "$CONFIG_HASH" ]]; then
+    if [[ "$STATUS" = "running" ]]; then
+      if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
+         ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
+        echo "✅ Traefik already running and up-to-date (confighash match); skipping restart."
+        exit 0
+      else
+        echo "::notice::Traefik confighash matches but listeners not detected; restarting container to recover ..."
+        podman restart traefik >/dev/null 2>&1 || true
+        ok=false
+        for i in {1..10}; do
+          if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
+             ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then ok=true; break; fi
+          sleep 2
+        done
+        if $ok; then
+          echo "✅ Traefik recovered after restart; leaving container as-is."
+          if systemctl --user is-enabled --quiet container-traefik.service 2>/dev/null; then
+            :
+          else
+            if podman generate systemd --files --name traefik >/dev/null 2>&1; then
+              podman generate systemd --files --name traefik
+              mkdir -p "$HOME/.config/systemd/user"
+              mv -f container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null || true
+              systemctl --user daemon-reload >/dev/null 2>&1 || true
+              systemctl --user enable --now container-traefik.service >/dev/null 2>&1 || true
+            fi
+          fi
+          exit 0
+        fi
+        echo "::warning::Traefik restart did not restore listeners; will recreate container."
+      fi
+    else
+      echo "::notice::Traefik container exists but status='${STATUS}'; attempting start ..."
+      podman start traefik >/dev/null 2>&1 || true
+      if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
+         ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
+        echo "✅ Traefik started and listeners present; skipping recreate."
+        if systemctl --user is-enabled --quiet container-traefik.service 2>/dev/null; then :; else
+          if podman generate systemd --files --name traefik >/dev/null 2>&1; then
+            podman generate systemd --files --name traefik
+            mkdir -p "$HOME/.config/systemd/user"
+            mv -f container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null || true
+            systemctl --user daemon-reload >/dev/null 2>&1 || true
+            systemctl --user enable --now container-traefik.service >/dev/null 2>&1 || true
+          fi
+        fi
+        exit 0
+      fi
+      echo "::warning::Traefik start did not show listeners; will recreate container."
+    fi
+  fi
+fi
+
 echo "🔍 Checking for existing listeners on ports 80/443 ..."
 CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk '/:(80|443) / {print $0}' || true)"
 if [[ -n "$CONFLICTING_SERVICES" ]]; then
@@ -225,6 +304,7 @@ RUN_ARGS+=(-v "$HOME/.local/share/traefik/acme.json":/letsencrypt/acme.json:Z)
 RUN_ARGS+=(-v "$HOST_SOCK":/var/run/docker.sock:Z)
 RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80)
 RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443)
+RUN_ARGS+=(--label org.uactions.managed-by=uactions --label "org.uactions.traefik.confighash=${CONFIG_HASH}")
 
 if [[ "$TRAEFIK_ENABLE_ACME" == "true" ]]; then
   RUN_ARGS+=(
@@ -315,22 +395,26 @@ if ! $ok; then
 fi
 
 echo "🧾 Generating systemd user service for Traefik ..."
-if podman generate systemd --files --name traefik >/dev/null 2>&1; then
-  podman generate systemd --files --name traefik
-  mkdir -p "$HOME/.config/systemd/user"
-  if mv container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null; then
-    if systemctl --user daemon-reload >/dev/null 2>&1; then
-      if systemctl --user enable --now container-traefik.service >/dev/null 2>&1; then
-        echo "  ✓ Installed container-traefik.service and enabled persistence"
+if systemctl --user is-enabled --quiet container-traefik.service 2>/dev/null; then
+  echo "  ✓ container-traefik.service already enabled; skipping regeneration"
+else
+  if podman generate systemd --files --name traefik >/dev/null 2>&1; then
+    podman generate systemd --files --name traefik
+    mkdir -p "$HOME/.config/systemd/user"
+    if mv container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null; then
+      if systemctl --user daemon-reload >/dev/null 2>&1; then
+        if systemctl --user enable --now container-traefik.service >/dev/null 2>&1; then
+          echo "  ✓ Installed container-traefik.service and enabled persistence"
+        else
+          echo "::warning::Failed to enable/start container-traefik.service (user systemd may be unavailable)." >&2
+        fi
       else
-        echo "::warning::Failed to enable/start container-traefik.service (user systemd may be unavailable)." >&2
+        echo "::warning::systemctl --user daemon-reload failed; user-level systemd may be unavailable." >&2
       fi
     else
-      echo "::warning::systemctl --user daemon-reload failed; user-level systemd may be unavailable." >&2
+      echo "::warning::Failed to install container-traefik.service; check permissions." >&2
     fi
   else
-    echo "::warning::Failed to install container-traefik.service; check permissions." >&2
+    echo "::warning::podman generate systemd not available; skipping persistence." >&2
   fi
-else
-  echo "::warning::podman generate systemd not available; skipping persistence." >&2
 fi
