@@ -146,10 +146,22 @@ fi
 echo "🔍 Checking for existing listeners on ports 80/443 ..."
 CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk '/:(80|443) / {print $0}' || true)"
 if [[ -n "$CONFLICTING_SERVICES" ]]; then
-  echo "❌ ERROR: Detected services already listening on 80/443:" >&2
-  printf '%s\n' "$CONFLICTING_SERVICES" >&2
-  echo "   Stop or reconfigure the conflicting service before continuing." >&2
-  exit 1
+  echo "⚠️  Detected listeners on 80/443; attempting to stop existing 'traefik' container if running ..." >&2
+  if podman container exists traefik >/dev/null 2>&1; then
+    podman stop traefik >/dev/null 2>&1 || true
+    podman rm traefik   >/dev/null 2>&1 || true
+    echo "  ✓ Stopped and removed existing traefik container"
+  fi
+  # Re-check after attempting to stop existing Traefik
+  CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk '/:(80|443) / {print $0}' || true)"
+  if [[ -n "$CONFLICTING_SERVICES" ]]; then
+    echo "❌ ERROR: Detected services still listening on 80/443:" >&2
+    printf '%s\n' "$CONFLICTING_SERVICES" >&2
+    echo "   Stop or reconfigure the conflicting service before continuing." >&2
+    exit 1
+  else
+    echo "  ✓ Ports 80/443 are free after stopping existing traefik"
+  fi
 else
   echo "  ✓ No conflicting listeners detected"
 fi

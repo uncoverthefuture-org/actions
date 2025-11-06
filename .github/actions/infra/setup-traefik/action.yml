@@ -415,6 +415,46 @@ runs:
         cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
         ```
         
+        #### 🧯 Resolution Guide: Ports 80/443 In Use
+        
+        The server reports something is already listening on port 80 and/or 443. This commonly means another container (often Traefik or a previous app) is binding these ports. Use the steps below to find and free the ports, then re-run this workflow.
+        
+        1) Identify listeners and candidate containers
+        
+        ```bash
+        ss -ltnp | grep -E ':80|:443' || true
+        podman ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}' | grep -E ':80|:443' || true
+        ```
+        
+        2) Stop and remove the conflicting container(s)
+        
+        Replace <NAME> with the container name from the table above.
+        
+        ```bash
+        podman stop <NAME> || true
+        podman rm <NAME>   || true
+        ```
+        
+        3) If the container belongs to another user (e.g., a legacy 'deployer' account)
+        
+        ```bash
+        sudo -u deployer podman ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}' | grep -E ':80|:443' || true
+        sudo -u deployer podman stop traefik || true
+        sudo -u deployer podman rm traefik   || true
+        ```
+        
+        4) If a legacy system service holds 80/443 (nginx/apache/old traefik)
+        
+        ```bash
+        sudo systemctl disable --now nginx apache2 traefik || true
+        ```
+        
+        5) Re-run this workflow step when ports 80/443 are free
+        
+        --
+        
+        SUMMARY_EOF
+        
         ---
         **Generated at:** `$(date -u +'%Y-%m-%d %H:%M:%S UTC')`
         SUMMARY_EOF
