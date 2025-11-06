@@ -109,6 +109,12 @@ runs:
             echo '::error::Missing $HOME/uactions-scripts.tgz on remote host (upload failed or was skipped)';
             exit 1
           fi
+          # Validate tarball integrity to avoid 'tar: empty archive'
+          if ! tar -tzf "$HOME/uactions-scripts.tgz" >/dev/null 2>&1; then
+            echo '::error::Invalid or empty tar archive at $HOME/uactions-scripts.tgz (tar -tzf failed)';
+            ls -lh "$HOME/uactions-scripts.tgz" || true
+            exit 1
+          fi
           # Replace scripts atomically
           TMPDIR="$(mktemp -d)"
           tar -xzf "$HOME/uactions-scripts.tgz" -C "$TMPDIR"

@@ -271,9 +271,11 @@ runs:
         NETWORK_JOIN_CHECK="unknown"
         IN_CONTAINER_LISTENERS=""
         if [ "$CONT_PRESENT" = "yes" ]; then
-          APP_LABELS=$(${SSH_BASE[@]} "podman inspect -f '{{ range $k, $v := .Config.Labels }}{{ $k }}={{ $v }}{{ printf \"\\n\" }}{{ end }}' '${CONT_NAME}' 2>/dev/null | grep '^traefik\.' || true" 2>/dev/null || echo "")
-          APP_NETWORKS=$(${SSH_BASE[@]} "podman inspect -f '{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }} {{ end }}' '${CONT_NAME}' 2>/dev/null | sed 's/ *$//'" 2>/dev/null || echo "")
-          TRAEFIK_NETWORKS=$(${SSH_BASE[@]} "podman inspect -f '{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }} {{ end }}' traefik 2>/dev/null | sed 's/ *$//'" 2>/dev/null || echo "")
+          TEMPLATE_LABELS='{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}'
+          TEMPLATE_NETS='{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }} {{ end }}'
+          APP_LABELS=$(${SSH_BASE[@]} env TPL="$TEMPLATE_LABELS" CN="$CONT_NAME" bash -lc 'podman inspect -f "$TPL" "$CN" 2>/dev/null | grep -i "^traefik\." || true' 2>/dev/null || echo "")
+          APP_NETWORKS=$(${SSH_BASE[@]} env TPL="$TEMPLATE_NETS" CN="$CONT_NAME" bash -lc 'podman inspect -f "$TPL" "$CN" 2>/dev/null | sed "s/ *$//"' 2>/dev/null || echo "")
+          TRAEFIK_NETWORKS=$(${SSH_BASE[@]} env TPL="$TEMPLATE_NETS" bash -lc 'podman inspect -f "$TPL" traefik 2>/dev/null | sed "s/ *$//"' 2>/dev/null || echo "")
           IN_CONTAINER_LISTENERS=$(${SSH_BASE[@]} "podman exec '${CONT_NAME}' sh -lc 'ss -ltnp 2>/dev/null | head -n 60 || netstat -ltnp 2>/dev/null | head -n 60'" 2>/dev/null || echo "")
           if printf '%s' "$APP_NETWORKS" | grep -qw "${TRAEFIK_NETWORK_NAME}" && printf '%s' "$TRAEFIK_NETWORKS" | grep -qw "${TRAEFIK_NETWORK_NAME}"; then
             NETWORK_JOIN_CHECK="✅ both containers on ${TRAEFIK_NETWORK_NAME}"
