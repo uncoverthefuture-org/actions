@@ -321,6 +321,7 @@ runs: # Composite action implementation
         fi
 
     - name: Deploy preflight # Validate inputs, optional host prep, write env, registry login
+      id: preflight
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/app/common/deploy-preflight
       with:
@@ -363,7 +364,7 @@ runs: # Composite action implementation
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
-        traefik_email: ${{ inputs.traefik_email }}
+        traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || steps.preflight.outputs.traefik_email }}
         enable_acme: ${{ inputs.enable_acme }}
         network_name: ${{ inputs.traefik_network_name }}
         dns_servers: ${{ inputs.dns_servers }}

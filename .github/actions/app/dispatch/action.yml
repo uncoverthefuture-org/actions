@@ -148,6 +148,12 @@ inputs:
   enable_traefik:
     required: false
     default: ''
+  enable_acme:
+    required: false
+    default: ''
+  dns_servers:
+    required: false
+    default: ''
   ufw_allow_ports:
     required: false
     default: ''
@@ -379,6 +385,9 @@ runs:
         domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
         domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
         enable_traefik: ${{ inputs.enable_traefik != '' && inputs.enable_traefik || fromJSON(steps.params.outputs.json).enable_traefik || 'true' }}
+        enable_acme: ${{ inputs.enable_acme != '' && inputs.enable_acme || fromJSON(steps.params.outputs.json).enable_acme }}
+        traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || fromJSON(steps.params.outputs.json).traefik_email }}
+        dns_servers: ${{ inputs.dns_servers != '' && inputs.dns_servers || fromJSON(steps.params.outputs.json).dns_servers }}
         ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
 
     - name: ssh-container-deploy
