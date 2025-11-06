@@ -309,6 +309,9 @@ DOMAIN="$DOMAIN_INPUT"
 if [[ -z "$DOMAIN" ]]; then DOMAIN="$DOMAIN_DEFAULT"; fi
 
 TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-}"
+if [[ "$TRAEFIK_ENABLED" == "true" && -z "$TRAEFIK_NETWORK_NAME" ]]; then
+  TRAEFIK_NETWORK_NAME="traefik-network"
+fi
 
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
   if [[ "${DEBUG:-false}" == "true" ]]; then
@@ -368,6 +371,9 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
     LABEL_ARGS+=(--label "$ROUTER_ENTRYPOINT_LABEL")
     printf -v SERVICE_PORT_LABEL 'traefik.http.services.%s.loadbalancer.server.port=%s' "$ROUTER_NAME" "$CONTAINER_PORT"
     LABEL_ARGS+=(--label "$SERVICE_PORT_LABEL")
+    if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
+      LABEL_ARGS+=(--label "traefik.docker.network=${TRAEFIK_NETWORK_NAME}")
+    fi
   fi
 else
   echo "ℹ️  Traefik disabled; container will rely on host port mapping"

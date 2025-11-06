@@ -193,6 +193,9 @@ inputs: # All parameters accepted by this action
   include_www_alias: # When true and domain is set, also include www.<domain> as alias
     required: false
     default: 'true'
+  probe_path: # Path to probe on the domain (e.g., /health). Defaults to '/'
+    required: false
+    default: '/'
 
 runs: # Composite action implementation
   using: 'composite'
@@ -506,7 +509,8 @@ runs: # Composite action implementation
           ROUTER='${{ steps.dfl.outputs.traefik_router }}'
           DOMAIN_EFFECTIVE='${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }}'
           SERVICE_PORT='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'
-          /opt/uactions/scripts/traefik/probe-traefik.sh post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT"
+          PROBE_PATH='${{ inputs.probe_path }}'
+          /opt/uactions/scripts/traefik/probe-traefik.sh post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT" "$PROBE_PATH"
 
     - name: Deployment status summary
       uses: ./.github/actions/app/deployment-status-summary

@@ -24,6 +24,13 @@ MODE="${1:-}"
 ROUTER_NAME="${2:-}"
 DOMAIN="${3:-}"
 SERVICE_PORT="${4:-}"
+PROBE_PATH="${5:-/}"
+
+case "$PROBE_PATH" in
+  "") PROBE_PATH="/" ;;
+  /*) ;;
+  *) PROBE_PATH="/$PROBE_PATH" ;;
+esac
 
 log() { printf '%s\n' "$*"; }
 err() { printf '❌ %s\n' "$*" >&2; }
@@ -108,7 +115,7 @@ preflight() {
 }
 
 post() {
-  local router="$ROUTER_NAME" domain="$DOMAIN" port="$SERVICE_PORT"
+  local router="$ROUTER_NAME" domain="$DOMAIN" port="$SERVICE_PORT" path="$PROBE_PATH"
   if [ -z "$domain" ]; then
     err "Domain is required for post-deploy probe"
     exit 4
@@ -116,9 +123,9 @@ post() {
   require_cmd curl
 
   local tries=12 delay=5 i=1 code=""
-  notice "Probing https://$domain via Traefik (up to $tries tries) ..."
+  notice "Probing https://$domain$path via Traefik (up to $tries tries) ..."
   while [ $i -le $tries ]; do
-    code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 "https://$domain" || echo "000")
+    code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 "https://$domain$path" || echo "000")
     if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
       log "✅ Domain probe succeeded (HTTP $code)"
       return 0
