@@ -38,6 +38,7 @@ TRAEFIK_METRICS_ENTRYPOINT="${TRAEFIK_METRICS_ENTRYPOINT:-metrics}"
 TRAEFIK_METRICS_ADDRESS="${TRAEFIK_METRICS_ADDRESS:-:8082}"
 TRAEFIK_ACME_DNS_PROVIDER="${TRAEFIK_ACME_DNS_PROVIDER:-}"
 TRAEFIK_ACME_DNS_RESOLVERS="${TRAEFIK_ACME_DNS_RESOLVERS:-}"
+TRAEFIK_DNS_SERVERS="${TRAEFIK_DNS_SERVERS:-}"
 DASHBOARD_USER="${DASHBOARD_USER:-}"
 DASHBOARD_PASS_BCRYPT="${DASHBOARD_PASS_BCRYPT:-}"
 
@@ -194,6 +195,17 @@ else
   if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
     RUN_ARGS+=(--network "$TRAEFIK_NETWORK_NAME")
   fi
+fi
+
+# Optional: set DNS servers for container to avoid resolution timeouts
+if [[ -n "$TRAEFIK_DNS_SERVERS" ]]; then
+  # Support comma or space separated list
+  IFS=', ' read -r -a _DNS_ARR <<< "$TRAEFIK_DNS_SERVERS"
+  for _dns in "${_DNS_ARR[@]}"; do
+    if [[ -n "$_dns" ]]; then
+      RUN_ARGS+=(--dns "$_dns")
+    fi
+  done
 fi
 
 RUN_ARGS+=(-v "$HOME/.config/traefik/traefik.yml":/etc/traefik/traefik.yml:ro)

@@ -20,7 +20,8 @@ inputs:
     required: false
   traefik_email:
     description: "Email used for Let's Encrypt certificates"
-    required: true
+    required: false
+    default: ''
   traefik_version:
     description: 'Traefik image tag'
     required: false
@@ -59,6 +60,10 @@ inputs:
     default: ''
   acme_dns_resolvers:
     description: 'Optional comma-separated DNS resolvers for ACME DNS challenge.'
+    required: false
+    default: ''
+  dns_servers:
+    description: 'Optional comma or space-separated DNS servers to set in Traefik container (passed as --dns). Helps avoid DNS timeouts.'
     required: false
     default: ''
   enable_dashboard:
@@ -229,6 +234,7 @@ runs:
           export TRAEFIK_METRICS_ADDRESS='${{ inputs.metrics_address }}'
           export TRAEFIK_ACME_DNS_PROVIDER='${{ inputs.acme_dns_provider }}'
           export TRAEFIK_ACME_DNS_RESOLVERS='${{ inputs.acme_dns_resolvers }}'
+          export TRAEFIK_DNS_SERVERS='${{ inputs.dns_servers }}'
           export TRAEFIK_DASHBOARD='${{ inputs.enable_dashboard }}'
           export DASHBOARD_USER='${{ inputs.dashboard_user }}'
           export DASHBOARD_PASS_BCRYPT='${{ inputs.dashboard_password_bcrypt }}'

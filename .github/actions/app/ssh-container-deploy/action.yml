@@ -63,11 +63,15 @@ inputs: # All parameters accepted by this action
   enable_acme:
     description: 'When true (default), attach certresolver label for ACME; set false to skip Let''s Encrypt while debugging.'
     required: false
-    default: 'true'
+    default: 'false'
   traefik_network_name:
     description: 'Podman network to connect service containers to when Traefik is enabled (default: traefik-network).'
     required: false
     default: 'traefik-network'
+  dns_servers:
+    description: 'Optional comma or space-separated DNS servers for Traefik container (passed as --dns).'
+    required: false
+    default: ''
   env_secret_prefix:
     description: 'Prefix for env secret env var name'
     required: false
@@ -350,6 +354,20 @@ runs: # Composite action implementation
         perform_pull: 'false'
         image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }} # Image path
         image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }} # Tag
+
+    - name: Reconcile Traefik config (per-deploy)
+      if: ${{ inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
+      uses: ./.github/actions/infra/setup-traefik
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        traefik_email: ${{ inputs.traefik_email }}
+        enable_acme: ${{ inputs.enable_acme }}
+        network_name: ${{ inputs.traefik_network_name }}
+        dns_servers: ${{ inputs.dns_servers }}
+        skip_upload: 'false'
 
     - name: Traefik preflight health (fail fast)
       if: ${{ inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}

@@ -136,6 +136,7 @@ runs:
         if $REACH; then echo "reachable=true" >> "$GITHUB_OUTPUT"; else echo "reachable=false" >> "$GITHUB_OUTPUT"; fi
 
     - name: Stage diagnostics script for upload
+      id: stage_diag
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
       shell: bash
       run: |
@@ -143,8 +144,20 @@ runs:
         mkdir -p ${{ runner.temp }}/scripts/infra
         cp ./.github/actions/scripts/infra/diagnose-routing.sh ${{ runner.temp }}/scripts/infra/
 
-    - name: Upload diagnostics script
+    - name: Verify staged script exists
+      id: ckstage
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -s "${{ runner.temp }}/scripts/infra/diagnose-routing.sh" ]; then
+          echo "have=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "have=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload diagnostics script
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' && steps.ckstage.outputs.have == 'true' }}
       uses: appleboy/scp-action@v0.1.4
       with:
         host: ${{ inputs.ssh_host }}
