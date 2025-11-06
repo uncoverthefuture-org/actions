@@ -72,6 +72,10 @@ inputs: # All parameters accepted by this action
     description: 'Run Traefik on host network to avoid CNI DNS issues (true recommended).'
     required: false
     default: 'true'
+  traefik_skip_upload:
+    description: 'Skip uploading Traefik scripts (assumes scripts already installed on server).'
+    required: false
+    default: 'true'
   dns_servers:
     description: 'Optional comma or space-separated DNS servers for Traefik container (passed as --dns).'
     required: false
@@ -376,7 +380,7 @@ runs: # Composite action implementation
         use_host_network: ${{ inputs.traefik_use_host_network }}
         network_name: ${{ inputs.traefik_network_name }}
         dns_servers: ${{ inputs.dns_servers }}
-        skip_upload: 'false'
+        skip_upload: ${{ inputs.traefik_skip_upload }}
 
     - name: Traefik preflight health (fail fast)
       if: ${{ inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
@@ -393,7 +397,8 @@ runs: # Composite action implementation
           set -euo pipefail
           /opt/uactions/scripts/traefik/probe-traefik.sh preflight
 
-    - name: Stage run-deployment script for upload
+    - name: Stage deployment scripts for upload
+      id: stage_deploy_scripts
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
       shell: bash
       env:
@@ -402,30 +407,25 @@ runs: # Composite action implementation
       run: |
         set -euo pipefail
         mkdir -p "$WORKSPACE/.uactions_cache"
-        SRC_REL="../../scripts/app/run-deployment.sh"
-        cp "$ACTION_PATH/$SRC_REL" "$WORKSPACE/.uactions_cache/run-deployment.sh"
-
-    - name: Stage deploy-container script for upload
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        WORKSPACE: ${{ github.workspace }}
-      run: |
-        set -euo pipefail
-        mkdir -p "$WORKSPACE/.uactions_cache"
-        SRC_REL="../../scripts/app/deploy-container.sh"
-        cp "$ACTION_PATH/$SRC_REL" "$WORKSPACE/.uactions_cache/deploy-container.sh"
+        # Try to copy both scripts from the action's scripts folder
+        SRC1="../../scripts/app/run-deployment.sh"
+        SRC2="../../scripts/app/deploy-container.sh"
+        cp "$ACTION_PATH/$SRC1" "$WORKSPACE/.uactions_cache/run-deployment.sh" 2>/dev/null || true
+        cp "$ACTION_PATH/$SRC2" "$WORKSPACE/.uactions_cache/deploy-container.sh" 2>/dev/null || true
+        have=false
+        [ -f "$WORKSPACE/.uactions_cache/run-deployment.sh" ] && have=true
+        [ -f "$WORKSPACE/.uactions_cache/deploy-container.sh" ] && have=true
+        echo "have_scripts=$have" >> "$GITHUB_OUTPUT"
 
     - name: Upload deployment scripts
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' && steps.stage_deploy_scripts.outputs.have_scripts == 'true' }}
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ inputs.ssh_host }}
         username: ${{ inputs.ssh_user }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
-        source: ".uactions_cache/deploy-container.sh,.uactions_cache/run-deployment.sh"
+        source: ".uactions_cache/*.sh"
         target: "/tmp"
         overwrite: true
         strip_components: 1

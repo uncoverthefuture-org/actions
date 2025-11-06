@@ -51,6 +51,7 @@ runs:
         if $ok; then echo "reachable=true" >> "$GITHUB_OUTPUT"; else echo "reachable=false" >> "$GITHUB_OUTPUT"; fi
     # Stage: Tar up the entire scripts directory into workspace cache
     - name: Stage scripts bundle
+      id: stage
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       shell: bash
       env:
@@ -59,22 +60,21 @@ runs:
       run: |
         set -euo pipefail
         mkdir -p "$WORKSPACE/.uactions_cache"
-        # Create a tarball of the scripts directory relative to this action
-        # scripts directory lives two levels up from this action path
         TAR_PATH="$WORKSPACE/.uactions_cache/uactions-scripts.tgz"
-        # scripts directory lives under .github/actions/scripts => two levels up from this action's dir
         SRC_ROOT="$(cd "$ACTION_PATH/../.." && pwd)"
         if [ ! -d "$SRC_ROOT/scripts" ]; then
-          echo 'Error: scripts directory not found relative to action path' >&2
-          exit 1
+          echo '::notice::No local scripts directory found; skipping server scripts upload.'
+          echo "has_bundle=false" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
         tar -C "$SRC_ROOT" -czf "$TAR_PATH" scripts
         ls -lh "$TAR_PATH"
+        echo "has_bundle=true" >> "$GITHUB_OUTPUT"
 
     # Upload: Transfer tarball to remote /tmp via scp
     - name: Upload scripts bundle
       id: upload
-      if: ${{ steps.reach.outputs.reachable == 'true' }}
+      if: ${{ steps.reach.outputs.reachable == 'true' && steps.stage.outputs.has_bundle == 'true' }}
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ inputs.ssh_host }}
@@ -90,7 +90,7 @@ runs:
 
     # Execute: Extract into /opt/uactions, set executable bits, stamp version
     - name: Install scripts on remote host
-      if: ${{ steps.reach.outputs.reachable == 'true' && steps.upload.outcome == 'success' }}
+      if: ${{ steps.reach.outputs.reachable == 'true' && steps.stage.outputs.has_bundle == 'true' && steps.upload.outcome == 'success' }}
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
