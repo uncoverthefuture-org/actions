@@ -5,7 +5,9 @@ DOMAIN="${DIAG_DOMAIN:-}"
 APP_CTN="${DIAG_APP_CONTAINER:-}"
 TRAEFIK_CTN="${DIAG_TRAEFIK_CONTAINER:-traefik}"
 HOST_PORT="${DIAG_HOST_PORT:-8080}"
-CONT_PORT="${DIAG_CONTAINER_PORT:-3000}"
+# NOTE: Project standard default container port is 8080. Override via
+# DIAG_CONTAINER_PORT environment variable if your app listens elsewhere.
+CONT_PORT="${DIAG_CONTAINER_PORT:-8080}"
 TIMEOUT=7
 
 has() { command -v "$1" >/dev/null 2>&1; }

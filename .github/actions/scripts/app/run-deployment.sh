@@ -55,7 +55,10 @@ ENV_NAME="${ENV_NAME:-}"
 CONTAINER_NAME_IN="${CONTAINER_NAME_IN:-}"
 ENV_FILE_PATH_BASE="${ENV_FILE_PATH_BASE:-/var/deployments}"
 HOST_PORT_IN="${HOST_PORT_IN:-}"
-CONTAINER_PORT_IN="${CONTAINER_PORT_IN:-3000}"
+# NOTE: Project standard default container port is 8080. Override via
+#   - input `container_port`, or
+#   - remote .env: WEB_CONTAINER_PORT / TARGET_PORT / PORT
+CONTAINER_PORT_IN="${CONTAINER_PORT_IN:-8080}"
 EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"

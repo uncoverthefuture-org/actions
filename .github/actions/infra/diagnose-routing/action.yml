@@ -47,7 +47,9 @@ inputs:
   container_port:
     description: 'Expected container port'
     required: false
-    default: '3000'
+    # NOTE: Project standard default container port is 8080. Override this input
+    # if your app listens elsewhere.
+    default: '8080'
   skip_upload:
     description: 'Skip uploading the diagnostics script (assumes it already exists on the host)'
     required: false

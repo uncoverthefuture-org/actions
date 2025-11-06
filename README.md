@@ -90,7 +90,10 @@ Each action has its own detailed README with inputs, outputs, and examples. Star
 
 ### Per-environment ports and Traefik routing
 
-- **Opinionated defaults**: All app deploy actions accept `host_port` and `container_port`. When you omit them, the scripts now default both ports to `8080` (falling back to `WEB_HOST_PORT`, `WEB_CONTAINER_PORT`, `TARGET_PORT`, or `PORT` when set). Non-Traefik deployments will fail fast with guidance if either port is missing or non-numeric.
+- **Opinionated defaults**: All app deploy actions accept `host_port` and `container_port`.
+  - When omitted, `host_port` defaults to `8080` (and is persisted per app/env, auto-incrementing if occupied).
+  - When omitted, `container_port` defaults to `8080` (falling back to `WEB_CONTAINER_PORT`, `TARGET_PORT`, or `PORT` when set).
+  - Non-Traefik deployments will fail fast with guidance if either port is missing or non-numeric.
 - **Collision avoidance for branches**: If you don't use Traefik and publish host ports instead, assign unique `host_port` per environment/branch in your workflow. Example strategy:
 
   ```yaml
@@ -108,7 +111,7 @@ Each action has its own detailed README with inputs, outputs, and examples. Star
            HDEC=$((16#$HHEX)); HOST_PORT=$((3200 + (HDEC % 700))) ;;
       esac
       echo "host_port=$HOST_PORT" >> "$GITHUB_OUTPUT"
-      echo "container_port=3000" >> "$GITHUB_OUTPUT"
+      echo "container_port=8080" >> "$GITHUB_OUTPUT"
   - name: Deploy App
     uses: uncoverthefuture-org/actions@master
     with:

@@ -68,6 +68,12 @@ runs:
           exit 0
         fi
         tar -C "$SRC_ROOT" -czf "$TAR_PATH" scripts
+        # Validate archive locally before upload
+        if ! tar -tzf "$TAR_PATH" >/dev/null 2>&1; then
+          echo '::error::Staged tarball appears invalid or empty (tar -tzf failed). Aborting upload.'
+          ls -lh "$TAR_PATH" || true
+          exit 1
+        fi
         ls -lh "$TAR_PATH"
         echo "has_bundle=true" >> "$GITHUB_OUTPUT"
 

@@ -53,6 +53,9 @@ inputs: # All parameters accepted by this action
   default_container_port:
     description: 'Default container port when not provided'
     required: false
+    # NOTE: Project standard default is 8080 (consistent across actions and scripts).
+    # Example: if your app listens on 4000, set `container_port: '4000'` (or define
+    # WEB_CONTAINER_PORT/TARGET_PORT/PORT in the remote .env) so labels map correctly.
     default: '8080'
 
   # Auto env secret resolution (reads job env like PROD_ENV_B64/STAGING_ENV_B64/DEV_ENV_B64)

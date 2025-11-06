@@ -46,14 +46,14 @@ The action determines ports in this order:
   1) `host_port` input
   2) `WEB_HOST_PORT` from remote `.env`
   3) `PORT` from remote `.env`
-  4) Default: `3000`
+  4) Default: `8080` (persisted per app/env; auto-increments if occupied)
 
 - Container port (`CONTAINER_PORT`):
   1) `container_port` input
   2) `WEB_CONTAINER_PORT` from remote `.env`
   3) `TARGET_PORT` from remote `.env`
   4) `PORT` from remote `.env`
-  5) Default: `3000`
+  5) Default: `8080` (project standard; override if your app listens elsewhere)
 
 When Traefik is enabled and a domain is available, the action does not publish host ports (`-p`). Instead, it attaches Traefik labels and sets the service port to `CONTAINER_PORT`.
 

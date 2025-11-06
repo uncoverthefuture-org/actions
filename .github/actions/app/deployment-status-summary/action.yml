@@ -271,6 +271,11 @@ runs:
         NETWORK_JOIN_CHECK="unknown"
         IN_CONTAINER_LISTENERS=""
         if [ "$CONT_PRESENT" = "yes" ]; then
+          # NOTE: Prevent local shell expansion of Go-template vars ($k/$v) under `set -u`.
+          # We pass the template via an env var and evaluate it remotely with bash -lc.
+          # Example:
+          #   TEMPLATE_LABELS='{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}'
+          #   ${SSH_BASE[@]} env TPL="$TEMPLATE_LABELS" CN="$CONT_NAME" bash -lc 'podman inspect -f "$TPL" "$CN"'
           TEMPLATE_LABELS='{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}'
           TEMPLATE_NETS='{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }} {{ end }}'
           APP_LABELS=$(${SSH_BASE[@]} env TPL="$TEMPLATE_LABELS" CN="$CONT_NAME" bash -lc 'podman inspect -f "$TPL" "$CN" 2>/dev/null | grep -i "^traefik\." || true' 2>/dev/null || echo "")
