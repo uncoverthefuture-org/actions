@@ -165,29 +165,51 @@ else
   CONFIG_HASH="$(printf '%s' "$CONFIG_SRC" | shasum -a 256 | awk '{print $1}')"
 fi
 
-if podman container exists traefik >/dev/null 2>&1; then
-  EXIST_HASH="$(podman inspect -f '{{ index .Config.Labels "org.uactions.traefik.confighash" }}' traefik 2>/dev/null || true)"
-  STATUS="$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)"
-  if [[ "$EXIST_HASH" = "$CONFIG_HASH" ]]; then
-    if [[ "$STATUS" = "running" ]]; then
-      if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
-         ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
-        echo "✅ Traefik already running and up-to-date (confighash match); skipping restart."
-        exit 0
+if [[ "${TRAEFIK_FORCE_RESTART:-false}" = "true" ]]; then
+  echo "::notice::TRAEFIK_FORCE_RESTART=true; bypassing reuse fast-path and recreating Traefik."
+else
+  if podman container exists traefik >/dev/null 2>&1; then
+    EXIST_HASH="$(podman inspect -f '{{ index .Config.Labels "org.uactions.traefik.confighash" }}' traefik 2>/dev/null || true)"
+    STATUS="$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)"
+    if [[ "$EXIST_HASH" = "$CONFIG_HASH" ]]; then
+      if [[ "$STATUS" = "running" ]]; then
+        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
+           ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
+          echo "✅ Traefik already running and up-to-date (confighash match); skipping restart."
+          exit 0
+        else
+          echo "::notice::Traefik confighash matches but listeners not detected; restarting container to recover ..."
+          podman restart traefik >/dev/null 2>&1 || true
+          ok=false
+          for i in {1..10}; do
+            if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
+               ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then ok=true; break; fi
+            sleep 2
+          done
+          if $ok; then
+            echo "✅ Traefik recovered after restart; leaving container as-is."
+            if systemctl --user is-enabled --quiet container-traefik.service 2>/dev/null; then
+              :
+            else
+              if podman generate systemd --files --name traefik >/dev/null 2>&1; then
+                podman generate systemd --files --name traefik
+                mkdir -p "$HOME/.config/systemd/user"
+                mv -f container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null || true
+                systemctl --user daemon-reload >/dev/null 2>&1 || true
+                systemctl --user enable --now container-traefik.service >/dev/null 2>&1 || true
+              fi
+            fi
+            exit 0
+          fi
+          echo "::warning::Traefik restart did not restore listeners; will recreate container."
+        fi
       else
-        echo "::notice::Traefik confighash matches but listeners not detected; restarting container to recover ..."
-        podman restart traefik >/dev/null 2>&1 || true
-        ok=false
-        for i in {1..10}; do
-          if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
-             ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then ok=true; break; fi
-          sleep 2
-        done
-        if $ok; then
-          echo "✅ Traefik recovered after restart; leaving container as-is."
-          if systemctl --user is-enabled --quiet container-traefik.service 2>/dev/null; then
-            :
-          else
+        echo "::notice::Traefik container exists but status='${STATUS}'; attempting start ..."
+        podman start traefik >/dev/null 2>&1 || true
+        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
+           ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
+          echo "✅ Traefik started and listeners present; skipping recreate."
+          if systemctl --user is-enabled --quiet container-traefik.service 2>/dev/null; then :; else
             if podman generate systemd --files --name traefik >/dev/null 2>&1; then
               podman generate systemd --files --name traefik
               mkdir -p "$HOME/.config/systemd/user"
@@ -198,26 +220,8 @@ if podman container exists traefik >/dev/null 2>&1; then
           fi
           exit 0
         fi
-        echo "::warning::Traefik restart did not restore listeners; will recreate container."
+        echo "::warning::Traefik start did not show listeners; will recreate container."
       fi
-    else
-      echo "::notice::Traefik container exists but status='${STATUS}'; attempting start ..."
-      podman start traefik >/dev/null 2>&1 || true
-      if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
-         ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
-        echo "✅ Traefik started and listeners present; skipping recreate."
-        if systemctl --user is-enabled --quiet container-traefik.service 2>/dev/null; then :; else
-          if podman generate systemd --files --name traefik >/dev/null 2>&1; then
-            podman generate systemd --files --name traefik
-            mkdir -p "$HOME/.config/systemd/user"
-            mv -f container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null || true
-            systemctl --user daemon-reload >/dev/null 2>&1 || true
-            systemctl --user enable --now container-traefik.service >/dev/null 2>&1 || true
-          fi
-        fi
-        exit 0
-      fi
-      echo "::warning::Traefik start did not show listeners; will recreate container."
     fi
   fi
 fi
@@ -246,20 +250,17 @@ else
 fi
 
 # --- Container management -------------------------------------------------------------
-echo "🛑 Stopping existing Traefik container (if any) ..."
+echo "🛑 Ensuring no existing Traefik container ..."
 if podman container exists traefik >/dev/null 2>&1; then
-  podman stop traefik >/dev/null 2>&1 || true
-  echo "  ✓ Stopped existing traefik container"
+  cleanup_existing_traefik
+  if podman container exists traefik >/dev/null 2>&1; then
+    echo "::error::Failed to free container name 'traefik'; aborting." >&2
+    exit 1
+  else
+    echo "  ✓ Existing traefik container fully removed"
+  fi
 else
-  echo "  ✓ No existing traefik container to stop"
-fi
-
-echo "🧹 Removing existing Traefik container (if any) ..."
-if podman container exists traefik >/dev/null 2>&1; then
-  podman rm traefik >/dev/null 2>&1 || true
-  echo "  ✓ Removed existing traefik container"
-else
-  echo "  ✓ No existing traefik container to remove"
+  echo "  ✓ No existing traefik container present"
 fi
 
 echo "🚀 Starting Traefik container (version: ${TRAEFIK_VERSION}) ..."
@@ -268,6 +269,16 @@ RUN_ARGS=(
   --name traefik
   --restart unless-stopped
 )
+
+# Use native replacement if supported
+if podman run --help 2>&1 | grep -q -- '--replace'; then
+  RUN_ARGS+=(--replace)
+fi
+
+# Avoid pull when image already exists locally
+if podman image exists "docker.io/traefik:${TRAEFIK_VERSION}" >/dev/null 2>&1; then
+  RUN_ARGS+=(--pull=never)
+fi
 
 if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
   if ! podman network exists "$TRAEFIK_NETWORK_NAME" >/dev/null 2>&1; then
@@ -365,10 +376,23 @@ if [[ "$TRAEFIK_ENABLE_METRICS" == "true" ]]; then
   fi
 fi
 
-if ! "${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}"; then
-  echo "Failed to start Traefik container" >&2
-  podman logs traefik 2>&1 || true
-  exit 1
+if ! out=$("${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}" 2>&1); then
+  if printf '%s' "$out" | grep -qi 'already in use'; then
+    echo "::warning::Name in use race detected; forcing cleanup and retry."
+    cleanup_existing_traefik
+    sleep 1
+    if ! out2=$("${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}" 2>&1); then
+      echo "Failed to start Traefik container" >&2
+      printf '%s\n' "$out2" >&2 || true
+      podman logs traefik 2>&1 || true
+      exit 1
+    fi
+  else
+    echo "Failed to start Traefik container" >&2
+    printf '%s\n' "$out" >&2 || true
+    podman logs traefik 2>&1 || true
+    exit 1
+  fi
 fi
 
 # --- Post status ---------------------------------------------------------------------
