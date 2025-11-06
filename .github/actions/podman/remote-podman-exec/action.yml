@@ -77,6 +77,10 @@ inputs:
   inline_script:
     description: 'Inline script to run on the remote host; run_podman helper is available'
     required: true
+  debug:
+    description: 'Enable verbose logging on remote (paths, user info). Default: false'
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -165,6 +169,8 @@ runs:
           bash -s <<'BASH_EOF'
           set -euo pipefail
 
+          DEBUG='${{ inputs.debug }}'
+
           ENV_ROOT="${{ inputs.env_file_path }}"
           ENV_NAME_INPUT="${{ inputs.env_name }}"
           ENV_DIR=""
@@ -203,12 +209,16 @@ runs:
           ENV_DIR="${ENV_ROOT}/${ENV_NAME_INPUT}/${APP_SLUG_INPUT}"
 
           if ! mkdir -p "$ENV_DIR"; then
-            echo "::error::Unable to create env directory $ENV_DIR" >&2
+            echo "::error::Unable to create environment directory" >&2
             exit 1
           fi
 
           if [ ! -w "$ENV_DIR" ]; then
-            echo "::warning::Current user $(id -un) lacks write permission to $ENV_DIR" >&2
+            if [ "$DEBUG" = "true" ]; then
+              echo "::warning::Current user $(id -un) lacks write permission to $ENV_DIR" >&2
+            else
+              echo "::warning::Current user lacks write permission to environment directory" >&2
+            fi
           fi
 
           ENV_FILE="${ENV_DIR}/.env"
@@ -232,11 +242,19 @@ runs:
               set +a
             else
               if [ "${{ inputs.fail_if_env_missing }}" = "true" ]; then
-                echo "::error::Environment file ${ENV_FILE} not found"
+                if [ "$DEBUG" = "true" ]; then
+                  echo "::error::Environment file ${ENV_FILE} not found"
+                else
+                  echo "::error::Environment file not found"
+                fi
                 echo "Environment file ${ENV_FILE} not found" >&2
                 exit 1
               else
-                echo "::warning::Environment file ${ENV_FILE} not found; continuing without sourcing"
+                if [ "$DEBUG" = "true" ]; then
+                  echo "::warning::Environment file ${ENV_FILE} not found; continuing without sourcing"
+                else
+                  echo "::warning::Environment file not found; continuing without sourcing"
+                fi
               fi
             fi
           fi
@@ -251,9 +269,11 @@ runs:
             HAS_SUDO="yes"
           fi
 
-          echo "::notice::Remote session user: ${CURRENT_USER} (uid:${CURRENT_UID}, sudo:${HAS_SUDO})"
-          if [ "$CURRENT_USER" = "root" ]; then
-            echo "::warning::Remote commands are executing as root; verify this is intended." >&2
+          if [ "$DEBUG" = "true" ]; then
+            echo "::notice::Remote session user: ${CURRENT_USER} (uid:${CURRENT_UID}, sudo:${HAS_SUDO})"
+            if [ "$CURRENT_USER" = "root" ]; then
+              echo "::warning::Remote commands are executing as root; verify this is intended." >&2
+            fi
           fi
 
           PODMAN_AVAILABLE="no"

@@ -32,11 +32,11 @@ if [[ -z "$ROUTER_NAME" || -z "$DOMAIN" || -z "$CONTAINER_PORT" ]]; then
   exit 2
 fi
 
-# Entrypoints: favor websecure first when ACME is enabled
+# Entrypoints: when ACME is enabled, include websecure; otherwise only web
 if [[ "$ENABLE_ACME" == "true" ]]; then
   ENTRYPOINTS_VALUE="websecure,web"
 else
-  ENTRYPOINTS_VALUE="web,websecure"
+  ENTRYPOINTS_VALUE="web"
 fi
 
 # Build host list for rule
@@ -71,18 +71,18 @@ for h in "${HOSTS[@]}"; do
   fi
 done
 
-# Compose Host(`a`,`b`) argument
-HOST_RULE_ARGS=""
+# Compose Host(`a`) || Host(`b`) expression for Traefik v3
+HOST_RULE_EXPR=""
 for idx in "${!UNIQ_HOSTS[@]}"; do
   d="${UNIQ_HOSTS[$idx]}"
-  if [[ $idx -gt 0 ]]; then HOST_RULE_ARGS+=","; fi
-  HOST_RULE_ARGS+="\`${d}\`"
+  if [[ $idx -gt 0 ]]; then HOST_RULE_EXPR+=" || "; fi
+  HOST_RULE_EXPR+="Host(\`${d}\`)"
 done
 
 # Emit labels (newline-separated) with proper quoting
 printf '%s\n' \
   "--label" "traefik.enable=true" \
-  "--label" "traefik.http.routers.${ROUTER_NAME}.rule=Host(${HOST_RULE_ARGS})" \
+  "--label" "traefik.http.routers.${ROUTER_NAME}.rule=${HOST_RULE_EXPR}" \
   "--label" "traefik.http.routers.${ROUTER_NAME}.service=${ROUTER_NAME}" \
   "--label" "traefik.http.routers.${ROUTER_NAME}.entrypoints=${ENTRYPOINTS_VALUE}" \
   "--label" "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=${CONTAINER_PORT}"

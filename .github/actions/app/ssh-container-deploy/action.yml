@@ -151,6 +151,12 @@ inputs: # All parameters accepted by this action
     required: false
     default: '512m'
 
+  # Logging / Debugging
+  debug:
+    description: 'Enable verbose logging, including env paths and user info (default: false)'
+    required: false
+    default: 'false'
+
   # Env sourcing for deployment
   source_env: # Source the .env on remote before running deploy script
     required: false
@@ -324,12 +330,14 @@ runs: # Composite action implementation
         prepare_host: ${{ steps.eff.outputs.prepare_host }} # Run host prep?
         install_podman: ${{ inputs.install_podman }} # Install podman
         install_traefik: ${{ inputs.install_traefik }} # Install Traefik
+        traefik_enable_acme: ${{ inputs.enable_acme }} # Whether to enable ACME in Traefik setup
         traefik_email: ${{ inputs.traefik_email }} # Email for LE certs
         traefik_domain: ${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }} # FQDN for Traefik
         traefik_domain_apex: ${{ steps.dfl.outputs.domain_apex }} # Apex for fallback email
         env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }} # Env dir on host
         additional_packages: ${{ inputs.additional_packages }} # Extra apt packages
         ufw_allow_ports: ${{ inputs.ufw_allow_ports }} # Ports to allow via UFW
+        debug: ${{ inputs.debug }}
         write_env_file: ${{ (inputs.write_env_file == 'true') || (inputs.env_b64 != '' || inputs.env_content != '' || steps.envsel.outputs.env_b64 != '') }} # Whether to write the .env
         env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }} # Env name
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }} # Base env path
@@ -353,6 +361,7 @@ runs: # Composite action implementation
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         connect_mode: user
+        debug: ${{ inputs.debug }}
         inline_script: |
           set -euo pipefail
           /opt/uactions/scripts/traefik/probe-traefik.sh preflight
@@ -408,6 +417,7 @@ runs: # Composite action implementation
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }} # Host key pin
         podman_user: ${{ inputs.ssh_user }} # Podman user
         connect_mode: user # Connection mode
+        debug: ${{ inputs.debug }}
         app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }} # Slug
         env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }} # Env
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }} # Base env path
@@ -457,6 +467,7 @@ runs: # Composite action implementation
           export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'
           export DOMAIN_ALIASES='${{ inputs.domain_aliases }}'
           export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
+          export DEBUG='${{ inputs.debug }}'
 
           # Execute deployment runner script
           /opt/uactions/scripts/app/run-deployment.sh

@@ -66,9 +66,11 @@ if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
 else
   SUDO_STATUS="not available"
 fi
-echo "👤 Remote user: ${CURRENT_USER} (uid:${CURRENT_UID})"
-echo "👥 Groups: ${CURRENT_GROUPS}"
-echo "🔑 sudo: ${SUDO_STATUS}"
+if [[ "${DEBUG:-false}" == "true" ]]; then
+  echo "👤 Remote user: ${CURRENT_USER} (uid:${CURRENT_UID})"
+  echo "👥 Groups: ${CURRENT_GROUPS}"
+  echo "🔑 sudo: ${SUDO_STATUS}"
+fi
 
 echo "  • App:        $APP_SLUG"
 echo "  • Env:        $ENV_NAME"
@@ -80,11 +82,15 @@ if [[ -z "$CONTAINER_NAME" ]]; then
   CONTAINER_NAME="${APP_SLUG}-${ENV_NAME}"
 fi
 
-echo "📛 Container name: $CONTAINER_NAME"
+if [[ "${DEBUG:-false}" == "true" ]]; then
+  echo "📛 Container name: $CONTAINER_NAME"
+fi
 
 ENV_DIR="${ENV_FILE_PATH_BASE%/}/${ENV_NAME}/${APP_SLUG}"
 
-echo "📁 Preparing environment directory: $ENV_DIR"
+if [[ "${DEBUG:-false}" == "true" ]]; then
+  echo "📁 Preparing environment directory"
+fi
 if [ -d "$ENV_DIR" ] && [ ! -w "$ENV_DIR" ]; then
   echo "::error::Environment directory $ENV_DIR is not writable by $CURRENT_USER" >&2
   echo "Hint: create a user-owned path (e.g., $HOME/deployments) or adjust permissions." >&2
@@ -105,7 +111,9 @@ fi
 
 ENV_FILE="${REMOTE_ENV_FILE:-${ENV_DIR}/.env}"
 
-echo "📄 Using env file: $ENV_FILE"
+if [[ "${DEBUG:-false}" == "true" ]]; then
+  echo "📄 Using env file"
+fi
 
 ENV_PARENT="$(dirname "$ENV_FILE")"
 if [ ! -d "$ENV_PARENT" ]; then
@@ -115,7 +123,7 @@ if [ ! -d "$ENV_PARENT" ]; then
   fi
 fi
 if [ ! -w "$ENV_PARENT" ]; then
-  echo "::error::Env parent directory $ENV_PARENT is not writable by $CURRENT_USER" >&2
+  echo "::warning::Env parent directory is not writable by $CURRENT_USER" >&2
   echo "Hint: adjust permissions or set ENV_FILE_PATH_BASE to a user-owned path." >&2
   exit 1
 fi
@@ -283,12 +291,14 @@ if ! printf '%s\n' "$HOST_PORT" > "$HOST_PORT_FILE"; then
   echo "::warning::Failed to persist host port to $HOST_PORT_FILE" >&2
 fi
 
-if [[ "$AUTO_HOST_PORT_ASSIGNED" == "true" ]]; then
-  echo "💾 Persisted host port assignment $HOST_PORT in $HOST_PORT_FILE"
+if [[ "$AUTO_HOST_PORT_ASSIGNED" == "true" && "${DEBUG:-false}" == "true" ]]; then
+  echo "💾 Persisted host port assignment"
 fi
 
-echo "🌐 Service target port (container): $CONTAINER_PORT"
-echo "🌐 Host port candidate: $HOST_PORT (source: ${HOST_PORT_SOURCE:-manual})"
+if [[ "${DEBUG:-false}" == "true" ]]; then
+  echo "🌐 Service target port (container): $CONTAINER_PORT"
+  echo "🌐 Host port candidate: $HOST_PORT (source: ${HOST_PORT_SOURCE:-manual})"
+fi
 
 # --- Prepare run args ---------------------------------------------------------------
 IMAGE_REF="${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
@@ -301,10 +311,12 @@ if [[ -z "$DOMAIN" ]]; then DOMAIN="$DOMAIN_DEFAULT"; fi
 TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-}"
 
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
-  echo "🔀 Traefik mode enabled for domain: $DOMAIN (router: $ROUTER_NAME)"
-  echo "🔖 Traefik labels will advertise container port $CONTAINER_PORT"
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "🔀 Traefik mode for domain (router: $ROUTER_NAME)"
+    echo "🔖 Traefik labels will advertise container port $CONTAINER_PORT"
+  fi
   if [[ -x "/opt/uactions/scripts/app/build-traefik-labels.sh" ]]; then
-    mapfile -t BUILT_LABELS < <(/opt/uactions/scripts/app/build-traefik-labels.sh "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME:-true}")
+    mapfile -t BUILT_LABELS < <(/opt/uactions/scripts/app/build-traefik-labels.sh "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME:-false}")
     LABEL_ARGS+=("${BUILT_LABELS[@]}")
   else
     LABEL_ARGS+=(--label "traefik.enable=true")
@@ -334,24 +346,23 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
         seen+="${seen:+,}${h}"
       fi
     done
-    # Compose Host(`a`,`b`)
-    HOST_RULE_ARGS=""
+    # Compose Host(`a`) || Host(`b`) for Traefik v3
+    HOST_RULE_EXPR=""
     for idx in "${!UNIQ_HOSTS[@]}"; do
       d="${UNIQ_HOSTS[$idx]}"
-      if [[ $idx -gt 0 ]]; then HOST_RULE_ARGS+=","; fi
-      HOST_RULE_ARGS+="\`${d}\`"
+      if [[ $idx -gt 0 ]]; then HOST_RULE_EXPR+=" || "; fi
+      HOST_RULE_EXPR+="Host(\`${d}\`)"
     done
-    printf -v ROUTER_RULE_LABEL 'traefik.http.routers.%s.rule=Host(%s)' "$ROUTER_NAME" "$HOST_RULE_ARGS"
+    printf -v ROUTER_RULE_LABEL 'traefik.http.routers.%s.rule=%s' "$ROUTER_NAME" "$HOST_RULE_EXPR"
     LABEL_ARGS+=(--label "$ROUTER_RULE_LABEL")
     printf -v ROUTER_SERVICE_LABEL 'traefik.http.routers.%s.service=%s' "$ROUTER_NAME" "$ROUTER_NAME"
     LABEL_ARGS+=(--label "$ROUTER_SERVICE_LABEL")
 
-    ENTRYPOINTS_VALUE="web,websecure"
-    if [[ "${TRAEFIK_ENABLE_ACME:-true}" == "true" ]]; then
+    if [[ "${TRAEFIK_ENABLE_ACME:-false}" == "true" ]]; then
       ENTRYPOINTS_VALUE="websecure,web"
       LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt")
     else
-      echo "::notice::Skipping certresolver label for router ${ROUTER_NAME} (ACME disabled)."
+      ENTRYPOINTS_VALUE="web"
     fi
     printf -v ROUTER_ENTRYPOINT_LABEL 'traefik.http.routers.%s.entrypoints=%s' "$ROUTER_NAME" "$ENTRYPOINTS_VALUE"
     LABEL_ARGS+=(--label "$ROUTER_ENTRYPOINT_LABEL")
@@ -363,10 +374,14 @@ else
 fi
 
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
-  echo "🔒 Skipping host port publish (Traefik handles ingress on 80/443)"
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "🔒 Skipping host port publish (Traefik handles ingress on 80/443)"
+  fi
   PORT_ARGS=()
 else
-  echo "🔓 Publishing port mapping host:${HOST_PORT} -> container:${CONTAINER_PORT}"
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "🔓 Publishing port mapping"
+  fi
   PORT_ARGS=(-p "${HOST_PORT}:${CONTAINER_PORT}")
 fi
 
@@ -393,7 +408,7 @@ echo "🚀 Starting container: $CONTAINER_NAME"
 NETWORK_ARGS=()
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$TRAEFIK_NETWORK_NAME" ]]; then
   if ! podman network exists "$TRAEFIK_NETWORK_NAME" >/dev/null 2>&1; then
-    echo "🌐 Creating Traefik network $TRAEFIK_NETWORK_NAME"
+    if [[ "${DEBUG:-false}" == "true" ]]; then echo "🌐 Creating Traefik network $TRAEFIK_NETWORK_NAME"; fi
     podman network create "$TRAEFIK_NETWORK_NAME"
   fi
   NETWORK_ARGS+=(--network "$TRAEFIK_NETWORK_NAME")

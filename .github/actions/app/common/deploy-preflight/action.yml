@@ -80,6 +80,10 @@ inputs:
     description: 'Install and configure Traefik reverse proxy when preparing host'
     required: false
     default: 'true'
+  traefik_enable_acme:
+    description: 'Enable ACME/Let''s Encrypt in Traefik during host prep (default: false)'
+    required: false
+    default: 'false'
   traefik_email:
     description: "Email for Let's Encrypt certificates (required when install_traefik=true)"
     required: false
@@ -130,6 +134,10 @@ inputs:
     description: 'Whether to log in to the registry before pulling'
     required: false
     default: 'true'
+  debug:
+    description: 'Enable verbose logging in nested actions (paths, user info). Default: false'
+    required: false
+    default: 'false'
   perform_pull:
     description: 'When false, skip the remote login+pull step (caller will handle pulling)'
     required: false
@@ -262,6 +270,8 @@ runs:
         env_dir_path: ${{ inputs.env_dir_path }}
         additional_packages: ${{ inputs.additional_packages }}
         install_traefik: ${{ inputs.install_traefik }}
+        traefik_enable_acme: ${{ inputs.traefik_enable_acme }}
+        debug: ${{ inputs.debug }}
         traefik_email: ${{ steps.validate.outputs.traefik_email_resolved }}
         ufw_allow_ports: ${{ inputs.ufw_allow_ports }}
 
