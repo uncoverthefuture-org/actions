@@ -1,0 +1,134 @@
+name: 'infra: traefik-run-setup'
+description: 'Run Traefik setup scripts on remote host (idempotent, replace-safe)'
+
+inputs:
+  ssh_host:
+    required: true
+  ssh_user:
+    required: true
+  ssh_key:
+    required: true
+  ssh_port:
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    required: false
+  mode:
+    required: false
+    default: 'container'
+  traefik_email:
+    required: false
+    default: ''
+  traefik_version:
+    required: true
+  enable_acme:
+    required: true
+  enable_ping:
+    required: true
+  use_host_network:
+    required: true
+  network_name:
+    required: true
+  enable_metrics:
+    required: true
+  metrics_entrypoint:
+    required: true
+  metrics_address:
+    required: true
+  acme_dns_provider:
+    required: false
+    default: ''
+  acme_dns_resolvers:
+    required: false
+    default: ''
+  dns_servers:
+    required: false
+    default: ''
+  enable_dashboard:
+    required: true
+  dashboard_user:
+    required: false
+    default: ''
+  dashboard_password_bcrypt:
+    required: false
+    default: ''
+  quadlet_enable_http3:
+    required: false
+    default: 'false'
+  force_restart:
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run Traefik setup on remote
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: user
+        inline_script: |
+          set -euo pipefail
+          mkdir -p /opt/uactions/scripts/traefik
+          for f in install-traefik.sh setup-traefik.sh ensure-traefik-config.sh install-quadlet-sockets.sh assert-socket-and-selinux.sh; do
+            if [ -f "/tmp/$f" ]; then
+              mv -f "/tmp/$f" "/opt/uactions/scripts/traefik/$f"
+              chmod +x "/opt/uactions/scripts/traefik/$f"
+            fi
+          done
+
+          CURRENT_USER="$(id -un)"
+          echo "🔎 Remote session user: $CURRENT_USER"
+
+          export TRAEFIK_EMAIL='${{ inputs.traefik_email }}'
+
+          if [ "$CURRENT_USER" = "root" ]; then
+            echo "🔧 Running Traefik system installation (requires root) ..."
+            export PODMAN_USER="$CURRENT_USER"
+            if [ -x /opt/uactions/scripts/traefik/install-traefik.sh ]; then
+              /opt/uactions/scripts/traefik/install-traefik.sh
+            fi
+          else
+            echo "::notice::Skipping install-traefik.sh because it requires root privileges."
+            echo "::notice::Run install-traefik.sh manually as a privileged user to complete system setup."
+          fi
+
+          echo "🚀 Running Traefik setup (mode='${{ inputs.mode }}') as current user ..."
+          export TRAEFIK_VERSION='${{ inputs.traefik_version }}'
+          export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
+          export TRAEFIK_PING_ENABLED='${{ inputs.enable_ping }}'
+          export TRAEFIK_USE_HOST_NETWORK='${{ inputs.use_host_network }}'
+          export TRAEFIK_NETWORK_NAME='${{ inputs.network_name }}'
+          export TRAEFIK_ENABLE_METRICS='${{ inputs.enable_metrics }}'
+          export TRAEFIK_METRICS_ENTRYPOINT='${{ inputs.metrics_entrypoint }}'
+          export TRAEFIK_METRICS_ADDRESS='${{ inputs.metrics_address }}'
+          export TRAEFIK_ACME_DNS_PROVIDER='${{ inputs.acme_dns_provider }}'
+          export TRAEFIK_ACME_DNS_RESOLVERS='${{ inputs.acme_dns_resolvers }}'
+          export TRAEFIK_DNS_SERVERS='${{ inputs.dns_servers }}'
+          export TRAEFIK_DASHBOARD='${{ inputs.enable_dashboard }}'
+          export DASHBOARD_USER='${{ inputs.dashboard_user }}'
+          export DASHBOARD_PASS_BCRYPT='${{ inputs.dashboard_password_bcrypt }}'
+          export QUADLET_ENABLE_HTTP3='${{ inputs.quadlet_enable_http3 }}'
+          export TRAEFIK_FORCE_RESTART='${{ inputs.force_restart }}'
+
+          if [ -x /opt/uactions/scripts/traefik/ensure-traefik-config.sh ]; then
+            /opt/uactions/scripts/traefik/ensure-traefik-config.sh
+          fi
+
+          MODE='${{ inputs.mode }}'
+          if [ "$MODE" = "quadlet" ]; then
+            if [ -x /opt/uactions/scripts/traefik/install-quadlet-sockets.sh ]; then
+              /opt/uactions/scripts/traefik/install-quadlet-sockets.sh
+            fi
+          else
+            if [ -x /opt/uactions/scripts/traefik/setup-traefik.sh ]; then
+              /opt/uactions/scripts/traefik/setup-traefik.sh
+            else
+              echo "::error::Missing setup-traefik.sh on remote host."
+              exit 1
+            fi
+          fi

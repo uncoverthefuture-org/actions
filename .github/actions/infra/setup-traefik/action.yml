@@ -129,492 +129,79 @@ runs:
         else
           echo "reachable=false" >> "$GITHUB_OUTPUT"
         fi
-    - name: Compute local scripts hash
-      id: localhash
-      shell: bash
-      run: |
-        set -euo pipefail
-        files=(
-          ./.github/actions/scripts/traefik/install-traefik.sh
-          ./.github/actions/scripts/traefik/setup-traefik.sh
-          ./.github/actions/scripts/traefik/ensure-traefik-config.sh
-          ./.github/actions/scripts/traefik/install-quadlet-sockets.sh
-          ./.github/actions/scripts/traefik/assert-socket-and-selinux.sh
-        )
-        buf=""
-        for f in "${files[@]}"; do
-          if [ -f "$f" ]; then
-            buf+="$(cat "$f")"
-          fi
-        done
-        if command -v sha256sum >/dev/null 2>&1; then
-          hash=$(printf '%s' "$buf" | sha256sum | awk '{print $1}')
-        else
-          hash=$(printf '%s' "$buf" | shasum -a 256 | awk '{print $1}')
-        fi
-        echo "local_hash=$hash" >> "$GITHUB_OUTPUT"
-    - name: Compute remote scripts hash
-      id: remotehash
+    - name: Upload/Update Traefik scripts (smart)
       if: ${{ steps.reach.outputs.reachable == 'true' }}
-      shell: bash
-      env:
-        SSH_HOST: ${{ inputs.ssh_host }}
-        SSH_USER: ${{ inputs.ssh_user }}
-        SSH_KEY: ${{ inputs.ssh_key }}
-        SSH_PORT: ${{ inputs.ssh_port }}
-      run: |
-        set -euo pipefail
-        KEY_FILE="$(mktemp)"
-        trap "rm -f '$KEY_FILE'" EXIT
-        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
-          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
-        else
-          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
-        fi
-        chmod 600 "$KEY_FILE"
-        remote_cmd='files=(/opt/uactions/scripts/traefik/install-traefik.sh /opt/uactions/scripts/traefik/setup-traefik.sh /opt/uactions/scripts/traefik/ensure-traefik-config.sh /opt/uactions/scripts/traefik/install-quadlet-sockets.sh /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh); buf=""; for f in "${files[@]}"; do [ -f "$f" ] && buf+="$(cat "$f")"; done; if command -v sha256sum >/dev/null 2>&1; then printf "%s" "$buf" | sha256sum | awk "{print \$1}"; else printf "%s" "$buf" | shasum -a 256 | awk "{print \$1}"; fi'
-        out=$(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "bash -lc $'${remote_cmd//'/'\/'}'" 2>/dev/null || true)
-        echo "remote_hash=$out" >> "$GITHUB_OUTPUT"
-    - name: Decide scripts upload
-      id: decide_upload
-      shell: bash
-      env:
-        POLICY: ${{ inputs.upload_policy }}
-        SKIP: ${{ inputs.skip_upload }}
-        LOCAL: ${{ steps.localhash.outputs.local_hash }}
-        REMOTE: ${{ steps.remotehash.outputs.remote_hash }}
-      run: |
-        set -euo pipefail
-        needs=false
-        if [ "${SKIP}" = "true" ]; then
-          needs=false
-        elif [ "${POLICY}" = "skip" ]; then
-          needs=false
-        elif [ "${POLICY}" = "always" ]; then
-          needs=true
-        else
-          if [ -n "${LOCAL}" ] && [ -n "${REMOTE}" ] && [ "${LOCAL}" = "${REMOTE}" ]; then
-            needs=false
-          else
-            needs=true
-          fi
-        fi
-        echo "needs_upload=${needs}" >> "$GITHUB_OUTPUT"
-    - name: Stage Traefik script for upload
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' && (inputs.upload_policy == 'always' || steps.decide_upload.outputs.needs_upload == 'true') }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
-        cp ./.github/actions/scripts/traefik/install-traefik.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/"
-
-    - name: Stage setup-traefik script for upload
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' && (inputs.upload_policy == 'always' || steps.decide_upload.outputs.needs_upload == 'true') }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
-        cp ./.github/actions/scripts/traefik/setup-traefik.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/"
-
-    - name: Stage ensure-traefik-config script for upload
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' && (inputs.upload_policy == 'always' || steps.decide_upload.outputs.needs_upload == 'true') }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
-        cp ./.github/actions/scripts/traefik/ensure-traefik-config.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/"
-
-    - name: Stage quadlet installer script for upload
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' && (inputs.upload_policy == 'always' || steps.decide_upload.outputs.needs_upload == 'true') }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
-        cp ./.github/actions/scripts/traefik/install-quadlet-sockets.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/"
-
-    - name: Stage assert-socket-and-selinux script for upload
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' && (inputs.upload_policy == 'always' || steps.decide_upload.outputs.needs_upload == 'true') }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
-        cp ./.github/actions/scripts/traefik/assert-socket-and-selinux.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/"
-
-    - name: Verify staged scripts exist
-      id: ckstage
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' && (inputs.upload_policy == 'always' || steps.decide_upload.outputs.needs_upload == 'true') }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        dir="$GITHUB_WORKSPACE/.uactions_cache/traefik"
-        if [ -d "$dir" ] && ls -1 "$dir"/*.sh >/dev/null 2>&1; then
-          echo "have=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "have=false" >> "$GITHUB_OUTPUT"
-        fi
-
-    - name: Upload Traefik scripts
-      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload == 'false' && (inputs.upload_policy == 'always' || steps.decide_upload.outputs.needs_upload == 'true') && steps.ckstage.outputs.have == 'true' }}
-      uses: appleboy/scp-action@v0.1.4
-      with:
-        host: ${{ inputs.ssh_host }}
-        username: ${{ inputs.ssh_user }}
-        key: ${{ inputs.ssh_key }}
-        port: ${{ inputs.ssh_port }}
-        source: ".uactions_cache/traefik/*"
-        target: /tmp
-        overwrite: true
-        timeout: 15s
-        command_timeout: 30s
-
-    - name: Probe Traefik state
-      id: probe_traefik
-      if: ${{ steps.reach.outputs.reachable == 'true' }}
-      shell: bash
-      env:
-        SSH_HOST: ${{ inputs.ssh_host }}
-        SSH_USER: ${{ inputs.ssh_user }}
-        SSH_KEY: ${{ inputs.ssh_key }}
-        SSH_PORT: ${{ inputs.ssh_port }}
-        TRAEFIK_VERSION: ${{ inputs.traefik_version }}
-        TRAEFIK_ENABLE_ACME: ${{ inputs.enable_acme }}
-        TRAEFIK_EMAIL: ${{ inputs.traefik_email }}
-        TRAEFIK_ACME_DNS_PROVIDER: ${{ inputs.acme_dns_provider }}
-        TRAEFIK_ACME_DNS_RESOLVERS: ${{ inputs.acme_dns_resolvers }}
-        TRAEFIK_PING_ENABLED: ${{ inputs.enable_ping }}
-        TRAEFIK_DASHBOARD: ${{ inputs.enable_dashboard }}
-        DASHBOARD_USER: ${{ inputs.dashboard_user }}
-        TRAEFIK_ENABLE_METRICS: ${{ inputs.enable_metrics }}
-        TRAEFIK_METRICS_ENTRYPOINT: ${{ inputs.metrics_entrypoint }}
-        TRAEFIK_METRICS_ADDRESS: ${{ inputs.metrics_address }}
-        TRAEFIK_USE_HOST_NETWORK: ${{ inputs.use_host_network }}
-        TRAEFIK_NETWORK_NAME: ${{ inputs.network_name }}
-        TRAEFIK_DNS_SERVERS: ${{ inputs.dns_servers }}
-      run: |
-        set -euo pipefail
-        KEY_FILE="$(mktemp)"
-        trap "rm -f '$KEY_FILE'" EXIT
-        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
-          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
-        else
-          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
-        fi
-        chmod 600 "$KEY_FILE"
-        CFG_SHA=$(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "bash -lc 'if command -v sha256sum >/dev/null 2>&1; then sha256sum \"$HOME/.config/traefik/traefik.yml\" 2>/dev/null | awk \"{print \\\$1}\"; else shasum -a 256 \"$HOME/.config/traefik/traefik.yml\" 2>/dev/null | awk \"{print \\\$1}\"; fi'" 2>/dev/null || true)
-        [ -z "$CFG_SHA" ] && CFG_SHA=missing
-        src=$(printf '%s\n' \
-          "v:$TRAEFIK_VERSION" \
-          "acme:$TRAEFIK_ENABLE_ACME:$TRAEFIK_EMAIL:$TRAEFIK_ACME_DNS_PROVIDER:$TRAEFIK_ACME_DNS_RESOLVERS" \
-          "ping:$TRAEFIK_PING_ENABLED" \
-          "dash:$TRAEFIK_DASHBOARD:$DASHBOARD_USER" \
-          "metrics:$TRAEFIK_ENABLE_METRICS:$TRAEFIK_METRICS_ENTRYPOINT:$TRAEFIK_METRICS_ADDRESS" \
-          "net:$TRAEFIK_USE_HOST_NETWORK:$TRAEFIK_NETWORK_NAME" \
-          "dns:$TRAEFIK_DNS_SERVERS" \
-          "cfg:$CFG_SHA")
-        if command -v sha256sum >/dev/null 2>&1; then
-          desired=$(printf '%s' "$src" | sha256sum | awk '{print $1}')
-        else
-          desired=$(printf '%s' "$src" | shasum -a 256 | awk '{print $1}')
-        fi
-        label=$(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "podman inspect -f '{{ index .Config.Labels \"org.uactions.traefik.confighash\" }}' traefik 2>/dev/null || true" 2>/dev/null || true)
-        status=$(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true" 2>/dev/null || true)
-        l80=$(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "ss -ltnH 2>/dev/null | awk '{print \$4}' | grep -qE '(^|:)80$' && echo yes || echo no" 2>/dev/null || true)
-        l443=$(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "ss -ltnH 2>/dev/null | awk '{print \$4}' | grep -qE '(^|:)443$' && echo yes || echo no" 2>/dev/null || true)
-        up=false
-        if [ "$label" = "$desired" ] && [ "$status" = "running" ] && [ "$l80" = "yes" ] && [ "$l443" = "yes" ]; then
-          up=true
-        fi
-        echo "desired_hash=$desired" >> "$GITHUB_OUTPUT"
-        echo "remote_hash=$label" >> "$GITHUB_OUTPUT"
-        echo "up_to_date=$up" >> "$GITHUB_OUTPUT"
-
-    - name: Run Traefik script
-      if: ${{ steps.reach.outputs.reachable == 'true' && (inputs.force_restart == 'true' || steps.probe_traefik.outputs.up_to_date != 'true') }}
-      uses: ./.github/actions/podman/remote-podman-exec
+      uses: ./.github/actions/infra/traefik-upload-scripts
       with:
         ssh_host: ${{ inputs.ssh_host }}
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        connect_mode: user
-        inline_script: |
-          set -euo pipefail
-          # Ensure final scripts directory and move uploaded script into place
-          mkdir -p /opt/uactions/scripts/traefik
-          if [ -f /tmp/install-traefik.sh ]; then
-            mv -f /tmp/install-traefik.sh /opt/uactions/scripts/traefik/install-traefik.sh
-            chmod +x /opt/uactions/scripts/traefik/install-traefik.sh
-          fi
-          if [ -f /tmp/setup-traefik.sh ]; then
-            mv -f /tmp/setup-traefik.sh /opt/uactions/scripts/traefik/setup-traefik.sh
-            chmod +x /opt/uactions/scripts/traefik/setup-traefik.sh
-          fi
-          if [ -f /tmp/ensure-traefik-config.sh ]; then
-            mv -f /tmp/ensure-traefik-config.sh /opt/uactions/scripts/traefik/ensure-traefik-config.sh
-            chmod +x /opt/uactions/scripts/traefik/ensure-traefik-config.sh
-          fi
-          if [ -f /tmp/assert-socket-and-selinux.sh ]; then
-            mv -f /tmp/assert-socket-and-selinux.sh /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh
-            chmod +x /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh
-          fi
-          if [ -f /tmp/install-quadlet-sockets.sh ]; then
-            mv -f /tmp/install-quadlet-sockets.sh /opt/uactions/scripts/traefik/install-quadlet-sockets.sh
-            chmod +x /opt/uactions/scripts/traefik/install-quadlet-sockets.sh
-          fi
+        skip_upload: ${{ inputs.skip_upload }}
+        upload_policy: ${{ inputs.upload_policy }}
 
-          CURRENT_USER="$(id -un)"
-          echo "🔎 Remote session user: $CURRENT_USER"
+    - name: Probe Traefik state
+      id: probe_traefik
+      if: ${{ steps.reach.outputs.reachable == 'true' }}
+      uses: ./.github/actions/infra/traefik-probe
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        traefik_version: ${{ inputs.traefik_version }}
+        enable_acme: ${{ inputs.enable_acme }}
+        traefik_email: ${{ inputs.traefik_email }}
+        acme_dns_provider: ${{ inputs.acme_dns_provider }}
+        acme_dns_resolvers: ${{ inputs.acme_dns_resolvers }}
+        enable_ping: ${{ inputs.enable_ping }}
+        enable_dashboard: ${{ inputs.enable_dashboard }}
+        dashboard_user: ${{ inputs.dashboard_user }}
+        enable_metrics: ${{ inputs.enable_metrics }}
+        metrics_entrypoint: ${{ inputs.metrics_entrypoint }}
+        metrics_address: ${{ inputs.metrics_address }}
+        use_host_network: ${{ inputs.use_host_network }}
+        network_name: ${{ inputs.network_name }}
+        dns_servers: ${{ inputs.dns_servers }}
 
-          export TRAEFIK_EMAIL='${{ inputs.traefik_email }}'
-
-          if [ "$CURRENT_USER" = "root" ]; then
-            echo "🔧 Running Traefik system installation (requires root) ..."
-            export PODMAN_USER="$CURRENT_USER"
-            /opt/uactions/scripts/traefik/install-traefik.sh
-          else
-            echo "::notice::Skipping install-traefik.sh because it requires root privileges."
-            echo "::notice::Run install-traefik.sh manually as a privileged user to complete system setup."
-          fi
-
-          echo "🚀 Running Traefik setup (mode='${{ inputs.mode }}') as current user ..."
-          export TRAEFIK_VERSION='${{ inputs.traefik_version }}'
-          export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
-          export TRAEFIK_PING_ENABLED='${{ inputs.enable_ping }}'
-          export TRAEFIK_USE_HOST_NETWORK='${{ inputs.use_host_network }}'
-          export TRAEFIK_NETWORK_NAME='${{ inputs.network_name }}'
-          export TRAEFIK_ENABLE_METRICS='${{ inputs.enable_metrics }}'
-          export TRAEFIK_METRICS_ENTRYPOINT='${{ inputs.metrics_entrypoint }}'
-          export TRAEFIK_METRICS_ADDRESS='${{ inputs.metrics_address }}'
-          export TRAEFIK_ACME_DNS_PROVIDER='${{ inputs.acme_dns_provider }}'
-          export TRAEFIK_ACME_DNS_RESOLVERS='${{ inputs.acme_dns_resolvers }}'
-          export TRAEFIK_DNS_SERVERS='${{ inputs.dns_servers }}'
-          export TRAEFIK_DASHBOARD='${{ inputs.enable_dashboard }}'
-          export DASHBOARD_USER='${{ inputs.dashboard_user }}'
-          export DASHBOARD_PASS_BCRYPT='${{ inputs.dashboard_password_bcrypt }}'
-          export QUADLET_ENABLE_HTTP3='${{ inputs.quadlet_enable_http3 }}'
-          export TRAEFIK_FORCE_RESTART='${{ inputs.force_restart }}'
-
-          # Ensure user-scoped config/ACME exist before starting Traefik
-          if [ -x /opt/uactions/scripts/traefik/ensure-traefik-config.sh ]; then
-            /opt/uactions/scripts/traefik/ensure-traefik-config.sh
-          fi
-
-          MODE='${{ inputs.mode }}'
-          if [ "$MODE" = "quadlet" ]; then
-            /opt/uactions/scripts/traefik/install-quadlet-sockets.sh
-          else
-            /opt/uactions/scripts/traefik/setup-traefik.sh
-          fi
+    - name: Run Traefik setup (when needed)
+      if: ${{ steps.reach.outputs.reachable == 'true' && (inputs.force_restart == 'true' || steps.probe_traefik.outputs.up_to_date != 'true') }}
+      uses: ./.github/actions/infra/traefik-run-setup
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        mode: ${{ inputs.mode }}
+        traefik_email: ${{ inputs.traefik_email }}
+        traefik_version: ${{ inputs.traefik_version }}
+        enable_acme: ${{ inputs.enable_acme }}
+        enable_ping: ${{ inputs.enable_ping }}
+        use_host_network: ${{ inputs.use_host_network }}
+        network_name: ${{ inputs.network_name }}
+        enable_metrics: ${{ inputs.enable_metrics }}
+        metrics_entrypoint: ${{ inputs.metrics_entrypoint }}
+        metrics_address: ${{ inputs.metrics_address }}
+        acme_dns_provider: ${{ inputs.acme_dns_provider }}
+        acme_dns_resolvers: ${{ inputs.acme_dns_resolvers }}
+        dns_servers: ${{ inputs.dns_servers }}
+        enable_dashboard: ${{ inputs.enable_dashboard }}
+        dashboard_user: ${{ inputs.dashboard_user }}
+        dashboard_password_bcrypt: ${{ inputs.dashboard_password_bcrypt }}
+        quadlet_enable_http3: ${{ inputs.quadlet_enable_http3 }}
+        force_restart: ${{ inputs.force_restart }}
 
     - name: Traefik status summary
       if: ${{ inputs.summary_mode == 'always' || (inputs.summary_mode == 'on_failure' && failure()) || (inputs.summary_mode == 'on_change' && steps.probe_traefik.outputs.up_to_date != 'true') }}
-      shell: bash
-      env:
-        SSH_HOST: ${{ inputs.ssh_host }}
-        SSH_USER: ${{ inputs.ssh_user }}
-        SSH_KEY: ${{ inputs.ssh_key }}
-        SSH_PORT: ${{ inputs.ssh_port }}
-        REACHABLE: ${{ steps.reach.outputs.reachable }}
-      run: |
-        set -euo pipefail
-        
-        # Create temporary SSH key file
-        KEY_FILE="$(mktemp)"
-        trap "rm -f '$KEY_FILE'" EXIT
-        
-        # Handle newline-escaped SSH keys (convert \n to actual newlines)
-        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
-          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
-        else
-          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
-        fi
-        chmod 600 "$KEY_FILE"
-
-        # SSH remote execution helper
-        run_remote() {
-          ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o ControlMaster=auto -o ControlPersist=60 -o ControlPath=~/.ssh/cm-%r@%h:%p -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "$@" 2>/dev/null || echo "SSH_FAILED"
-        }
-
-        # Connectivity section
-        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
-        ### 🌐 Connectivity
-        SUMMARY_EOF
-        if [ "${REACHABLE:-false}" = "true" ]; then
-          echo "Host reachable" >> "$GITHUB_STEP_SUMMARY"
-        else
-          echo "Host NOT reachable (skipped Traefik setup steps)" >> "$GITHUB_STEP_SUMMARY"
-        fi
-
-        # Fetch Traefik container status
-        TRAEFIK_PS_RAW="$(run_remote 'command -v podman >/dev/null 2>&1 && podman ps --filter name=traefik --format "{{.ID}}|{{.Status}}|{{.Names}}|{{.Ports}}" || echo "podman not available"' || true)"
-        TRAEFIK_PS="$(printf 'ID\tSTATUS\tNAME\tPORTS\n%s\n' "$TRAEFIK_PS_RAW")"
-        
-        # Fetch Traefik container stats (CPU, memory, I/O)
-        TRAEFIK_STATS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman stats traefik --no-stream --format "table {{.Container}}	{{.CPUPerc}}	{{.MemUsage}}" || echo "stats unavailable"' || true)"
-        
-        # Fetch recent Traefik logs (last 50 lines)
-        TRAEFIK_LOGS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman logs traefik --tail=50 || echo "logs unavailable"' || true)"
-        
-        # Fetch port listeners on 80/443
-        PODMAN_PORTS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman port traefik 2>/dev/null || true' || true)"
-        PORTS_LISTEN="$(run_remote 'ss -ltnp 2>/dev/null | grep -E ":80|:443" || echo "no listeners"' || true)"
-        PORTS_FROM_PS="$(printf '%s' "$TRAEFIK_PS_RAW" | awk -F'|' 'NF>=4 {print $4}' | head -n1)"
-        
-        # Fetch legacy proxy status
-        APACHE_STATE="$(run_remote 'systemctl is-active apache2 2>/dev/null || echo "inactive"' || true)"
-        NGINX_STATE="$(run_remote 'systemctl is-active nginx 2>/dev/null || echo "inactive"' || true)"
-
-        # Generate GitHub step summary with formatted output
-        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
-        ### 🚀 Traefik Setup Summary
-        
-        #### ✅ Container Status
-        
-        ```
-        SUMMARY_EOF
-        
-        if [ "$TRAEFIK_PS_RAW" = "SSH_FAILED" ]; then
-          echo "⚠️  Container status unavailable (SSH timeout or podman not available)" >> "$GITHUB_STEP_SUMMARY"
-        elif [ "$TRAEFIK_PS_RAW" = "podman not available" ]; then
-          echo "⚠️  podman not available on host" >> "$GITHUB_STEP_SUMMARY"
-        elif [ -z "$TRAEFIK_PS_RAW" ]; then
-          echo "⚠️  Traefik container not running" >> "$GITHUB_STEP_SUMMARY"
-          TRAEFIK_NOT_RUNNING=true
-        else
-          echo "$TRAEFIK_PS" >> "$GITHUB_STEP_SUMMARY"
-        fi
-        
-        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
-        ```
-        
-        #### 📊 Container Resource Usage
-        
-        ```
-        SUMMARY_EOF
-        
-        if [ -n "$TRAEFIK_STATS" ] && [ "$TRAEFIK_STATS" != "SSH_FAILED" ]; then 
-          echo "$TRAEFIK_STATS" >> "$GITHUB_STEP_SUMMARY"
-        else 
-          echo "⚠️  Stats unavailable" >> "$GITHUB_STEP_SUMMARY"
-        fi
-        
-        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
-        ```
-        
-        #### 🔌 Network Ports (80/443)
-        
-        ```
-        SUMMARY_EOF
-        
-        HAVE_TRAEFIK_PORTS=false
-        if [ -n "$PODMAN_PORTS" ] && [ "$PODMAN_PORTS" != "SSH_FAILED" ]; then
-          echo "$PODMAN_PORTS" >> "$GITHUB_STEP_SUMMARY"
-          HAVE_TRAEFIK_PORTS=true
-        elif [ -n "$PORTS_FROM_PS" ] && { printf '%s' "$PORTS_FROM_PS" | grep -qE ':80|:443'; }; then
-          echo "$PORTS_FROM_PS" >> "$GITHUB_STEP_SUMMARY"
-          HAVE_TRAEFIK_PORTS=true
-        elif [ "$PORTS_LISTEN" = "SSH_FAILED" ]; then
-          echo "⚠️  Unable to verify port listeners (SSH timeout)" >> "$GITHUB_STEP_SUMMARY"
-        elif [ "$PORTS_LISTEN" = "no listeners" ]; then
-          echo "⚠️  No listeners on 80/443" >> "$GITHUB_STEP_SUMMARY"
-        else 
-          echo "$PORTS_LISTEN" >> "$GITHUB_STEP_SUMMARY"
-          HAVE_TRAEFIK_PORTS=true
-        fi
-
-        if [ "$HAVE_TRAEFIK_PORTS" != "true" ] && [ "$PORTS_LISTEN" = "no listeners" ]; then
-          TRAEFIK_NO_PORTS=true
-        fi
-        
-        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
-        ```
-        
-        #### 🛑 Legacy Proxies (Apache/Nginx)
-        
-        | Service | Status |
-        |---------|--------|
-        SUMMARY_EOF
-        
-        APACHE_DISPLAY="${APACHE_STATE:-unknown}"
-        NGINX_DISPLAY="${NGINX_STATE:-unknown}"
-        [ "$APACHE_STATE" = "SSH_FAILED" ] && APACHE_DISPLAY="SSH timeout"
-        [ "$NGINX_STATE" = "SSH_FAILED" ] && NGINX_DISPLAY="SSH timeout"
-        
-        echo "| Apache  | \`$APACHE_DISPLAY\` |" >> "$GITHUB_STEP_SUMMARY"
-        echo "| Nginx   | \`$NGINX_DISPLAY\` |" >> "$GITHUB_STEP_SUMMARY"
-        
-        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
-        
-        #### 📋 Recent Traefik Logs (Last 50 lines)
-        
-        ```log
-        SUMMARY_EOF
-        
-        if [ -n "$TRAEFIK_LOGS" ] && [ "$TRAEFIK_LOGS" != "SSH_FAILED" ]; then 
-          echo "$TRAEFIK_LOGS" | head -50 >> "$GITHUB_STEP_SUMMARY"
-        else 
-          echo "⚠️  Logs unavailable" >> "$GITHUB_STEP_SUMMARY"
-        fi
-        
-        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
-        ```
-        
-        #### 🧯 Resolution Guide: Ports 80/443 In Use
-        
-        The server reports something is already listening on port 80 and/or 443. This commonly means another container (often Traefik or a previous app) is binding these ports. Use the steps below to find and free the ports, then re-run this workflow.
-        
-        1) Identify listeners and candidate containers
-        
-        ```bash
-        ss -ltnp | grep -E ':80|:443' || true
-        podman ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}' | grep -E ':80|:443' || true
-        ```
-        
-        2) Stop and remove the conflicting container(s)
-        
-        Replace <NAME> with the container name from the table above.
-        
-        ```bash
-        podman stop <NAME> || true
-        podman rm <NAME>   || true
-        ```
-        
-        3) If the container belongs to another user (e.g., a legacy 'deployer' account)
-        
-        ```bash
-        sudo -u deployer podman ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}' | grep -E ':80|:443' || true
-        sudo -u deployer podman stop traefik || true
-        sudo -u deployer podman rm traefik   || true
-        ```
-        
-        4) If a legacy system service holds 80/443 (nginx/apache/old traefik)
-        
-        ```bash
-        sudo systemctl disable --now nginx apache2 traefik || true
-        ```
-        
-        5) Re-run this workflow step when ports 80/443 are free
-        
-        --
-        
-        SUMMARY_EOF
-        
-        TS="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-        {
-          echo '---'
-          printf '**Generated at:** `%s`\n' "$TS"
-        } >> "$GITHUB_STEP_SUMMARY"
-
-        if [ "${TRAEFIK_NOT_RUNNING:-false}" = "true" ]; then
-          echo '::error::Traefik container is not running after setup.'
-          exit 1
-        fi
-
-        if [ "${TRAEFIK_NO_PORTS:-false}" = "true" ]; then
-          echo '::error::Traefik is not listening on ports 80/443. Review CAP_NET_BIND_SERVICE or authbind configuration.'
-          exit 1
-        fi
+      uses: ./.github/actions/infra/traefik-summary
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        reachable: ${{ steps.reach.outputs.reachable }}
 
     - name: Configure UFW for Traefik dashboard
       if: ${{ inputs.enable_dashboard == 'true' }}

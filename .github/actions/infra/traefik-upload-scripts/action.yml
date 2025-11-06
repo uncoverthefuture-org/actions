@@ -1,0 +1,164 @@
+name: 'infra: traefik-upload-scripts'
+description: 'Hash-compare and optionally upload Traefik scripts to /opt/uactions/scripts/traefik on the remote host'
+
+inputs:
+  ssh_host:
+    required: true
+    description: 'Remote host'
+  ssh_user:
+    required: true
+    description: 'SSH user'
+  ssh_key:
+    required: true
+    description: 'SSH private key'
+  ssh_port:
+    required: false
+    default: '22'
+  ssh_fingerprint:
+    required: false
+    description: 'Optional server fingerprint verification'
+  skip_upload:
+    required: false
+    default: 'true'
+  upload_policy:
+    required: false
+    default: 'auto'
+
+outputs:
+  needs_upload:
+    value: ${{ steps.decide_upload.outputs.needs_upload }}
+  local_hash:
+    value: ${{ steps.localhash.outputs.local_hash }}
+  remote_hash:
+    value: ${{ steps.remotehash.outputs.remote_hash }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Compute local scripts hash
+      id: localhash
+      shell: bash
+      run: |
+        set -euo pipefail
+        files=(
+          ./.github/actions/scripts/traefik/install-traefik.sh
+          ./.github/actions/scripts/traefik/setup-traefik.sh
+          ./.github/actions/scripts/traefik/ensure-traefik-config.sh
+          ./.github/actions/scripts/traefik/install-quadlet-sockets.sh
+          ./.github/actions/scripts/traefik/assert-socket-and-selinux.sh
+        )
+        if command -v sha256sum >/dev/null 2>&1; then
+          hash=$(for f in "${files[@]}"; do [ -f "$f" ] && sha256sum "$f" | awk '{print $1}'; done | sha256sum | awk '{print $1}')
+        else
+          hash=$(for f in "${files[@]}"; do [ -f "$f" ] && shasum -a 256 "$f" | awk '{print $1}'; done | shasum -a 256 | awk '{print $1}')
+        fi
+        echo "local_hash=$hash" >> "$GITHUB_OUTPUT"
+
+    - name: Compute remote scripts hash
+      id: remotehash
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+        remote_hash_output="$(
+          ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
+          set -euo pipefail
+          files=(
+            /opt/uactions/scripts/traefik/install-traefik.sh
+            /opt/uactions/scripts/traefik/setup-traefik.sh
+            /opt/uactions/scripts/traefik/ensure-traefik-config.sh
+            /opt/uactions/scripts/traefik/install-quadlet-sockets.sh
+            /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh
+          )
+          if command -v sha256sum >/dev/null 2>&1; then
+            for f in "${files[@]}"; do [ -f "$f" ] && sha256sum "$f" | awk '{print $1}'; done | sha256sum | awk '{print $1}'
+          else
+            for f in "${files[@]}"; do [ -f "$f" ] && shasum -a 256 "$f" | awk '{print $1}'; done | shasum -a 256 | awk '{print $1}'
+          fi
+        REMOTE
+        )" || true
+        echo "remote_hash=${remote_hash_output}" >> "$GITHUB_OUTPUT"
+
+    - name: Decide scripts upload
+      id: decide_upload
+      shell: bash
+      env:
+        POLICY: ${{ inputs.upload_policy }}
+        SKIP: ${{ inputs.skip_upload }}
+        LOCAL: ${{ steps.localhash.outputs.local_hash }}
+        REMOTE: ${{ steps.remotehash.outputs.remote_hash }}
+      run: |
+        set -euo pipefail
+        needs=false
+        if [ "${SKIP}" = "true" ]; then
+          needs=false
+        elif [ "${POLICY}" = "skip" ]; then
+          needs=false
+        elif [ "${POLICY}" = "always" ]; then
+          needs=true
+        else
+          if [ -n "${LOCAL}" ] && [ -n "${REMOTE}" ] && [ "${LOCAL}" = "${REMOTE}" ]; then
+            needs=false
+          else
+            needs=true
+          fi
+        fi
+        echo "needs_upload=${needs}" >> "$GITHUB_OUTPUT"
+
+    - name: Stage changed scripts for upload
+      if: ${{ inputs.skip_upload == 'false' && (inputs.upload_policy == 'always' || steps.decide_upload.outputs.needs_upload == 'true') }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$GITHUB_WORKSPACE/.uactions_cache/traefik"
+        cp ./.github/actions/scripts/traefik/install-traefik.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/" || true
+        cp ./.github/actions/scripts/traefik/setup-traefik.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/" || true
+        cp ./.github/actions/scripts/traefik/ensure-traefik-config.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/" || true
+        cp ./.github/actions/scripts/traefik/install-quadlet-sockets.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/" || true
+        cp ./.github/actions/scripts/traefik/assert-socket-and-selinux.sh "$GITHUB_WORKSPACE/.uactions_cache/traefik/" || true
+
+    - name: Upload Traefik scripts
+      if: ${{ inputs.skip_upload == 'false' && (inputs.upload_policy == 'always' || steps.decide_upload.outputs.needs_upload == 'true') }}
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        source: ".uactions_cache/traefik/*"
+        target: /tmp
+        overwrite: true
+        timeout: 15s
+        command_timeout: 30s
+
+    - name: Move scripts into place
+      if: ${{ inputs.skip_upload == 'false' && (inputs.upload_policy == 'always' || steps.decide_upload.outputs.needs_upload == 'true') }}
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: user
+        inline_script: |
+          set -euo pipefail
+          mkdir -p /opt/uactions/scripts/traefik
+          for f in install-traefik.sh setup-traefik.sh ensure-traefik-config.sh install-quadlet-sockets.sh assert-socket-and-selinux.sh; do
+            if [ -f "/tmp/$f" ]; then
+              mv -f "/tmp/$f" "/opt/uactions/scripts/traefik/$f"
+              chmod +x "/opt/uactions/scripts/traefik/$f"
+            fi
+          done

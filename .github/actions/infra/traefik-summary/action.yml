@@ -1,0 +1,189 @@
+name: 'infra: traefik-summary'
+description: 'Render Traefik status summary from remote host'
+
+inputs:
+  ssh_host:
+    required: true
+  ssh_user:
+    required: true
+  ssh_key:
+    required: true
+  ssh_port:
+    required: false
+    default: '22'
+  reachable:
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Traefik status summary
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        REACHABLE: ${{ inputs.reachable }}
+      run: |
+        set -euo pipefail
+        
+        # Create temporary SSH key file
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        
+        # Handle newline-escaped SSH keys (convert \n to actual newlines)
+        if printf '%s' "$SSH_KEY" | grep -q '\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+
+        # SSH remote execution helper
+        run_remote() {
+          ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o ControlMaster=auto -o ControlPersist=60 -o ControlPath=~/.ssh/cm-%r@%h:%p -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "$@" 2>/dev/null || echo "SSH_FAILED"
+        }
+
+        # Connectivity section
+        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
+        ### 🌐 Connectivity
+        SUMMARY_EOF
+        if [ "${REACHABLE:-false}" = "true" ]; then
+          echo "Host reachable" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "Host NOT reachable (skipped Traefik setup steps)" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+        # Fetch Traefik container status
+        TRAEFIK_PS_RAW="$(run_remote 'command -v podman >/dev/null 2>&1 && podman ps --filter name=traefik --format "{{.ID}}|{{.Status}}|{{.Names}}|{{.Ports}}" || echo "podman not available"' || true)"
+        TRAEFIK_PS="$(printf 'ID\tSTATUS\tNAME\tPORTS\n%s\n' "$TRAEFIK_PS_RAW")"
+        
+        # Fetch Traefik container stats (CPU, memory, I/O)
+        TRAEFIK_STATS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman stats traefik --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}" || echo "stats unavailable"' || true)"
+        
+        # Fetch recent Traefik logs (last 50 lines)
+        TRAEFIK_LOGS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman logs traefik --tail=50 || echo "logs unavailable"' || true)"
+        
+        # Fetch port listeners on 80/443
+        PODMAN_PORTS="$(run_remote 'command -v podman >/dev/null 2>&1 && podman port traefik 2>/dev/null || true' || true)"
+        PORTS_LISTEN="$(run_remote 'ss -ltnp 2>/dev/null | grep -E ":80|:443" || echo "no listeners"' || true)"
+        PORTS_FROM_PS="$(printf '%s' "$TRAEFIK_PS_RAW" | awk -F'|' 'NF>=4 {print $4}' | head -n1)"
+        
+        # Fetch legacy proxy status
+        APACHE_STATE="$(run_remote 'systemctl is-active apache2 2>/dev/null || echo "inactive"' || true)"
+        NGINX_STATE="$(run_remote 'systemctl is-active nginx 2>/dev/null || echo "inactive"' || true)"
+
+        # Generate GitHub step summary with formatted output
+        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
+        ### 🚀 Traefik Setup Summary
+        
+        #### ✅ Container Status
+        
+        ```
+        SUMMARY_EOF
+        
+        if [ "$TRAEFIK_PS_RAW" = "SSH_FAILED" ]; then
+          echo "⚠️  Container status unavailable (SSH timeout or podman not available)" >> "$GITHUB_STEP_SUMMARY"
+        elif [ "$TRAEFIK_PS_RAW" = "podman not available" ]; then
+          echo "⚠️  podman not available on host" >> "$GITHUB_STEP_SUMMARY"
+        elif [ -z "$TRAEFIK_PS_RAW" ]; then
+          echo "⚠️  Traefik container not running" >> "$GITHUB_STEP_SUMMARY"
+          TRAEFIK_NOT_RUNNING=true
+        else
+          echo "$TRAEFIK_PS" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        
+        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
+        ```
+        
+        #### 📊 Container Resource Usage
+        
+        ```
+        SUMMARY_EOF
+        
+        if [ -n "$TRAEFIK_STATS" ] && [ "$TRAEFIK_STATS" != "SSH_FAILED" ]; then 
+          echo "$TRAEFIK_STATS" >> "$GITHUB_STEP_SUMMARY"
+        else 
+          echo "⚠️  Stats unavailable" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        
+        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
+        ```
+        
+        #### 🔌 Network Ports (80/443)
+        
+        ```
+        SUMMARY_EOF
+        
+        HAVE_TRAEFIK_PORTS=false
+        if [ -n "$PODMAN_PORTS" ] && [ "$PODMAN_PORTS" != "SSH_FAILED" ]; then
+          echo "$PODMAN_PORTS" >> "$GITHUB_STEP_SUMMARY"
+          HAVE_TRAEFIK_PORTS=true
+        elif [ -n "$PORTS_FROM_PS" ] && { printf '%s' "$PORTS_FROM_PS" | grep -qE ':80|:443'; }; then
+          echo "$PORTS_FROM_PS" >> "$GITHUB_STEP_SUMMARY"
+          HAVE_TRAEFIK_PORTS=true
+        elif [ "$PORTS_LISTEN" = "SSH_FAILED" ]; then
+          echo "⚠️  Unable to verify port listeners (SSH timeout)" >> "$GITHUB_STEP_SUMMARY"
+        elif [ "$PORTS_LISTEN" = "no listeners" ]; then
+          echo "⚠️  No listeners on 80/443" >> "$GITHUB_STEP_SUMMARY"
+        else 
+          echo "$PORTS_LISTEN" >> "$GITHUB_STEP_SUMMARY"
+          HAVE_TRAEFIK_PORTS=true
+        fi
+
+        if [ "$HAVE_TRAEFIK_PORTS" != "true" ] && [ "$PORTS_LISTEN" = "no listeners" ]; then
+          TRAEFIK_NO_PORTS=true
+        fi
+        
+        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
+        ```
+        
+        #### 🛑 Legacy Proxies (Apache/Nginx)
+        
+        | Service | Status |
+        |---------|--------|
+        SUMMARY_EOF
+        
+        APACHE_DISPLAY="${APACHE_STATE:-unknown}"
+        NGINX_DISPLAY="${NGINX_STATE:-unknown}"
+        [ "$APACHE_STATE" = "SSH_FAILED" ] && APACHE_DISPLAY="SSH timeout"
+        [ "$NGINX_STATE" = "SSH_FAILED" ] && NGINX_DISPLAY="SSH timeout"
+        
+        echo "| Apache  | \`$APACHE_DISPLAY\` |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Nginx   | \`$NGINX_DISPLAY\` |" >> "$GITHUB_STEP_SUMMARY"
+        
+        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
+        
+        #### 📋 Recent Traefik Logs (Last 50 lines)
+        
+        ```log
+        SUMMARY_EOF
+        
+        if [ -n "$TRAEFIK_LOGS" ] && [ "$TRAEFIK_LOGS" != "SSH_FAILED" ]; then 
+          echo "$TRAEFIK_LOGS" | head -50 >> "$GITHUB_STEP_SUMMARY"
+        else 
+          echo "⚠️  Logs unavailable" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        
+        cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
+        ```
+        
+        SUMMARY_EOF
+        
+        TS="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+        {
+          echo '---'
+          printf '**Generated at:** `%s`\n' "$TS"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "${TRAEFIK_NOT_RUNNING:-false}" = "true" ]; then
+          echo '::error::Traefik container is not running after setup.'
+          exit 1
+        fi
+
+        if [ "${TRAEFIK_NO_PORTS:-false}" = "true" ]; then
+          echo '::error::Traefik is not listening on ports 80/443. Review CAP_NET_BIND_SERVICE or authbind configuration.'
+          exit 1
+        fi

@@ -1,0 +1,134 @@
+name: 'infra: traefik-probe'
+description: 'Probe remote Traefik container, compute desired confighash from inputs + remote cfg, and report up_to_date state'
+
+inputs:
+  ssh_host:
+    required: true
+  ssh_user:
+    required: true
+  ssh_key:
+    required: true
+  ssh_port:
+    required: false
+    default: '22'
+  traefik_version:
+    required: true
+  enable_acme:
+    required: true
+  traefik_email:
+    required: false
+    default: ''
+  acme_dns_provider:
+    required: false
+    default: ''
+  acme_dns_resolvers:
+    required: false
+    default: ''
+  enable_ping:
+    required: true
+  enable_dashboard:
+    required: true
+  dashboard_user:
+    required: false
+    default: ''
+  enable_metrics:
+    required: true
+  metrics_entrypoint:
+    required: true
+  metrics_address:
+    required: true
+  use_host_network:
+    required: true
+  network_name:
+    required: true
+  dns_servers:
+    required: false
+    default: ''
+
+outputs:
+  desired_hash:
+    value: ${{ steps.probe.outputs.desired_hash }}
+  remote_hash:
+    value: ${{ steps.probe.outputs.remote_hash }}
+  up_to_date:
+    value: ${{ steps.probe.outputs.up_to_date }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Probe Traefik
+      id: probe
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        TRAEFIK_VERSION: ${{ inputs.traefik_version }}
+        TRAEFIK_ENABLE_ACME: ${{ inputs.enable_acme }}
+        TRAEFIK_EMAIL: ${{ inputs.traefik_email }}
+        TRAEFIK_ACME_DNS_PROVIDER: ${{ inputs.acme_dns_provider }}
+        TRAEFIK_ACME_DNS_RESOLVERS: ${{ inputs.acme_dns_resolvers }}
+        TRAEFIK_PING_ENABLED: ${{ inputs.enable_ping }}
+        TRAEFIK_DASHBOARD: ${{ inputs.enable_dashboard }}
+        DASHBOARD_USER: ${{ inputs.dashboard_user }}
+        TRAEFIK_ENABLE_METRICS: ${{ inputs.enable_metrics }}
+        TRAEFIK_METRICS_ENTRYPOINT: ${{ inputs.metrics_entrypoint }}
+        TRAEFIK_METRICS_ADDRESS: ${{ inputs.metrics_address }}
+        TRAEFIK_USE_HOST_NETWORK: ${{ inputs.use_host_network }}
+        TRAEFIK_NETWORK_NAME: ${{ inputs.network_name }}
+        TRAEFIK_DNS_SERVERS: ${{ inputs.dns_servers }}
+      run: |
+        set -euo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+        remote_info="$(
+          ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
+          set -euo pipefail
+          cfg="$HOME/.config/traefik/traefik.yml"
+          if command -v sha256sum >/dev/null 2>&1; then
+            if [ -f "$cfg" ]; then cfg_sha=$(sha256sum "$cfg" | awk '{print $1}'); else cfg_sha=missing; fi
+          else
+            if [ -f "$cfg" ]; then cfg_sha=$(shasum -a 256 "$cfg" | awk '{print $1}'); else cfg_sha=missing; fi
+          fi
+          label=$(podman inspect -f '{{ index .Config.Labels "org.uactions.traefik.confighash" }}' traefik 2>/dev/null || true)
+          status=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)
+          l80=no; l443=no
+          if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$'; then l80=yes; fi
+          if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then l443=yes; fi
+          printf 'CFG_SHA=%s\nLABEL=%s\nSTATUS=%s\nL80=%s\nL443=%s\n' "$cfg_sha" "$label" "$status" "$l80" "$l443"
+        REMOTE
+        )" || true
+        CFG_SHA=$(printf '%s\n' "$remote_info" | awk -F= '/^CFG_SHA=/{print $2}' | head -n1)
+        LABEL=$(printf '%s\n' "$remote_info" | awk -F= '/^LABEL=/{print $2}' | head -n1)
+        STATUS=$(printf '%s\n' "$remote_info" | awk -F= '/^STATUS=/{print $2}' | head -n1)
+        L80=$(printf '%s\n' "$remote_info" | awk -F= '/^L80=/{print $2}' | head -n1)
+        L443=$(printf '%s\n' "$remote_info" | awk -F= '/^L443=/{print $2}' | head -n1)
+        [ -z "$CFG_SHA" ] && CFG_SHA=missing
+        src=$(printf '%s\n' \
+          "v:$TRAEFIK_VERSION" \
+          "acme:$TRAEFIK_ENABLE_ACME:$TRAEFIK_EMAIL:$TRAEFIK_ACME_DNS_PROVIDER:$TRAEFIK_ACME_DNS_RESOLVERS" \
+          "ping:$TRAEFIK_PING_ENABLED" \
+          "dash:$TRAEFIK_DASHBOARD:$DASHBOARD_USER" \
+          "metrics:$TRAEFIK_ENABLE_METRICS:$TRAEFIK_METRICS_ENTRYPOINT:$TRAEFIK_METRICS_ADDRESS" \
+          "net:$TRAEFIK_USE_HOST_NETWORK:$TRAEFIK_NETWORK_NAME" \
+          "dns:$TRAEFIK_DNS_SERVERS" \
+          "cfg:$CFG_SHA")
+        if command -v sha256sum >/dev/null 2>&1; then
+          desired=$(printf '%s' "$src" | sha256sum | awk '{print $1}')
+        else
+          desired=$(printf '%s' "$src" | shasum -a 256 | awk '{print $1}')
+        fi
+        up=false
+        if [ "$LABEL" = "$desired" ] && [ "$STATUS" = "running" ] && [ "$L80" = "yes" ] && [ "$L443" = "yes" ]; then
+          up=true
+        fi
+        echo "desired_hash=$desired" >> "$GITHUB_OUTPUT"
+        echo "remote_hash=$LABEL" >> "$GITHUB_OUTPUT"
+        echo "up_to_date=$up" >> "$GITHUB_OUTPUT"
