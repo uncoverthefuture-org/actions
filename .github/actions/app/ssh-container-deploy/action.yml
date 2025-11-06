@@ -553,6 +553,7 @@ runs: # Composite action implementation
           /opt/uactions/scripts/traefik/probe-traefik.sh post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT" "$PROBE_PATH"
 
     - name: Deployment status summary
+      continue-on-error: true
       uses: ./.github/actions/app/deployment-status-summary
       with:
         reachable: ${{ steps.reach.outputs.reachable }}
