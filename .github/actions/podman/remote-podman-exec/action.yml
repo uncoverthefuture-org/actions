@@ -177,7 +177,7 @@ runs:
           ENV_FILE=""
 
           if [ -z "$ENV_ROOT" ]; then
-            ENV_ROOT="/var/deployments"
+            ENV_ROOT="$HOME/deployments"
           fi
 
           ENV_ROOT="${ENV_ROOT%/}"

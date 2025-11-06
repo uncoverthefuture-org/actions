@@ -143,8 +143,8 @@ runs:
         fi
         [ -n "$ENV_NAME" ] || ENV_NAME='development'
 
-        ENV_DIR="/var/deployments/${ENV_NAME}/${APP_SLUG}"
-        ENV_FILE_PATH="/var/deployments"
+        ENV_DIR="$HOME/deployments/${ENV_NAME}/${APP_SLUG}"
+        ENV_FILE_PATH="$HOME/deployments"
 
         SHA="${GITHUB_SHA:-unknown}"
         SHA7="${SHA:0:7}"
