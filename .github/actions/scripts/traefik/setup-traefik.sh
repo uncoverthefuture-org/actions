@@ -249,6 +249,44 @@ else
   echo "  ✓ No conflicting listeners detected"
 fi
 
+cleanup_existing_traefik() {
+  echo "🧹 Cleaning up existing Traefik container ..."
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl --user is-active --quiet container-traefik.service 2>/dev/null; then
+      systemctl --user stop container-traefik.service >/dev/null 2>&1 || true
+    fi
+  fi
+
+  if podman container exists traefik >/dev/null 2>&1; then
+    status=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)
+    if [[ "$status" = "running" || "$status" = "stopping" || "$status" = "paused" ]]; then
+      podman stop -t 15 traefik >/dev/null 2>&1 || true
+    fi
+
+    for i in {1..10}; do
+      status=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)
+      if [[ -z "$status" || "$status" = "exited" || "$status" = "dead" ]]; then
+        break
+      fi
+      sleep 1
+    done
+
+    status=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)
+    if [[ -n "$status" && "$status" != "" && "$status" != "exited" ]]; then
+      podman kill traefik >/dev/null 2>&1 || true
+    fi
+    podman rm -f traefik >/dev/null 2>&1 || true
+
+    for i in {1..10}; do
+      if ! podman container exists traefik >/dev/null 2>&1; then
+        echo "  ✓ Traefik container name is free"
+        break
+      fi
+      sleep 1
+    done
+  fi
+}
+
 # --- Container management -------------------------------------------------------------
 echo "🛑 Ensuring no existing Traefik container ..."
 if podman container exists traefik >/dev/null 2>&1; then
