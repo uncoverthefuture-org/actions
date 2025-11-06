@@ -42,24 +42,27 @@ runs:
         DP_PROD='${{ inputs.domain_prefix_prod }}'
         DP_STG='${{ inputs.domain_prefix_staging }}'
         DP_DEV='${{ inputs.domain_prefix_dev }}'
+        if [ -z "$DP_PROD" ]; then
+          DP_PROD='www'
+        fi
         if [ -z "$DP_STG" ]; then
-          if [ -n "$DP_PROD" ]; then
+          if [ -n "$DP_PROD" ] && [ "$DP_PROD" != 'www' ]; then
             DP_STG="${DP_PROD}-staging"
           else
             DP_STG='staging'
           fi
         fi
         if [ -z "$DP_DEV" ]; then
-          if [ -n "$DP_PROD" ]; then
+          if [ -n "$DP_PROD" ] && [ "$DP_PROD" != 'www' ]; then
             DP_DEV="${DP_PROD}-dev"
           else
             DP_DEV='dev'
           fi
         fi
-        if [ "$DP_STG" = 'staging' ] && [ -n "$DP_PROD" ]; then
+        if [ "$DP_STG" = 'staging' ] && [ -n "$DP_PROD" ] && [ "$DP_PROD" != 'www' ]; then
           DP_STG="${DP_PROD}-staging"
         fi
-        if [ "$DP_DEV" = 'dev' ] && [ -n "$DP_PROD" ]; then
+        if [ "$DP_DEV" = 'dev' ] && [ -n "$DP_PROD" ] && [ "$DP_PROD" != 'www' ]; then
           DP_DEV="${DP_PROD}-dev"
         fi
         if [ -n "$DOMAIN_IN" ]; then

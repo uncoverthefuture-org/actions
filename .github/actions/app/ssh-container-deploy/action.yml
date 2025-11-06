@@ -200,7 +200,7 @@ inputs: # All parameters accepted by this action
     default: ''
   include_www_alias: # When true and domain is set, also include www.<domain> as alias
     required: false
-    default: 'true'
+    default: 'false'
   probe_path: # Path to probe on the domain (e.g., /health). Defaults to '/'
     required: false
     default: '/'

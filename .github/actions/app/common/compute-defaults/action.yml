@@ -157,16 +157,16 @@ runs:
         PREFIX_STAGING="${INPUT_PREFIX_STAGING:-}"
         PREFIX_DEV="${INPUT_PREFIX_DEV:-}"
 
-        [ -n "$PREFIX_PROD" ] || PREFIX_PROD=''
+        [ -n "$PREFIX_PROD" ] || PREFIX_PROD='www'
         if [ -z "$PREFIX_STAGING" ]; then
-          if [ -n "$PREFIX_PROD" ]; then
+          if [ -n "$PREFIX_PROD" ] && [ "$PREFIX_PROD" != 'www' ]; then
             PREFIX_STAGING="staging-${PREFIX_PROD}"
           else
             PREFIX_STAGING='staging'
           fi
         fi
         if [ -z "$PREFIX_DEV" ]; then
-          if [ -n "$PREFIX_PROD" ]; then
+          if [ -n "$PREFIX_PROD" ] && [ "$PREFIX_PROD" != 'www' ]; then
             PREFIX_DEV="dev-${PREFIX_PROD}"
           else
             PREFIX_DEV='dev'
