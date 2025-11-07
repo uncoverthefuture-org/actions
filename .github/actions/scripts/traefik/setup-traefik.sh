@@ -87,20 +87,52 @@ if command -v getcap >/dev/null 2>&1; then
   echo "🔐 getcap $(command -v podman): $(getcap "$(command -v podman)" 2>/dev/null || true)"
 fi
 
+# Ensure setcap is available when sudo is present; needed for CAP_NET_BIND_SERVICE fallback
+if [ "$SUDO_AVAILABLE" = "yes" ] && ! command -v setcap >/dev/null 2>&1; then
+  echo "::notice::Installing libcap2-bin to provide setcap/getcap ..."
+  sudo apt-get update -y >/dev/null 2>&1 || true
+  sudo apt-get install -y libcap2-bin >/dev/null 2>&1 || true
+fi
+
 if [ "$CAN_BIND" != "true" ]; then
   echo "::notice::Current user cannot bind to port 80 directly. Traefik may still work via rootless port forwarding."
   if [ "$SUDO_AVAILABLE" = "yes" ]; then
-    echo "::notice::Attempting to grant CAP_NET_BIND_SERVICE to podman via sudo setcap ..."
-    if sudo setcap cap_net_bind_service=+ep "$(command -v podman)" 2>/dev/null; then
-      echo "  ✓ setcap applied to podman"
-      if command -v getcap >/dev/null 2>&1; then
-        echo "🔐 getcap $(command -v podman): $(getcap "$(command -v podman)" 2>/dev/null || true)"
+    # First attempt: lower the unprivileged port start so rootless can open 80/443
+    # This config persists via /etc/sysctl.d and is applied immediately; safe and reversible.
+    echo "::notice::Attempting to allow unprivileged low ports via sysctl (net.ipv4.ip_unprivileged_port_start=80) ..."
+    if sudo sh -c 'printf "net.ipv4.ip_unprivileged_port_start=80\n" > /etc/sysctl.d/99-uactions-unpriv-ports.conf' 2>/dev/null && \
+       sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80 >/dev/null 2>&1 && \
+       sudo sysctl --system >/dev/null 2>&1; then
+      # Re-check bind capability after sysctl change
+      CAN_BIND=false
+      if timeout 3 bash -c 'exec 3<>/dev/tcp/localhost/80' 2>/dev/null || \
+         python3 -c 'import socket; s=socket.socket(); s.bind(("", 80)); s.close()' 2>/dev/null; then
+        CAN_BIND=true
+      fi
+      if [ "$CAN_BIND" = "true" ]; then
+        echo "  ✓ Enabled unprivileged low ports; continuing with port publish 80/443"
+      else
+        echo "::warning::sysctl applied but bind test still failing; will try setcap fallback (may not help rootless publish)."
       fi
     else
-      echo "::warning::Failed to apply setcap; consider authbind or allowing low ports (net.ipv4.ip_unprivileged_port_start=80)."
+      echo "::warning::Failed to apply sysctl for unprivileged ports; will try setcap fallback (may not help rootless publish)."
+    fi
+    # Last resort: grant CAP_NET_BIND_SERVICE to the podman binary.
+    # Note: this may help host-network binds in some setups but does not bypass
+    # rootless port publishing restrictions in slirp4netns.
+    if [ "$CAN_BIND" != "true" ]; then
+      echo "::notice::Attempting to grant CAP_NET_BIND_SERVICE to podman via sudo setcap ..."
+      if sudo setcap cap_net_bind_service=+ep "$(command -v podman)" 2>/dev/null; then
+        echo "  ✓ setcap applied to podman"
+        if command -v getcap >/dev/null 2>&1; then
+          echo "🔐 getcap $(command -v podman): $(getcap "$(command -v podman)" 2>/dev/null || true)"
+        fi
+      else
+        echo "::warning::Failed to apply setcap; consider authbind or enabling low ports."
+      fi
     fi
   else
-    echo "::notice::sudo not available; consider authbind or enabling low ports for rootless."
+    echo "::notice::sudo not available; consider authbind or asking an admin to set net.ipv4.ip_unprivileged_port_start=80."
   fi
 fi
 
@@ -425,6 +457,85 @@ if ! out=$("${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}" 2>&1); then
       podman logs traefik 2>&1 || true
       exit 1
     fi
+  elif printf '%s' "$out" | grep -qi 'rootlessport .* privileged port'; then
+    # Rootless publishing to ports 80/443 is still blocked even after sysctl/setcap attempts.
+    # As a last-resort, and only when sudo is available, run Traefik as a ROOTFUL container
+    # to bind privileged ports. This avoids slirp4netns rootless restrictions.
+    if [ "$SUDO_AVAILABLE" = "yes" ]; then
+      echo "::notice::Rootless publish to 80/443 failed; attempting rootful fallback via sudo podman (host network)."
+      ROOT_SOCK="/var/run/podman/podman.sock"
+      # Build minimal rootful run args using host networking to avoid user-network mismatch
+      RUN_ARGS_ROOT=(
+        sudo podman run -d
+        --name traefik
+        --restart unless-stopped
+      )
+      # Prefer --replace if supported by rootful podman
+      if sudo podman run --help 2>&1 | grep -q -- '--replace'; then
+        RUN_ARGS_ROOT+=(--replace)
+      fi
+      RUN_ARGS_ROOT+=(--network host)
+      # Mount same config and ACME storage from user scope; readable by root
+      RUN_ARGS_ROOT+=(-v "$HOME/.config/traefik/traefik.yml":/etc/traefik/traefik.yml:ro)
+      RUN_ARGS_ROOT+=(-v "$HOME/.local/share/traefik/acme.json":/letsencrypt/acme.json:Z)
+      RUN_ARGS_ROOT+=(-v "$ROOT_SOCK":/var/run/docker.sock:Z)
+      RUN_ARGS_ROOT+=(-e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80)
+      RUN_ARGS_ROOT+=(-e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443)
+      RUN_ARGS_ROOT+=(--label org.uactions.managed-by=uactions --label "org.uactions.traefik.confighash=${CONFIG_HASH}")
+      if [[ "$TRAEFIK_ENABLE_ACME" == "true" ]]; then
+        RUN_ARGS_ROOT+=(
+          -e TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_TO=websecure
+          -e TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_SCHEME=https
+          -e TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL="$TRAEFIK_EMAIL"
+          -e TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_STORAGE=/letsencrypt/acme.json
+          -e TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_HTTPCHALLENGE_ENTRYPOINT=web
+          -e TRAEFIK_ENTRYPOINTS_WEBSECURE_HTTP_TLS_CERTRESOLVER=letsencrypt
+        )
+        if [[ -n "$TRAEFIK_ACME_DNS_PROVIDER" ]]; then
+          RUN_ARGS_ROOT+=(-e TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_PROVIDER="$TRAEFIK_ACME_DNS_PROVIDER")
+          if [[ -n "$TRAEFIK_ACME_DNS_RESOLVERS" ]]; then
+            RUN_ARGS_ROOT+=(-e TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_RESOLVERS="${TRAEFIK_ACME_DNS_RESOLVERS//,/\,}")
+          fi
+        fi
+      fi
+      if [[ "$TRAEFIK_PING_ENABLED" == "true" ]]; then
+        RUN_ARGS_ROOT+=(-e TRAEFIK_PING=true -e TRAEFIK_PING_ENTRYPOINT=web)
+      fi
+      if [[ "$TRAEFIK_DNS_SERVERS" == "true" ]]; then
+        IFS=', ' read -r -a _DNS_ARR <<< "$TRAEFIK_DNS_SERVERS"
+        for _dns in "${_DNS_ARR[@]}"; do
+          [[ -n "$_dns" ]] && RUN_ARGS_ROOT+=(--dns "$_dns")
+        done
+      fi
+      # Attempt rootful start
+      if ! out_root=$("${RUN_ARGS_ROOT[@]}" docker.io/traefik:"${TRAEFIK_VERSION}" 2>&1); then
+        echo "Failed to start rootful Traefik container" >&2
+        printf '%s\n' "$out_root" >&2 || true
+        sudo podman logs traefik 2>&1 || true
+        exit 1
+      fi
+      # Quick listener check; then exit early, skipping user-level systemd persistence
+      echo "⏳ Waiting for Traefik listeners on ports 80/443 (rootful) ..."
+      ok=false
+      for i in {1..10}; do
+        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
+           ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
+          ok=true; break
+        fi
+        sleep 2
+      done
+      if ! $ok; then
+        echo "::error::Rootful Traefik did not open ports 80/443 after start." >&2
+        sudo podman logs --tail=120 traefik 2>/dev/null || true
+        exit 1
+      fi
+      echo "✅ Traefik container started (rootful fallback). Persistence via user systemd is skipped."
+      exit 0
+    fi
+    echo "Failed to start Traefik container" >&2
+    printf '%s\n' "$out" >&2 || true
+    podman logs traefik 2>&1 || true
+    exit 1
   else
     echo "Failed to start Traefik container" >&2
     printf '%s\n' "$out" >&2 || true
