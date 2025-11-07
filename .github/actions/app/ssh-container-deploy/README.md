@@ -72,6 +72,31 @@ You can upload the env via base64 payload:
 - `write_env_file: true`
 - `env_b64: ${{ secrets.PROD_ENV_B64 }}` (or `STAGING_ENV_B64`, `DEV_ENV_B64`)
 
+## Traefik fast-path and ensure_traefik
+
+- `ensure_traefik` (default `'true'`) gates all Traefik-related checks and reconciliation in this action.
+  - When set to `'false'`, the action skips Traefik preflight checks, the `infra/setup-traefik` reconciliation step, and the post-deploy routing probe. App deployment still proceeds normally.
+- Fast-path: `infra/setup-traefik` probes first and is a no-op when Traefik is already running, ports 80/443 are listening, and the configuration is up-to-date. Upload and setup are only performed when needed or when `force_restart: 'true'` is passed to that action.
+
+Example usage (skip Traefik entirely, useful if Traefik is managed out-of-band):
+
+```yaml
+- name: Deploy Container
+  uses: uncoverthefuture-org/actions@v1
+  with:
+    subaction: ssh-container-deploy
+    params_json: |
+      {
+        "ssh_host": "${{ secrets.SERVER_HOST }}",
+        "ssh_user": "${{ secrets.SERVER_USER }}",
+        "ssh_key":  "${{ secrets.SERVER_SSH_KEY }}",
+        "enable_traefik": "true",
+        "ensure_traefik": "false",
+        "base_domain": "${{ secrets.BASE_DOMAIN }}",
+        "env_name": "production"
+      }
+```
+
 ## Additional tips
 
 - If `enable_traefik` is `true` and Traefik is not detected, host preparation will run automatically. You can optionally set `ufw_allow_ports: "80 443"` to open HTTP/HTTPS.

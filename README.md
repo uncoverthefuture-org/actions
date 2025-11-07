@@ -84,9 +84,10 @@ Each action has its own detailed README with inputs, outputs, and examples. Star
 
 ### Default behaviours to know
 
-- **Traefik by default**: When `prepare_host` is used, Traefik is installed and started automatically (`install_traefik=true`). App deploy actions emit Traefik labels whenever a domain can be derived or provided. Set `enable_traefik: false` (per app) to fall back to host port publishing, or `install_traefik: false` during host prep to skip provisioning entirely. Apache vhost actions are now opt-in only.
+- **Traefik by default**: When `prepare_host` is used, Traefik is installed and started automatically (`install_traefik=true`). App deploy actions emit Traefik labels whenever a domain can be derived or provided. Set `enable_traefik: false` (per app) to fall back to host port publishing, or `install_traefik: false` during host prep to skip provisioning entirely. Apache vhosts are now opt-in only.
 - **Environment auto-detect**: Deployment actions accept `auto_detect_env` (default `true`) which maps Git refs (`main`, `staging`, `develop`, tags, etc.) to canonical environment folders (`production`, `staging`, `development`). Provide `env_name` to override.
 - **Derived domains**: Supplying `base_domain` (and optional `domain_prefix_*`) lets the actions compute a domain used for Traefik routing. A direct `domain` input always wins.
+- **Traefik fast-path & gate**: `infra/setup-traefik` now probes first and is a no-op when Traefik is already running, listening on 80/443, and the configuration matches. `app/ssh-container-deploy` exposes `ensure_traefik` (default `'true'`) to gate all Traefik-related steps. Set `ensure_traefik: 'false'` to skip Traefik preflight checks, reconciliation, and post-deploy routing probes entirely (useful when Traefik is managed out-of-band).
 
 ### Per-environment ports and Traefik routing
 

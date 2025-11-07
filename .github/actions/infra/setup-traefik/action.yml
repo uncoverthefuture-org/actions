@@ -129,18 +129,6 @@ runs:
         else
           echo "reachable=false" >> "$GITHUB_OUTPUT"
         fi
-    - name: Upload/Update Traefik scripts (smart)
-      if: ${{ steps.reach.outputs.reachable == 'true' }}
-      uses: ./.github/actions/infra/traefik-upload-scripts
-      with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        skip_upload: ${{ inputs.skip_upload }}
-        upload_policy: ${{ inputs.upload_policy }}
-
     - name: Probe Traefik state
       id: probe_traefik
       if: ${{ steps.reach.outputs.reachable == 'true' }}
@@ -164,6 +152,20 @@ runs:
         use_host_network: ${{ inputs.use_host_network }}
         network_name: ${{ inputs.network_name }}
         dns_servers: ${{ inputs.dns_servers }}
+
+    # Fast-path: Only upload scripts when we might run setup
+    # We probe first, then conditionally upload if force_restart=true or not up_to_date
+    - name: Upload/Update Traefik scripts (smart)
+      if: ${{ steps.reach.outputs.reachable == 'true' && (inputs.force_restart == 'true' || steps.probe_traefik.outputs.up_to_date != 'true') }}
+      uses: ./.github/actions/infra/traefik-upload-scripts
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        skip_upload: ${{ inputs.skip_upload }}
+        upload_policy: ${{ inputs.upload_policy }}
 
     - name: Run Traefik setup (when needed)
       if: ${{ steps.reach.outputs.reachable == 'true' && (inputs.force_restart == 'true' || steps.probe_traefik.outputs.up_to_date != 'true') }}

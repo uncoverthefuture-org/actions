@@ -182,6 +182,12 @@ inputs: # All parameters accepted by this action
     required: false
     default: 'false'
 
+  # Summary & diagnostics verbosity
+  summary_mode:
+    description: 'Controls deployment summary: full|light|off. full runs diagnostics + whoami probe; light skips diagnostics; off skips summary.'
+    required: false
+    default: 'full'
+
   # Env sourcing for deployment
   source_env: # Source the .env on remote before running deploy script
     required: false
@@ -192,6 +198,10 @@ inputs: # All parameters accepted by this action
 
   # Domain / Traefik
   enable_traefik: # When true and domain present, attach Traefik labels
+    required: false
+    default: 'true'
+  ensure_traefik:
+    description: 'Run infra/setup-traefik to reconcile Traefik (probe-first fast-path). Set false to skip entirely.'
     required: false
     default: 'true'
   domain: # Explicit FQDN to use for routing (optional)
@@ -272,7 +282,7 @@ runs: # Composite action implementation
 
     - name: Check Traefik presence (optional) # Probe server for Traefik if enabled
       id: check_traefik
-      if: ${{ inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
+      if: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
       uses: appleboy/ssh-action@v1.0.3
       continue-on-error: true
       with:
@@ -412,8 +422,10 @@ runs: # Composite action implementation
         image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }} # Image path
         image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }} # Tag
 
+    # Fast-path: Only reconcile Traefik when explicitly enabled and allowed by ensure_traefik
+    # setup-traefik itself probes first and skips work when up_to_date (no-op).
     - name: Reconcile Traefik config (per-deploy)
-      if: ${{ inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
+      if: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/infra/setup-traefik
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -427,8 +439,9 @@ runs: # Composite action implementation
         dns_servers: ${{ inputs.dns_servers }}
         skip_upload: ${{ inputs.traefik_skip_upload }}
 
+    # Guard preflight probe behind ensure_traefik to fully skip Traefik checks when requested
     - name: Traefik preflight health (fail fast)
-      if: ${{ inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
+      if: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
       with:
         ssh_host: ${{ inputs.ssh_host }}
@@ -580,8 +593,9 @@ runs: # Composite action implementation
             exit 1
           fi
 
+    # Skip post-deploy Traefik probe entirely when ensure_traefik=false (full fast-path skip)
     - name: Traefik post-deploy routing check
-      if: ${{ inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
+      if: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
       continue-on-error: true
       with:
@@ -599,7 +613,12 @@ runs: # Composite action implementation
           PROBE_PATH='${{ inputs.probe_path }}'
           "$HOME/uactions/scripts/traefik/probe-traefik.sh" post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT" "$PROBE_PATH"
 
+    # Respect summary_mode: full|light|off
+    # - full: run diagnostics + whoami probe
+    # - light: skip diagnostics (fast), still summarize remote state
+    # - off: skip summary step entirely
     - name: Deployment status summary
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.summary_mode != 'off' }}
       continue-on-error: true
       uses: ./.github/actions/app/deployment-status-summary
       with:
@@ -619,6 +638,7 @@ runs: # Composite action implementation
         host_port: ${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}
         container_port: ${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}
         router_name: ${{ steps.dfl.outputs.traefik_router }}
-        whoami_probe: ${{ inputs.enable_traefik }}
+        whoami_probe: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && inputs.summary_mode == 'full' }}
         traefik_network_name: ${{ inputs.traefik_network_name }}
+        run_diagnostics: ${{ inputs.summary_mode == 'full' }}
         diagnostics_fail_on_issues: 'false'
