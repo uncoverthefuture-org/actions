@@ -148,6 +148,10 @@ runs:
             mv -f /tmp/install-apache.sh "$HOME/uactions/scripts/infra/install-apache.sh"
           fi
           chmod +x "$HOME/uactions/scripts/infra/install-apache.sh"
-          
-          # Execute server-managed script
-          "$HOME/uactions/scripts/infra/install-apache.sh"
+
+          # Execute server-managed script (prefer sudo if available)
+          if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            sudo "$HOME/uactions/scripts/infra/install-apache.sh"
+          else
+            "$HOME/uactions/scripts/infra/install-apache.sh"
+          fi

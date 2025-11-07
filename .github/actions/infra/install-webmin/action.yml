@@ -161,5 +161,8 @@ runs:
           export INSTALL_WEBMIN='${{ inputs.install_webmin }}'
           export INSTALL_USERMIN='${{ inputs.install_usermin }}'
 
-          # Execute server-managed script
-          "$HOME/uactions/scripts/infra/install-webmin.sh"
+          if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            sudo env INSTALL_WEBMIN="$INSTALL_WEBMIN" INSTALL_USERMIN="$INSTALL_USERMIN" "$HOME/uactions/scripts/infra/install-webmin.sh"
+          else
+            "$HOME/uactions/scripts/infra/install-webmin.sh"
+          fi

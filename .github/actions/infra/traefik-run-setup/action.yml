@@ -87,14 +87,16 @@ runs:
           export TRAEFIK_EMAIL='${{ inputs.traefik_email }}'
 
           if [ "$CURRENT_USER" = "root" ]; then
-            echo "🔧 Running Traefik system installation (requires root) ..."
             export PODMAN_USER="$CURRENT_USER"
             if [ -x "$HOME/uactions/scripts/traefik/install-traefik.sh" ]; then
               "$HOME/uactions/scripts/traefik/install-traefik.sh"
             fi
           else
-            echo "::notice::Skipping install-traefik.sh because it requires root privileges."
-            echo "::notice::Run install-traefik.sh manually as a privileged user to complete system setup."
+            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+              if [ -x "$HOME/uactions/scripts/traefik/install-traefik.sh" ]; then
+                sudo env TRAEFIK_EMAIL="$TRAEFIK_EMAIL" PODMAN_USER="$CURRENT_USER" DASHBOARD_USER='${{ inputs.dashboard_user }}' DASHBOARD_PASS_BCRYPT='${{ inputs.dashboard_password_bcrypt }}' "$HOME/uactions/scripts/traefik/install-traefik.sh"
+              fi
+            fi
           fi
 
           echo "🚀 Running Traefik setup (mode='${{ inputs.mode }}') as current user ..."

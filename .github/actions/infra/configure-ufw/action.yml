@@ -173,4 +173,16 @@ runs:
           export WAN_IFACE='${{ inputs.wan_iface }}'
           export PODMAN_IFACE='${{ inputs.podman_iface }}'
 
-          "$HOME/uactions/scripts/infra/configure-ufw.sh"
+          if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            sudo env \
+              SSH_PORT="$SSH_PORT" \
+              UFW_ALLOW_PORTS="$UFW_ALLOW_PORTS" \
+              ENABLE_PODMAN_FORWARD="$ENABLE_PODMAN_FORWARD" \
+              ROUTE_PORTS="$ROUTE_PORTS" \
+              SET_FORWARD_POLICY_ACCEPT="$SET_FORWARD_POLICY_ACCEPT" \
+              WAN_IFACE="$WAN_IFACE" \
+              PODMAN_IFACE="$PODMAN_IFACE" \
+              "$HOME/uactions/scripts/infra/configure-ufw.sh"
+          else
+            "$HOME/uactions/scripts/infra/configure-ufw.sh"
+          fi
