@@ -25,6 +25,10 @@ inputs:
     description: 'Skip staging/upload (assumes scripts deployed via deploy-server-scripts)'
     required: false
     default: 'true'
+  show_root_install_hints:
+    description: 'Show explicit manual install instructions when root privileges are required'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
@@ -94,7 +98,18 @@ runs:
         inline_script: |
           set -euo pipefail
           if [ "$(id -u)" -ne 0 ]; then
-            echo '::error::install-podman requires ssh_user to be root (or a user with direct root privileges). Update your host preparation to connect as root.' >&2
+            if [ "${{ inputs.show_root_install_hints }}" = "true" ]; then
+              SUDO_AVAIL=no
+              if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO_AVAIL=yes; fi
+              echo '::error::Host preparation requires root privileges to install packages (podman missing).' >&2
+              echo "Detected: user=$(id -un); sudo(non-interactive)=${SUDO_AVAIL}" >&2
+              echo 'To install manually on the server (as root), run:' >&2
+              echo '  sudo apt-get update -y' >&2
+              echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
+              echo 'Then re-run this workflow, or connect as root for automatic installation.' >&2
+            else
+              echo '::error::install-podman requires root privileges.' >&2
+            fi
             exit 1
           fi
           mkdir -p "$HOME/uactions/scripts/infra"

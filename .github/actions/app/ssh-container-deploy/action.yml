@@ -121,6 +121,10 @@ inputs: # All parameters accepted by this action
   ufw_allow_ports: # Space-separated ports to open in UFW during prep
     required: false
     default: ''
+  show_root_install_hints:
+    description: 'Show explicit manual install instructions when root privileges are required (fail-fast messaging)'
+    required: false
+    default: 'true'
 
   # Env file
   env_name: # Environment: production|staging|development (auto if omitted)
@@ -313,6 +317,38 @@ runs: # Composite action implementation
         fi
         echo "  EFFECTIVE: '$EFFECTIVE'"
         printf 'prepare_host=%s\n' "$EFFECTIVE" >> "$GITHUB_OUTPUT"
+
+    - name: Fail fast if podman missing and not preparing host
+      if: ${{ steps.reach.outputs.reachable == 'true' }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          set -euo pipefail
+          # If host prep will run, let install-podman handle the privilege check and messaging
+          if [ '${{ steps.eff.outputs.prepare_host }}' = 'true' ]; then
+            exit 0
+          fi
+          # If podman exists, continue
+          if command -v podman >/dev/null 2>&1; then
+            exit 0
+          fi
+          # Otherwise, fail fast with explicit instructions
+          SUDO_AVAIL=no
+          if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO_AVAIL=yes; fi
+          echo '::error::Podman is required on the remote host to deploy containers, but it is not installed and prepare_host=false.' >&2
+          if [ '${{ inputs.show_root_install_hints }}' = 'true' ]; then
+            echo "Detected: user=$(id -un); sudo(non-interactive)=${SUDO_AVAIL}" >&2
+            echo 'Install manually as root then re-run:' >&2
+            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
+            echo 'Or re-run this action with prepare_host: true and root privileges.' >&2
+          fi
+          exit 1
 
     - name: Resolve env secret (optional)
       id: envsel

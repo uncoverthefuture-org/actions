@@ -147,6 +147,10 @@ inputs:
     description: 'Enable verbose logging in nested remote steps (paths, user info). Default: false'
     required: false
     default: 'false'
+  show_root_install_hints:
+    description: 'Show explicit manual install instructions when root privileges are required (fail-fast messaging)'
+    required: false
+    default: 'true'
 
 # ============================================================================
 # EXECUTION STEPS
@@ -202,6 +206,33 @@ runs:
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
 
+    - name: Fail fast if Podman missing and cannot escalate
+      if: ${{ inputs.install_podman == 'true' && steps.probe.outputs.has_podman != 'true' }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          set -euo pipefail
+          # If already root or sudo -n works, proceed (install step will run next)
+          if [ "$(id -u)" -eq 0 ]; then exit 0; fi
+          if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then exit 0; fi
+          # Otherwise, fail fast with explicit instructions
+          if [ '${{ inputs.show_root_install_hints }}' = 'true' ]; then
+            echo '::error::Podman is not installed and the current user cannot escalate privileges for package installation.' >&2
+            echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
+            echo 'Install manually on the server (as root), then re-run:' >&2
+            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
+            echo 'Alternatively, re-run this action with connect_mode: root or provide root_ssh_key.' >&2
+          else
+            echo '::error::Root privileges required to install Podman.' >&2
+          fi
+          exit 1
+
     - name: Install Podman
       if: ${{ inputs.install_podman == 'true' && steps.probe.outputs.has_podman != 'true' }}
       uses: ./.github/actions/infra/install-podman
@@ -212,6 +243,7 @@ runs:
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
         additional_packages: ${{ inputs.additional_packages }}
+        show_root_install_hints: ${{ inputs.show_root_install_hints }}
 
     - name: Ensure deployment directories
       uses: ./.github/actions/podman/remote-podman-exec
