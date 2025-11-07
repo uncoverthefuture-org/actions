@@ -86,21 +86,44 @@ if [[ "${DEBUG:-false}" == "true" ]]; then
   echo "📛 Container name: $CONTAINER_NAME"
 fi
 
-ENV_DIR="${ENV_FILE_PATH_BASE%/}/${ENV_NAME}/${APP_SLUG}"
+# Resolve environment directory on the REMOTE host
+# Prefer normalized path exported by run-deployment.sh; otherwise compute and normalize
+ENV_DIR="${REMOTE_ENV_DIR:-}"
+if [[ -z "$ENV_DIR" ]]; then
+  # Normalize base path: expand ~ to $HOME and rebase /home/runner -> $HOME
+  ENV_BASE_IN="${ENV_FILE_PATH_BASE:-${HOME}/deployments}"
+  case "$ENV_BASE_IN" in
+    "~/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#~/}" ;;
+    "/home/runner/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#/home/runner/}" ;;
+    *) ENV_ROOT="$ENV_BASE_IN" ;;
+  esac
+  ENV_DIR="${ENV_ROOT%/}/${ENV_NAME}/${APP_SLUG}"
+fi
 
 if [[ "${DEBUG:-false}" == "true" ]]; then
   echo "📁 Preparing environment directory"
 fi
+# Attempt to ensure directory exists; fallback to sudo mkdir + chown when needed
 if [ -d "$ENV_DIR" ] && [ ! -w "$ENV_DIR" ]; then
-  echo "::error::Environment directory $ENV_DIR is not writable by $CURRENT_USER" >&2
-  echo "Hint: create a user-owned path (e.g., $HOME/deployments) or adjust permissions." >&2
-  exit 1
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
+  fi
 fi
 if [ ! -d "$ENV_DIR" ]; then
-  if ! mkdir -p "$ENV_DIR"; then
-    echo "::error::Unable to create env directory $ENV_DIR" >&2
-    echo "Hint: ensure the SSH user owns the parent directory or pick a user-writable location." >&2
-    exit 1
+  if ! mkdir -p "$ENV_DIR" 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo mkdir -p "$ENV_DIR" 2>/dev/null || true
+      sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
+    else
+      echo "::error::Unable to create env directory $ENV_DIR" >&2
+      echo "Hint: ensure the SSH user owns the parent directory or pick a user-writable location." >&2
+      exit 1
+    fi
+  fi
+fi
+if [ ! -w "$ENV_DIR" ]; then
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
   fi
 fi
 if [ ! -w "$ENV_DIR" ]; then
@@ -117,9 +140,20 @@ fi
 
 ENV_PARENT="$(dirname "$ENV_FILE")"
 if [ ! -d "$ENV_PARENT" ]; then
-  if ! mkdir -p "$ENV_PARENT"; then
-    echo "::error::Unable to create env parent directory $ENV_PARENT" >&2
-    exit 1
+  # Ensure parent directory; if blocked, fallback to sudo mkdir + chown
+  if ! mkdir -p "$ENV_PARENT" 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo mkdir -p "$ENV_PARENT" 2>/dev/null || true
+      sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_PARENT" 2>/dev/null || true
+    else
+      echo "::error::Unable to create env parent directory $ENV_PARENT" >&2
+      exit 1
+    fi
+  fi
+fi
+if [ ! -w "$ENV_PARENT" ]; then
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_PARENT" 2>/dev/null || true
   fi
 fi
 if [ ! -w "$ENV_PARENT" ]; then

@@ -257,7 +257,30 @@ runs:
         debug: ${{ inputs.debug }}
         inline_script: |
           set -euo pipefail
-          TARGET_DIR='${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.defaults.outputs.env_dir_path }}'
+          # Normalize target deployment directory on the REMOTE host:
+          # - Prefer the remote user's $HOME (never the GitHub runner's /home/runner)
+          # - Expand ~ to $HOME
+          # - Rebase any /home/runner/... path segments to $HOME/...
+          # - Default to $HOME/deployments/<env>/<app> when not provided
+          ENV_NAME_DEFAULT='${{ steps.defaults.outputs.env_name_default }}'
+          APP_SLUG='${{ steps.defaults.outputs.app_slug }}'
+          TARGET_IN='${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.defaults.outputs.env_dir_path }}'
+          if [ -z "$TARGET_IN" ]; then
+            TARGET_DIR="$HOME/deployments/${ENV_NAME_DEFAULT}/${APP_SLUG}"
+          else
+            # Expand ~ and rebase /home/runner to $HOME for safe, user-owned paths
+            case "$TARGET_IN" in
+              "~/"*)
+                TARGET_DIR="$HOME/${TARGET_IN#~/}"
+                ;;
+              "/home/runner/"*)
+                TARGET_DIR="$HOME/${TARGET_IN#/home/runner/}"
+                ;;
+              *)
+                TARGET_DIR="$TARGET_IN"
+                ;;
+            esac
+          fi
           if [ "${DEBUG:-false}" = "true" ]; then
             echo "📁 Ensuring deployment directory exists: ${TARGET_DIR} (user=$(id -un))"
           else
@@ -267,12 +290,28 @@ runs:
             echo '::error::Unable to resolve target directory for environment files.' >&2
             exit 1
           fi
+          # Create target dir; if blocked, escalate once with sudo and fix ownership
           if [ ! -d "$TARGET_DIR" ]; then
-            mkdir -p "$TARGET_DIR"
+            if ! mkdir -p "$TARGET_DIR" 2>/dev/null; then
+              if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                sudo mkdir -p "$TARGET_DIR" 2>/dev/null || true
+                sudo chown -R "$(id -un):$(id -gn)" "$TARGET_DIR" 2>/dev/null || true
+              else
+                echo "::error::Unable to create environment directory" >&2
+                echo "Hint: ensure the SSH user owns the parent directory or use a user-writable location." >&2
+                exit 1
+              fi
+            fi
             if [ "${DEBUG:-false}" = "true" ]; then
               echo "✅ Created directory $TARGET_DIR"
             else
               echo "✅ Created directory"
+            fi
+          fi
+          # If still not writable, attempt to fix ownership once with sudo
+          if [ ! -w "$TARGET_DIR" ]; then
+            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+              sudo chown -R "$(id -un):$(id -gn)" "$TARGET_DIR" 2>/dev/null || true
             fi
           fi
           if [ ! -w "$TARGET_DIR" ]; then

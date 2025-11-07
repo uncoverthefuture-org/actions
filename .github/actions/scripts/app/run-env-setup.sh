@@ -66,21 +66,36 @@ else
 fi
 
 # Setup environment directories and files
+# Default to a user-owned base under the REMOTE $HOME to avoid permission issues
+# (callers typically pass an explicit ENV_FILE_PATH; this default is a safe fallback)
 ENV_ROOT_DEFAULT="${HOME}/deployments"
 ENV_ROOT="${ENV_FILE_PATH_BASE:-$ENV_ROOT_DEFAULT}"
 ENV_DIR="${ENV_ROOT}/${ENV_NAME}/${APP_SLUG}"
 
+# Prepare environment directory; if not writable, fix ownership once via sudo
 echo "📁 Preparing environment directory: $ENV_DIR"
 if [ -d "$ENV_DIR" ] && [ ! -w "$ENV_DIR" ]; then
-  echo "::error::Environment directory $ENV_DIR is not writable by $CURRENT_USER" >&2
-  echo "Hint: create a user-owned path (e.g., $HOME/deployments) or adjust permissions." >&2
-  exit 1
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
+  fi
 fi
 if [ ! -d "$ENV_DIR" ]; then
-  if ! mkdir -p "$ENV_DIR"; then
-    echo "::error::Unable to create env directory $ENV_DIR" >&2
-    echo "Hint: ensure the SSH user owns the parent directory or choose a user-writable location." >&2
-    exit 1
+  # Create env dir; on failure, escalate with sudo and set ownership back to user
+  if ! mkdir -p "$ENV_DIR" 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo mkdir -p "$ENV_DIR" 2>/dev/null || true
+      sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
+    else
+      echo "::error::Unable to create env directory $ENV_DIR" >&2
+      echo "Hint: ensure the SSH user owns the parent directory or choose a user-writable location." >&2
+      exit 1
+    fi
+  fi
+fi
+if [ ! -w "$ENV_DIR" ]; then
+  # Last attempt to fix ownership so further writes succeed
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
   fi
 fi
 if [ ! -w "$ENV_DIR" ]; then
@@ -94,13 +109,31 @@ if [ -z "$ENV_FILE_PATH" ]; then
   ENV_FILE_PATH="${ENV_DIR}/.env"
 fi
 
+# Normalize explicit ENV_FILE_PATH from callers to the REMOTE $HOME
+# - Expand ~ to $HOME
+# - Rebase /home/runner to $HOME (avoid runner HOME leaking to remote)
+case "$ENV_FILE_PATH" in
+  "~/"*) ENV_FILE_PATH="$HOME/${ENV_FILE_PATH#~/}" ;;
+  "/home/runner/"*) ENV_FILE_PATH="$HOME/${ENV_FILE_PATH#/home/runner/}" ;;
+esac
 ENV_FILE="$ENV_FILE_PATH"
 
 ENV_PARENT_DIR="$(dirname "$ENV_FILE")"
 if [ ! -d "$ENV_PARENT_DIR" ]; then
-  if ! mkdir -p "$ENV_PARENT_DIR"; then
-    echo "::error::Unable to create parent directory $ENV_PARENT_DIR" >&2
-    exit 1
+  # Ensure parent dir exists; fallback to sudo + chown for non-writable parents
+  if ! mkdir -p "$ENV_PARENT_DIR" 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo mkdir -p "$ENV_PARENT_DIR" 2>/dev/null || true
+      sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_PARENT_DIR" 2>/dev/null || true
+    else
+      echo "::error::Unable to create parent directory $ENV_PARENT_DIR" >&2
+      exit 1
+    fi
+  fi
+fi
+if [ ! -w "$ENV_PARENT_DIR" ]; then
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_PARENT_DIR" 2>/dev/null || true
   fi
 fi
 if [ ! -w "$ENV_PARENT_DIR" ]; then

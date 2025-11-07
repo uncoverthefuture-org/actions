@@ -115,23 +115,44 @@ if [ -z "$APP_SLUG" ]; then
 fi
 
 # Setup environment directories and files
+# Normalize base env path on REMOTE host to ensure user-owned location
+# - Expand ~ to $HOME
+# - Rebase /home/runner to $HOME (avoids leaking runner HOME to remote)
 ENV_ROOT_DEFAULT="${HOME}/deployments"
-ENV_ROOT="${ENV_FILE_PATH_BASE:-$ENV_ROOT_DEFAULT}"
+ENV_BASE_IN="${ENV_FILE_PATH_BASE:-$ENV_ROOT_DEFAULT}"
+case "$ENV_BASE_IN" in
+  "~/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#~/}" ;;
+  "/home/runner/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#/home/runner/}" ;;
+  *) ENV_ROOT="$ENV_BASE_IN" ;;
+esac
 ENV_DIR="${ENV_ROOT}/${ENV_NAME}/${APP_SLUG}"
 
 if [ "${DEBUG:-false}" = "true" ]; then
   echo "📁 Preparing environment directory"
 fi
+# If dir exists but is not writable, attempt to fix ownership once with sudo
 if [ -d "$ENV_DIR" ] && [ ! -w "$ENV_DIR" ]; then
-  echo "::error::Environment directory is not writable by $CURRENT_USER" >&2
-  echo "Hint: choose a user-owned path (e.g., $HOME/deployments) or adjust permissions." >&2
-  exit 1
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
+  fi
 fi
+# If still not writable, attempt to fix ownership with sudo; otherwise fail
 if [ ! -d "$ENV_DIR" ]; then
-  if ! mkdir -p "$ENV_DIR"; then
-    echo "::error::Unable to create environment directory" >&2
-    echo "Hint: ensure the SSH user owns the parent directory or use a user-writable location." >&2
-    exit 1
+  if ! mkdir -p "$ENV_DIR" 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo mkdir -p "$ENV_DIR" 2>/dev/null || true
+      sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
+    else
+      echo "::error::Unable to create environment directory" >&2
+      echo "Hint: ensure the SSH user owns the parent directory or use a user-writable location." >&2
+      exit 1
+    fi
+  fi
+fi
+# If still not writable, attempt to fix ownership with sudo; otherwise fail
+if [ ! -w "$ENV_DIR" ]; then
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
   fi
 fi
 if [ ! -w "$ENV_DIR" ]; then
