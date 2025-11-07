@@ -84,7 +84,7 @@ runs:
         timeout: 15s
         command_timeout: 30s
 
-    # Execute: Move to /opt/uactions/scripts/, chmod, run
+    # Execute: Move to $HOME/uactions/scripts/, chmod, run
     - name: Execute install-certbot
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
@@ -105,12 +105,12 @@ runs:
             echo "✅ certbot already installed; skipping installation"
             exit 0
           fi
-          # Move script from /tmp to /opt/uactions/scripts/
-          sudo mkdir -p /opt/uactions/scripts/infra
+          # Move script from /tmp to $HOME/uactions/scripts/
+          mkdir -p "$HOME/uactions/scripts/infra"
           if [ -f /tmp/install-certbot.sh ]; then
-            sudo mv -f /tmp/install-certbot.sh /opt/uactions/scripts/infra/install-certbot.sh
+            mv -f /tmp/install-certbot.sh "$HOME/uactions/scripts/infra/install-certbot.sh"
           fi
-          sudo chmod +x /opt/uactions/scripts/infra/install-certbot.sh
+          chmod +x "$HOME/uactions/scripts/infra/install-certbot.sh"
           
           # Execute server-managed script
-          /opt/uactions/scripts/infra/install-certbot.sh
+          "$HOME/uactions/scripts/infra/install-certbot.sh"

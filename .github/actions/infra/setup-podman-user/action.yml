@@ -105,7 +105,7 @@ runs:
         timeout: 15s
         command_timeout: 30s
 
-    # Execute: Move to /opt/uactions/scripts/, chmod, export env, run
+    # Execute: Move to $HOME/uactions/scripts/, chmod, export env, run
     - name: Execute setup-podman-user
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
@@ -121,15 +121,15 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          # Move script from /tmp to /opt/uactions/scripts/
-          mkdir -p /opt/uactions/scripts/infra
+          # Move script from /tmp to $HOME/uactions/scripts/
+          mkdir -p "$HOME/uactions/scripts/infra"
           if [ -f /tmp/setup-podman-user.sh ]; then
-            mv -f /tmp/setup-podman-user.sh /opt/uactions/scripts/infra/setup-podman-user.sh
+            mv -f /tmp/setup-podman-user.sh "$HOME/uactions/scripts/infra/setup-podman-user.sh"
           fi
-          chmod +x /opt/uactions/scripts/infra/setup-podman-user.sh
+          chmod +x "$HOME/uactions/scripts/infra/setup-podman-user.sh"
           
           # Execute server-managed script (assuming current user is the podman user)
-          /opt/uactions/scripts/infra/setup-podman-user.sh
+          "$HOME/uactions/scripts/infra/setup-podman-user.sh"
 
           # Create env directory for current user
           mkdir -p "${{ inputs.env_dir_path }}"

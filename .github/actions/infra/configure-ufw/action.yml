@@ -112,7 +112,7 @@ runs:
         timeout: 15s
         command_timeout: 30s
 
-    # Execute: Move to /opt/uactions/scripts/, chmod, export env, run
+    # Execute: Move to $HOME/uactions/scripts/, chmod, export env, run
     - name: Execute configure-ufw
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
@@ -129,11 +129,11 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          sudo mkdir -p /opt/uactions/scripts/infra
+          mkdir -p "$HOME/uactions/scripts/infra"
           if [ -f /tmp/configure-ufw.sh ]; then
-            sudo mv -f /tmp/configure-ufw.sh /opt/uactions/scripts/infra/configure-ufw.sh
+            mv -f /tmp/configure-ufw.sh "$HOME/uactions/scripts/infra/configure-ufw.sh"
           fi
-          sudo chmod +x /opt/uactions/scripts/infra/configure-ufw.sh
+          chmod +x "$HOME/uactions/scripts/infra/configure-ufw.sh"
 
           export SSH_PORT='${{ inputs.ssh_port }}'
           export UFW_ALLOW_PORTS='${{ inputs.ufw_allow_ports }}'
@@ -143,4 +143,4 @@ runs:
           export WAN_IFACE='${{ inputs.wan_iface }}'
           export PODMAN_IFACE='${{ inputs.podman_iface }}'
 
-          /opt/uactions/scripts/infra/configure-ufw.sh
+          "$HOME/uactions/scripts/infra/configure-ufw.sh"

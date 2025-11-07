@@ -187,14 +187,14 @@ fi
 echo "📦 Staging deployment scripts..."
 cd /
 
-# Ensure scripts directory exists
-mkdir -p /opt/uactions/scripts/app
+# Ensure scripts directory exists (user-writable location)
+mkdir -p "$HOME/uactions/scripts/app"
 
 # Move uploaded deploy script if it exists
 if [ -f /tmp/deploy-container.sh ]; then
-  echo "📋 Moving deploy-container.sh to /opt/uactions/scripts/app/"
-  mv -f /tmp/deploy-container.sh /opt/uactions/scripts/app/deploy-container.sh
-  chmod +x /opt/uactions/scripts/app/deploy-container.sh
+  echo "📋 Moving deploy-container.sh to $HOME/uactions/scripts/app/"
+  mv -f /tmp/deploy-container.sh "$HOME/uactions/scripts/app/deploy-container.sh"
+  chmod +x "$HOME/uactions/scripts/app/deploy-container.sh"
 fi
 
 # --- Export Deployment Variables -----------------------------------------------------
@@ -243,7 +243,7 @@ export INCLUDE_WWW_ALIAS
 
 # --- Execute Deployment ---------------------------------------------------------------
 echo "🚀 Executing deployment script..."
-echo "  Script: /opt/uactions/scripts/app/deploy-container.sh"
+echo "  Script: $HOME/uactions/scripts/app/deploy-container.sh"
 echo "  App: $APP_SLUG"
 if [ "${DEBUG:-false}" = "true" ]; then
   echo "📄 Using env file"
@@ -251,6 +251,6 @@ fi
 echo "  Image: $IMAGE_REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
 echo "  Traefik: $TRAEFIK_ENABLED"
 
-/opt/uactions/scripts/app/deploy-container.sh
+"$HOME/uactions/scripts/app/deploy-container.sh"
 
 echo "✅ Deployment completed successfully"

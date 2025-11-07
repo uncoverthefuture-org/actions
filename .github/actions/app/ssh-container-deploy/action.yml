@@ -404,7 +404,7 @@ runs: # Composite action implementation
         debug: ${{ inputs.debug }}
         inline_script: |
           set -euo pipefail
-          /opt/uactions/scripts/traefik/probe-traefik.sh preflight
+          "$HOME/uactions/scripts/traefik/probe-traefik.sh" preflight
 
     - name: Check remote deploy scripts presence
       id: rchk
@@ -425,7 +425,7 @@ runs: # Composite action implementation
         fi
         chmod 600 "$KEY_FILE"
         if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-          'test -x /opt/uactions/scripts/app/run-deployment.sh && test -x /opt/uactions/scripts/app/deploy-container.sh'; then
+          "test -x \"\$HOME/uactions/scripts/app/run-deployment.sh\" && test -x \"\$HOME/uactions/scripts/app/deploy-container.sh\""; then
           echo "have_remote=true" >> "$GITHUB_OUTPUT"
         else
           echo "have_remote=false" >> "$GITHUB_OUTPUT"
@@ -486,15 +486,15 @@ runs: # Composite action implementation
         fail_if_env_missing: ${{ inputs.fail_if_env_missing }} # Fail on missing env
         inline_script: |
           set -euo pipefail
-          # Ensure scripts directory and move uploaded scripts
-          mkdir -p /opt/uactions/scripts/app
+          # Ensure scripts directory and move uploaded scripts (user-writable)
+          mkdir -p "$HOME/uactions/scripts/app"
           if [ -f /tmp/run-deployment.sh ]; then
-            mv -f /tmp/run-deployment.sh /opt/uactions/scripts/app/run-deployment.sh
-            chmod +x /opt/uactions/scripts/app/run-deployment.sh
+            mv -f /tmp/run-deployment.sh "$HOME/uactions/scripts/app/run-deployment.sh"
+            chmod +x "$HOME/uactions/scripts/app/run-deployment.sh"
           fi
           if [ -f /tmp/deploy-container.sh ]; then
-            mv -f /tmp/deploy-container.sh /opt/uactions/scripts/app/deploy-container.sh
-            chmod +x /opt/uactions/scripts/app/deploy-container.sh
+            mv -f /tmp/deploy-container.sh "$HOME/uactions/scripts/app/deploy-container.sh"
+            chmod +x "$HOME/uactions/scripts/app/deploy-container.sh"
           fi
 
           # Export deployment variables for run-deployment.sh
@@ -533,14 +533,14 @@ runs: # Composite action implementation
           export DEBUG='${{ inputs.debug }}'
 
           # Execute deployment: prefer run-deployment.sh; fallback to deploy-container.sh
-          if [ -x /opt/uactions/scripts/app/run-deployment.sh ]; then
-            /opt/uactions/scripts/app/run-deployment.sh
-          elif [ -x /opt/uactions/scripts/app/deploy-container.sh ]; then
+          if [ -x "$HOME/uactions/scripts/app/run-deployment.sh" ]; then
+            "$HOME/uactions/scripts/app/run-deployment.sh"
+          elif [ -x "$HOME/uactions/scripts/app/deploy-container.sh" ]; then
             echo '::warning::run-deployment.sh not found; falling back to deploy-container.sh'
-            /opt/uactions/scripts/app/deploy-container.sh
+            "$HOME/uactions/scripts/app/deploy-container.sh"
           else
-            echo '::error::No deployment scripts found under /opt/uactions/scripts/app' >&2
-            ls -la /opt/uactions/scripts/app || true
+            echo '::error::No deployment scripts found under $HOME/uactions/scripts/app' >&2
+            ls -la "$HOME/uactions/scripts/app" || true
             exit 1
           fi
 
@@ -561,7 +561,7 @@ runs: # Composite action implementation
           DOMAIN_EFFECTIVE='${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }}'
           SERVICE_PORT='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'
           PROBE_PATH='${{ inputs.probe_path }}'
-          /opt/uactions/scripts/traefik/probe-traefik.sh post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT" "$PROBE_PATH"
+          "$HOME/uactions/scripts/traefik/probe-traefik.sh" post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT" "$PROBE_PATH"
 
     - name: Deployment status summary
       continue-on-error: true

@@ -1,5 +1,5 @@
 name: 'infra: deploy-server-scripts'
-description: 'Bundle and deploy all server-managed scripts to /opt/uactions/scripts on the remote host (run once before any other steps).'
+description: 'Bundle and deploy all server-managed scripts to $HOME/uactions/scripts on the remote host (run once before any other steps).'
 
 inputs:
   ssh_host:
@@ -94,7 +94,7 @@ runs:
         timeout: 15s
         command_timeout: 30s
 
-    # Execute: Extract into /opt/uactions, set executable bits, stamp version
+    # Execute: Extract into $HOME/uactions, set executable bits, stamp version
     - name: Install scripts on remote host
       if: ${{ steps.reach.outputs.reachable == 'true' && steps.stage.outputs.has_bundle == 'true' && steps.upload.outcome == 'success' }}
       uses: ./.github/actions/podman/remote-podman-exec
@@ -110,7 +110,7 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          mkdir -p /opt/uactions
+          mkdir -p "$HOME/uactions"
           if [ ! -f "$HOME/uactions-scripts.tgz" ]; then
             echo '::error::Missing $HOME/uactions-scripts.tgz on remote host (upload failed or was skipped)';
             exit 1
@@ -124,14 +124,14 @@ runs:
           # Replace scripts atomically
           TMPDIR="$(mktemp -d)"
           tar -xzf "$HOME/uactions-scripts.tgz" -C "$TMPDIR"
-          rm -rf /opt/uactions/scripts
-          mv "$TMPDIR/scripts" /opt/uactions/scripts
+          rm -rf "$HOME/uactions/scripts"
+          mv "$TMPDIR/scripts" "$HOME/uactions/scripts"
           rm -rf "$TMPDIR"
           # Ensure all scripts are executable
-          find /opt/uactions/scripts -type f -name '*.sh' -exec chmod +x {} +
+          find "$HOME/uactions/scripts" -type f -name '*.sh' -exec chmod +x {} +
           # Stamp version marker for visibility
-          date -u +'%Y-%m-%d %H:%M:%S UTC' > /opt/uactions/scripts/.deployed_at
-          echo '${{ github.sha }}' > /opt/uactions/scripts/.version
+          date -u +'%Y-%m-%d %H:%M:%S UTC' > "$HOME/uactions/scripts/.deployed_at"
+          echo '${{ github.sha }}' > "$HOME/uactions/scripts/.version"
 
     - name: Skip notice (host unreachable)
       if: ${{ steps.reach.outputs.reachable != 'true' }}

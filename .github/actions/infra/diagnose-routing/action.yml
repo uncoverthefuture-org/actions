@@ -201,27 +201,12 @@ runs:
         fingerprint: ${{ inputs.ssh_fingerprint }}
         script: |
           set -euo pipefail
-          TARGET_DIR="/opt/uactions/scripts/infra"
-          ALT_DIR="$HOME/.uactions/scripts/infra"
+          TARGET_DIR="$HOME/uactions/scripts/infra"
           SCRIPT_NAME="diagnose-routing.sh"
-          as_root() {
-            if [ "$(id -u)" -eq 0 ]; then
-              bash -c "$*"
-            elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-              sudo bash -c "$*"
-            else
-              return 1
-            fi
-          }
-          if ! as_root "mkdir -p '$TARGET_DIR'"; then
-            mkdir -p "$ALT_DIR"
-            TARGET_DIR="$ALT_DIR"
-          fi
+          mkdir -p "$TARGET_DIR"
           if [ -f "/tmp/$SCRIPT_NAME" ]; then
-            if ! as_root "mv -f '/tmp/$SCRIPT_NAME' '$TARGET_DIR/$SCRIPT_NAME' && chmod +x '$TARGET_DIR/$SCRIPT_NAME'"; then
-              mv -f "/tmp/$SCRIPT_NAME" "$TARGET_DIR/$SCRIPT_NAME"
-              chmod +x "$TARGET_DIR/$SCRIPT_NAME" || true
-            fi
+            mv -f "/tmp/$SCRIPT_NAME" "$TARGET_DIR/$SCRIPT_NAME"
+            chmod +x "$TARGET_DIR/$SCRIPT_NAME" || true
           fi
           if [ ! -x "$TARGET_DIR/$SCRIPT_NAME" ]; then
             # Fallback: create a diagnostics log so the summary can show actionable info
@@ -338,17 +323,13 @@ runs:
         fingerprint: ${{ inputs.ssh_fingerprint }}
         script: |
           set -euo pipefail
-          TARGET_DIR="/opt/uactions/scripts/infra"
-          [ -x "$TARGET_DIR/diagnose-routing.sh" ] || TARGET_DIR="$HOME/.uactions/scripts/infra"
+          TARGET_DIR="$HOME/uactions/scripts/infra"
           export DIAG_DOMAIN='${{ inputs.domain_effective }}'
           export DIAG_APP_CONTAINER='${{ steps.name.outputs.name }}'
           export DIAG_TRAEFIK_CONTAINER='${{ inputs.traefik_container }}'
           export DIAG_HOST_PORT='${{ inputs.host_port }}'
           export DIAG_CONTAINER_PORT='${{ inputs.container_port }}'
           RUN_CMD="bash '$TARGET_DIR/diagnose-routing.sh'"
-          if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-            RUN_CMD="sudo -E bash '$TARGET_DIR/diagnose-routing.sh'"
-          fi
           echo "Running diagnostics (post-fix) via: $RUN_CMD"
           OK=false
           for attempt in 1 2 3; do

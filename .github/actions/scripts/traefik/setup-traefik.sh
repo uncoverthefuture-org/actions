@@ -139,8 +139,8 @@ else
   fi
 fi
 
-if [[ -x "/opt/uactions/scripts/traefik/assert-socket-and-selinux.sh" ]]; then
-  /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh
+if [[ -x "$HOME/uactions/scripts/traefik/assert-socket-and-selinux.sh" ]]; then
+  "$HOME/uactions/scripts/traefik/assert-socket-and-selinux.sh"
 fi
 
 CFG_PATH="$HOME/.config/traefik/traefik.yml"

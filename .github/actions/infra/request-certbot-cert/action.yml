@@ -124,7 +124,7 @@ runs:
         timeout: 15s
         command_timeout: 30s
 
-    # Execute: Move to /opt/uactions/scripts/, chmod, export env, run wrapper
+    # Execute: Move to $HOME/uactions/scripts/, chmod, export env, run wrapper
     - name: Execute request-certbot-cert
       uses: ./.github/actions/podman/remote-podman-exec
       with:
@@ -140,12 +140,12 @@ runs:
         inline_script: |
           set -euo pipefail
           echo "🔎 SSH reachable: ${{ steps.reach.outputs.reachable }}"
-          # Move wrapper script from /tmp to /opt/uactions/scripts/
-          sudo mkdir -p /opt/uactions/scripts/infra
+          # Move wrapper script from /tmp to $HOME/uactions/scripts/
+          mkdir -p "$HOME/uactions/scripts/infra"
           if [ -f /tmp/request-certbot-cert-wrapper.sh ]; then
-            sudo mv -f /tmp/request-certbot-cert-wrapper.sh /opt/uactions/scripts/infra/request-certbot-cert-wrapper.sh
+            mv -f /tmp/request-certbot-cert-wrapper.sh "$HOME/uactions/scripts/infra/request-certbot-cert-wrapper.sh"
           fi
-          sudo chmod +x /opt/uactions/scripts/infra/request-certbot-cert-wrapper.sh
+          chmod +x "$HOME/uactions/scripts/infra/request-certbot-cert-wrapper.sh"
 
           # Export inputs for server-managed script
           export DOMAIN='${{ inputs.domain }}'
@@ -154,4 +154,4 @@ runs:
           export STAGING='${{ inputs.staging }}'
 
           # Execute wrapper script (which calls main script and reloads Apache)
-          /opt/uactions/scripts/infra/request-certbot-cert-wrapper.sh
+          "$HOME/uactions/scripts/infra/request-certbot-cert-wrapper.sh"

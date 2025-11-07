@@ -32,7 +32,7 @@ echo "✅ apache2 service is running"
 
 echo ""
 echo "🚀 Executing main certbot script ..."
-/opt/uactions/scripts/infra/request-certbot-cert.sh
+"$HOME/uactions/scripts/infra/request-certbot-cert.sh"
 
 echo ""
 echo "🔄 Reloading Apache2 ..."

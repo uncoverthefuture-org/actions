@@ -318,8 +318,8 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
     echo "🔀 Traefik mode for domain (router: $ROUTER_NAME)"
     echo "🔖 Traefik labels will advertise container port $CONTAINER_PORT"
   fi
-  if [[ -x "/opt/uactions/scripts/app/build-traefik-labels.sh" ]]; then
-    mapfile -t BUILT_LABELS < <(/opt/uactions/scripts/app/build-traefik-labels.sh "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME:-false}")
+  if [[ -x "$HOME/uactions/scripts/app/build-traefik-labels.sh" ]]; then
+    mapfile -t BUILT_LABELS < <("$HOME/uactions/scripts/app/build-traefik-labels.sh" "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME:-false}")
     LABEL_ARGS+=("${BUILT_LABELS[@]}")
   else
     LABEL_ARGS+=(--label "traefik.enable=true")

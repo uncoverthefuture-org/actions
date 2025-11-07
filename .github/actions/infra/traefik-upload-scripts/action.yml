@@ -1,5 +1,5 @@
 name: 'infra: traefik-upload-scripts'
-description: 'Hash-compare and optionally upload Traefik scripts to /opt/uactions/scripts/traefik on the remote host'
+description: 'Hash-compare and optionally upload Traefik scripts to $HOME/uactions/scripts/traefik on the remote host'
 
 inputs:
   ssh_host:
@@ -76,11 +76,11 @@ runs:
           ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
           set -euo pipefail
           files=(
-            /opt/uactions/scripts/traefik/install-traefik.sh
-            /opt/uactions/scripts/traefik/setup-traefik.sh
-            /opt/uactions/scripts/traefik/ensure-traefik-config.sh
-            /opt/uactions/scripts/traefik/install-quadlet-sockets.sh
-            /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh
+            "$HOME/uactions/scripts/traefik/install-traefik.sh"
+            "$HOME/uactions/scripts/traefik/setup-traefik.sh"
+            "$HOME/uactions/scripts/traefik/ensure-traefik-config.sh"
+            "$HOME/uactions/scripts/traefik/install-quadlet-sockets.sh"
+            "$HOME/uactions/scripts/traefik/assert-socket-and-selinux.sh"
           )
           if command -v sha256sum >/dev/null 2>&1; then
             for f in "${files[@]}"; do [ -f "$f" ] && sha256sum "$f" | awk '{print $1}'; done | sha256sum | awk '{print $1}'
@@ -155,10 +155,10 @@ runs:
         connect_mode: user
         inline_script: |
           set -euo pipefail
-          mkdir -p /opt/uactions/scripts/traefik
+          mkdir -p "$HOME/uactions/scripts/traefik"
           for f in install-traefik.sh setup-traefik.sh ensure-traefik-config.sh install-quadlet-sockets.sh assert-socket-and-selinux.sh; do
             if [ -f "/tmp/$f" ]; then
-              mv -f "/tmp/$f" "/opt/uactions/scripts/traefik/$f"
-              chmod +x "/opt/uactions/scripts/traefik/$f"
+              mv -f "/tmp/$f" "$HOME/uactions/scripts/traefik/$f"
+              chmod +x "$HOME/uactions/scripts/traefik/$f"
             fi
           done

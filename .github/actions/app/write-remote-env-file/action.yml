@@ -202,10 +202,10 @@ runs:
         inline_script: |
           set -euo pipefail
           # Move scripts to place
-          mkdir -p /opt/uactions/scripts/app
+          mkdir -p "$HOME/uactions/scripts/app"
           if [ -f /tmp/run-env-setup.sh ]; then
-            mv -f /tmp/run-env-setup.sh /opt/uactions/scripts/app/run-env-setup.sh
-            chmod +x /opt/uactions/scripts/app/run-env-setup.sh
+            mv -f /tmp/run-env-setup.sh "$HOME/uactions/scripts/app/run-env-setup.sh"
+            chmod +x "$HOME/uactions/scripts/app/run-env-setup.sh"
           fi
 
           # Export variables for run-env-setup.sh
@@ -214,4 +214,4 @@ runs:
           export ENV_CONTENT='${{ inputs.env_content }}'
 
           # Execute environment setup runner script
-          /opt/uactions/scripts/app/run-env-setup.sh
+          "$HOME/uactions/scripts/app/run-env-setup.sh"

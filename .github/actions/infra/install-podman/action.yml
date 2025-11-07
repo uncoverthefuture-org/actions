@@ -97,11 +97,11 @@ runs:
             echo '::error::install-podman requires ssh_user to be root (or a user with direct root privileges). Update your host preparation to connect as root.' >&2
             exit 1
           fi
-          sudo mkdir -p /opt/uactions/scripts/infra
+          mkdir -p "$HOME/uactions/scripts/infra"
           if [ -f /tmp/install-podman.sh ]; then
-            sudo mv -f /tmp/install-podman.sh /opt/uactions/scripts/infra/install-podman.sh
+            mv -f /tmp/install-podman.sh "$HOME/uactions/scripts/infra/install-podman.sh"
           fi
-          sudo chmod +x /opt/uactions/scripts/infra/install-podman.sh
+          chmod +x "$HOME/uactions/scripts/infra/install-podman.sh"
 
           export ADDITIONAL_PACKAGES='${{ inputs.additional_packages }}'
-          /opt/uactions/scripts/infra/install-podman.sh
+          "$HOME/uactions/scripts/infra/install-podman.sh"

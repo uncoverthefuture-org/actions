@@ -96,7 +96,7 @@ runs:
         timeout: 15s
         command_timeout: 30s
 
-    # Execute: Move to /opt/uactions/scripts/, chmod, run
+    # Execute: Move to $HOME/uactions/scripts/, chmod, run
     - name: Execute install-webmin
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
@@ -118,16 +118,16 @@ runs:
             echo "✅ webmin already installed; skipping installation"
             exit 0
           fi
-          # Move script from /tmp to /opt/uactions/scripts/
-          sudo mkdir -p /opt/uactions/scripts/infra
+          # Move script from /tmp to $HOME/uactions/scripts/
+          mkdir -p "$HOME/uactions/scripts/infra"
           if [ -f /tmp/install-webmin.sh ]; then
-            sudo mv -f /tmp/install-webmin.sh /opt/uactions/scripts/infra/install-webmin.sh
+            mv -f /tmp/install-webmin.sh "$HOME/uactions/scripts/infra/install-webmin.sh"
           fi
-          sudo chmod +x /opt/uactions/scripts/infra/install-webmin.sh
+          chmod +x "$HOME/uactions/scripts/infra/install-webmin.sh"
           
           # Export toggles for script
           export INSTALL_WEBMIN='${{ inputs.install_webmin }}'
           export INSTALL_USERMIN='${{ inputs.install_usermin }}'
 
           # Execute server-managed script
-          /opt/uactions/scripts/infra/install-webmin.sh
+          "$HOME/uactions/scripts/infra/install-webmin.sh"

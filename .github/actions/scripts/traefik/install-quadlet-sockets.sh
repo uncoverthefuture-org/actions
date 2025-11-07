@@ -42,8 +42,8 @@ SOCK_HOST="${XDG_RUNTIME_DIR}/podman/podman.sock"
 mkdir -p "$QUADLET_DIR"
 
 # Best-effort: assert socket and SELinux hints if available
-if [[ -x "/opt/uactions/scripts/traefik/assert-socket-and-selinux.sh" ]]; then
-  /opt/uactions/scripts/traefik/assert-socket-and-selinux.sh || true
+if [[ -x "$HOME/uactions/scripts/traefik/assert-socket-and-selinux.sh" ]]; then
+  "$HOME/uactions/scripts/traefik/assert-socket-and-selinux.sh" || true
 fi
 
 # Network unit

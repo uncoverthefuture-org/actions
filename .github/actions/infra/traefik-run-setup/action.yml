@@ -73,11 +73,11 @@ runs:
         connect_mode: user
         inline_script: |
           set -euo pipefail
-          mkdir -p /opt/uactions/scripts/traefik
+          mkdir -p "$HOME/uactions/scripts/traefik"
           for f in install-traefik.sh setup-traefik.sh ensure-traefik-config.sh install-quadlet-sockets.sh assert-socket-and-selinux.sh; do
             if [ -f "/tmp/$f" ]; then
-              mv -f "/tmp/$f" "/opt/uactions/scripts/traefik/$f"
-              chmod +x "/opt/uactions/scripts/traefik/$f"
+              mv -f "/tmp/$f" "$HOME/uactions/scripts/traefik/$f"
+              chmod +x "$HOME/uactions/scripts/traefik/$f"
             fi
           done
 
@@ -89,8 +89,8 @@ runs:
           if [ "$CURRENT_USER" = "root" ]; then
             echo "🔧 Running Traefik system installation (requires root) ..."
             export PODMAN_USER="$CURRENT_USER"
-            if [ -x /opt/uactions/scripts/traefik/install-traefik.sh ]; then
-              /opt/uactions/scripts/traefik/install-traefik.sh
+            if [ -x "$HOME/uactions/scripts/traefik/install-traefik.sh" ]; then
+              "$HOME/uactions/scripts/traefik/install-traefik.sh"
             fi
           else
             echo "::notice::Skipping install-traefik.sh because it requires root privileges."
@@ -115,18 +115,18 @@ runs:
           export QUADLET_ENABLE_HTTP3='${{ inputs.quadlet_enable_http3 }}'
           export TRAEFIK_FORCE_RESTART='${{ inputs.force_restart }}'
 
-          if [ -x /opt/uactions/scripts/traefik/ensure-traefik-config.sh ]; then
-            /opt/uactions/scripts/traefik/ensure-traefik-config.sh
+          if [ -x "$HOME/uactions/scripts/traefik/ensure-traefik-config.sh" ]; then
+            "$HOME/uactions/scripts/traefik/ensure-traefik-config.sh"
           fi
 
           MODE='${{ inputs.mode }}'
           if [ "$MODE" = "quadlet" ]; then
-            if [ -x /opt/uactions/scripts/traefik/install-quadlet-sockets.sh ]; then
-              /opt/uactions/scripts/traefik/install-quadlet-sockets.sh
+            if [ -x "$HOME/uactions/scripts/traefik/install-quadlet-sockets.sh" ]; then
+              "$HOME/uactions/scripts/traefik/install-quadlet-sockets.sh"
             fi
           else
-            if [ -x /opt/uactions/scripts/traefik/setup-traefik.sh ]; then
-              /opt/uactions/scripts/traefik/setup-traefik.sh
+            if [ -x "$HOME/uactions/scripts/traefik/setup-traefik.sh" ]; then
+              "$HOME/uactions/scripts/traefik/setup-traefik.sh"
             else
               echo "::error::Missing setup-traefik.sh on remote host."
               exit 1

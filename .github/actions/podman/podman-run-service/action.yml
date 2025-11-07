@@ -187,7 +187,7 @@ runs:
         timeout: 15s
         command_timeout: 30s
 
-    # Execute: Move to /opt/uactions/scripts/, chmod, export env, run
+    # Execute: Move to $HOME/uactions/scripts/, chmod, export env, run
     - name: Run service
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
@@ -203,12 +203,12 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          # Move script from /tmp to /opt/uactions/scripts/
-          mkdir -p /opt/uactions/scripts/podman
+          # Move script from /tmp to $HOME/uactions/scripts/
+          mkdir -p "$HOME/uactions/scripts/podman"
           if [ -f /tmp/run-service.sh ]; then
-            mv -f /tmp/run-service.sh /opt/uactions/scripts/podman/run-service.sh
+            mv -f /tmp/run-service.sh "$HOME/uactions/scripts/podman/run-service.sh"
           fi
-          chmod +x /opt/uactions/scripts/podman/run-service.sh
+          chmod +x "$HOME/uactions/scripts/podman/run-service.sh"
           
           # Export env vars for script
           export SERVICE_NAME='${{ inputs.service_name }}'
@@ -229,4 +229,4 @@ runs:
           export COMMAND='${{ inputs.command }}'
           
           # Execute server-managed script
-          /opt/uactions/scripts/podman/run-service.sh
+          "$HOME/uactions/scripts/podman/run-service.sh"

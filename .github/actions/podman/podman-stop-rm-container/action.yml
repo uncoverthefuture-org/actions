@@ -146,7 +146,7 @@ runs:
         timeout: 15s
         command_timeout: 30s
 
-    # Execute: Move to /opt/uactions/scripts/, chmod, export env, run
+    # Execute: Move to $HOME/uactions/scripts/, chmod, export env, run
     - name: Stop and remove container
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: ./.github/actions/podman/remote-podman-exec
@@ -162,12 +162,12 @@ runs:
         fail_if_env_missing: 'false'
         inline_script: |
           set -euo pipefail
-          # Move script from /tmp to /opt/uactions/scripts/
-          mkdir -p /opt/uactions/scripts/podman
+          # Move script from /tmp to $HOME/uactions/scripts/
+          mkdir -p "$HOME/uactions/scripts/podman"
           if [ -f /tmp/stop-rm-container.sh ]; then
-            mv -f /tmp/stop-rm-container.sh /opt/uactions/scripts/podman/stop-rm-container.sh
+            mv -f /tmp/stop-rm-container.sh "$HOME/uactions/scripts/podman/stop-rm-container.sh"
           fi
-          chmod +x /opt/uactions/scripts/podman/stop-rm-container.sh
+          chmod +x "$HOME/uactions/scripts/podman/stop-rm-container.sh"
           
           # Compute fallback container name when not provided
           CN='${{ inputs.container_name }}'
@@ -179,4 +179,4 @@ runs:
           export CONTAINER_NAME="$CN"
           
           # Execute server-managed script
-          /opt/uactions/scripts/podman/stop-rm-container.sh
+          "$HOME/uactions/scripts/podman/stop-rm-container.sh"

@@ -141,13 +141,13 @@ echo "📦 Staging environment scripts..."
 cd /
 
 # Ensure scripts directory exists
-mkdir -p /opt/uactions/scripts/app
+mkdir -p "$HOME/uactions/scripts/app"
 
 # Move uploaded env script if it exists
 if [ -f /tmp/write-env-file.sh ]; then
-  echo "📋 Moving write-env-file.sh to /opt/uactions/scripts/app/"
-  mv -f /tmp/write-env-file.sh /opt/uactions/scripts/app/write-env-file.sh
-  chmod +x /opt/uactions/scripts/app/write-env-file.sh
+  echo "📋 Moving write-env-file.sh to $HOME/uactions/scripts/app/"
+  mv -f /tmp/write-env-file.sh "$HOME/uactions/scripts/app/write-env-file.sh"
+  chmod +x "$HOME/uactions/scripts/app/write-env-file.sh"
 fi
 
 # --- Export Environment Variables -----------------------------------------------------
@@ -160,9 +160,9 @@ export ENV_CONTENT
 
 # --- Execute Environment Setup -------------------------------------------------------
 echo "🚀 Executing environment setup script..."
-echo "  Script: /opt/uactions/scripts/app/write-env-file.sh"
+echo "  Script: $HOME/uactions/scripts/app/write-env-file.sh"
 echo "  Env file: $ENV_FILE_PATH"
 
-/opt/uactions/scripts/app/write-env-file.sh
+"$HOME/uactions/scripts/app/write-env-file.sh"
 
 echo "✅ Environment setup completed successfully"
