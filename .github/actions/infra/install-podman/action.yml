@@ -98,6 +98,18 @@ runs:
         inline_script: |
           set -euo pipefail
           if [ "$(id -u)" -ne 0 ]; then
+            # Ensure script is placed under the user's home even when using sudo
+            if [ -f /tmp/install-podman.sh ]; then
+              mkdir -p "$HOME/uactions/scripts/infra"
+              mv -f /tmp/install-podman.sh "$HOME/uactions/scripts/infra/install-podman.sh"
+            fi
+            [ -f "$HOME/uactions/scripts/infra/install-podman.sh" ] && chmod +x "$HOME/uactions/scripts/infra/install-podman.sh" || true
+            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+              if [ -x "$HOME/uactions/scripts/infra/install-podman.sh" ]; then
+                sudo env ADDITIONAL_PACKAGES='${{ inputs.additional_packages }}' "$HOME/uactions/scripts/infra/install-podman.sh"
+                exit 0
+              fi
+            fi
             if [ "${{ inputs.show_root_install_hints }}" = "true" ]; then
               SUDO_AVAIL=no
               if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO_AVAIL=yes; fi
@@ -112,6 +124,7 @@ runs:
             fi
             exit 1
           fi
+          # Running as root: keep scripts under $HOME as well
           mkdir -p "$HOME/uactions/scripts/infra"
           if [ -f /tmp/install-podman.sh ]; then
             mv -f /tmp/install-podman.sh "$HOME/uactions/scripts/infra/install-podman.sh"
