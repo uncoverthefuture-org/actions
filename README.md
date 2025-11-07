@@ -25,7 +25,7 @@ The actions are organized into categories. **Primary user-facing actions** are l
 | Action | Description | Link |
 |--------|-------------|------|
 | **Prepare Ubuntu Host** | Sets up fresh Ubuntu servers for Podman deployments | [README](.github/actions/infra/prepare-ubuntu-host/README.md) |
-| **Setup Podman User** _(deprecated)_ | Previously configured Podman user locally; use manual host prep instructions instead | |
+| **Setup Podman User** _(removed)_ | Previously configured Podman user locally; use manual host prep instructions instead | |
 | **Apache Manage VHost** | Creates/updates Apache virtual hosts | [README](.github/actions/infra/apache-manage-vhost/README.md) |
 
 ### Podman Operations
@@ -64,7 +64,7 @@ The actions are organized into categories. **Primary user-facing actions** are l
 │   └── write-remote-env-file/
 ├── infra/              # 🔧 Infrastructure setup (some user-facing)
 │   ├── prepare-ubuntu-host/
-│   ├── setup-podman-user/ _(deprecated)_
+│   ├── setup-podman-user/ _(removed)_
 │   ├── apache-manage-vhost/
 │   └── [other internal utilities]
 ├── podman/             # 🐳 Core Podman operations

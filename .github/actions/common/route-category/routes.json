@@ -17,7 +17,6 @@
     "request-certbot-cert",
     "setup-traefik",
     "configure-ufw",
-    "setup-podman-user",
     "determine-domain",
     "compute-host-port",
     "check-dns-match",

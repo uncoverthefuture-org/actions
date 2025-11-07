@@ -12,7 +12,7 @@
 # 4. Allows explicit category override
 #
 # WHEN TO USE:
-# - Internal action used by main aggregator
+# - Internal action used by the main aggregator
 # - Called before dispatcher routing
 # - Used to determine which dispatcher to invoke
 #
@@ -20,7 +20,7 @@
 # - build: Docker image building (build-and-push)
 # - app: Application deployment (ssh-django-deploy, ssh-nextjs-deploy, etc.)
 # - podman: Container operations (remote-podman-exec, podman-run-service, etc.)
-# - infra: Infrastructure setup (prepare-ubuntu-host, setup-podman-user, etc.)
+# - infra: Infrastructure setup (prepare-ubuntu-host, apache-manage-vhost, etc.)
 # - common: Shared utilities (prepare-app-env, normalize-params, etc.)
 # - version: Semantic versioning (compute-next, update-tags, etc.)
 #

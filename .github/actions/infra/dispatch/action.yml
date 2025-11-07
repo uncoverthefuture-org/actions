@@ -18,7 +18,6 @@
 #
 # SUPPORTED SUBACTIONS:
 # - prepare-ubuntu-host: Full server preparation
-# - setup-podman-user: Configure Podman user
 # - apache-manage-vhost: Manage Apache virtual hosts
 # - install-podman, install-apache, install-webmin, install-certbot
 # - configure-ufw: Firewall configuration
@@ -40,7 +39,7 @@ inputs:
   # ROUTING
   # ========================================================================
   subaction:
-    description: "Subaction to route to. Required. Options: prepare-ubuntu-host, setup-podman-user, apache-manage-vhost, install-podman, install-apache, install-webmin, install-certbot, configure-ufw, and more"
+    description: "Subaction to route to. Required. Options: prepare-ubuntu-host, apache-manage-vhost, install-podman, install-apache, install-webmin, install-certbot, configure-ufw, and more"
     required: true
   params_json:
     description: "JSON blob of parameters to pass to the selected subaction. Optional. Used for complex parameter passing"

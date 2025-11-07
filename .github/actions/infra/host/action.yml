@@ -5,7 +5,7 @@ inputs:
   params_json:
     required: false
   subaction:
-    description: 'prepare-ubuntu-host | install-podman | install-apache | install-webmin | configure-ufw | setup-podman-user'
+    description: 'prepare-ubuntu-host | install-podman | install-apache | install-webmin | configure-ufw'
     required: true
   ssh_host:
     required: false

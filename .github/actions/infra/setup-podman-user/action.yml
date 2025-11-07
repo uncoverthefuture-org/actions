@@ -2,8 +2,8 @@
 # ACTION: Setup Podman User
 # ============================================================================
 # PURPOSE:
-# DEPRECATED — reference manual host preparation steps in docs/GETTING_STARTED.md.
-# Legacy helper that attempted to configure a dedicated Podman user, but the
+# REMOVED — do not use. Reference manual host preparation steps in docs/GETTING_STARTED.md.
+# Legacy helper that attempted to configure a dedicated Podman user; the
 # refactor enforces running all remote commands as the provided ssh_user.
 #
 # WHAT IT DOES (historical reference only):
@@ -47,9 +47,9 @@ inputs:
     description: 'Server SSH host key fingerprint for verification. Optional but recommended'
     required: false
   env_dir_path:
-    description: 'Environment directory path. Default: /var/deployments/development/deployer. Example: /opt/apps'
+    description: 'Environment directory path. Default: /var/deployments/development/app. Example: /opt/apps'
     required: false
-    default: '/var/deployments/development/deployer'
+    default: '/var/deployments/development/app'
 
 runs:
   using: 'composite'
@@ -65,19 +65,8 @@ runs:
         SSH_PORT: ${{ inputs.ssh_port }}
       run: |
         set -euo pipefail
-        KEY_FILE="$(mktemp)"
-        trap "rm -f '$KEY_FILE'" EXIT
-        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
-          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
-        else
-          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
-        fi
-        chmod 600 "$KEY_FILE"
-        if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" true 2>/dev/null; then
-          echo "reachable=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "reachable=false" >> "$GITHUB_OUTPUT"
-        fi
+        echo "::error::The 'infra/setup-podman-user' action has been removed. Provision and use your SSH user directly; all remote commands run as the provided ssh_user."
+        exit 2
     # Stage: Copy script from action path to workspace (needed for scp)
     - name: Stage setup-podman-user script
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}

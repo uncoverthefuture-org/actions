@@ -9,7 +9,7 @@
 #
 # Inputs (environment variables):
 #   TRAEFIK_EMAIL       - Email for Let's Encrypt account (REQUIRED)
-#   PODMAN_USER         - Linux user that runs containers (default: deployer)
+#   PODMAN_USER         - Linux user that runs containers (default: current user)
 #   DASHBOARD_USER      - Optional username for Traefik dashboard basic auth (default: admin)
 #   DASHBOARD_PASS_BCRYPT - Optional bcrypt hash (htpasswd -nB) for dashboard user; if absent a placeholder file is created
 #

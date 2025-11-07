@@ -34,7 +34,6 @@ These inputs are passed to the main `uncoverthefuture-org/actions@v1.0.41` actio
 - `ssh-react-deploy` - Deploy React app
 - `write-remote-env-file` - Write environment file
 - `prepare-ubuntu-host` - Prepare Ubuntu server
-- `setup-podman-user` - Setup Podman user
 - `remote-podman-exec` - Execute Podman commands
 - `podman-run-service` - Run container service
 - `podman-login-pull` - Login and pull image
@@ -233,7 +232,7 @@ Inputs for deployment actions like `ssh-django-deploy`.
 **Example**:
 ```json
 {
-  "ssh_user": "deployer"
+  "ssh_user": "ubuntu"
 }
 ```
 

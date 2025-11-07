@@ -65,7 +65,6 @@ with:
 │   ├── infra/                 # Infrastructure setup
 │   │   ├── dispatch/          # Routes to infra actions
 │   │   ├── prepare-ubuntu-host/
-│   │   ├── setup-podman-user/
 │   │   └── [other utilities]
 │   │
 │   ├── common/                # Shared utilities
@@ -198,7 +197,6 @@ Actions are organized into six categories:
 - **Purpose**: Prepare and configure remote hosts
 - **Actions**:
   - `prepare-ubuntu-host` - Fresh Ubuntu server setup
-  - `setup-podman-user` - Podman user configuration
   - `apache-manage-vhost` - Apache virtual host management
 - **Key Features**:
   - Automated package installation

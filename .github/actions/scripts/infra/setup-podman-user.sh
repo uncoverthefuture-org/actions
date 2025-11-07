@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# setup-podman-user.sh - Create and configure podman user for rootless containers
+# setup-podman-user.sh - Removed legacy helper (fail-fast)
 set -euo pipefail
+
+echo "::error::The 'setup-podman-user' helper has been removed. Provision and use your SSH user directly; all remote commands run as the provided ssh_user."
+exit 2
 
 PODMAN_USER="${PODMAN_USER:-deployer}"
 

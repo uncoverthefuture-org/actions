@@ -30,7 +30,6 @@ Complete reference for all action files in the Uncover Actions project. This gui
 ├── infra/                        # Infrastructure setup
 │   ├── dispatch/                 # Routes to infra actions
 │   ├── prepare-ubuntu-host/      # Prepare fresh Ubuntu server
-│   ├── setup-podman-user/        # Setup Podman user
 │   ├── apache-manage-vhost/      # Manage Apache virtual hosts
 │   ├── certbot/                  # SSL certificate management
 │   └── [other utilities]
@@ -248,9 +247,8 @@ These are the main actions users call directly.
 1. Updates package manager
 2. Installs Podman
 3. Creates deployment directories
-4. Creates deployer user (optional)
-5. Installs Traefik (optional)
-6. Installs additional packages
+4. Installs Traefik (optional)
+5. Installs additional packages
 
 **Key inputs**:
 - `ssh_host` - SSH host (required)
@@ -269,17 +267,13 @@ These are the main actions users call directly.
 
 ---
 
-#### **setup-podman-user** _(deprecated)_
+#### **setup-podman-user** _(removed)_
 **Location**: `.github/actions/infra/setup-podman-user/action.yml`
 
-> ⚠️ This action is deprecated. The podman-user refactor mandates running all remote
-> commands as the declared `ssh_user`. Provision servers with the correct user up
-> front and avoid calling this action in new workflows.
-
-**Migration guidance**:
-1. Ensure the provisioning process creates the target `ssh_user` account manually.
-2. Grant the user linger/socket permissions using standard system automation.
-3. Remove any `setup-podman-user` references from workflows and documentation.
+> ⚠️ This action has been removed. All remote operations run strictly as the provided
+> `ssh_user`. Provision the target user during infrastructure setup and keep directory
+> ownership aligned with that user. Remove any references to `setup-podman-user` from
+> workflows and documentation.
 
 ---
 

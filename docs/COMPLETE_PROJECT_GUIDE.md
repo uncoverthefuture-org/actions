@@ -131,7 +131,7 @@ The main `action.yml` acts as a router:
 | **app** | Application deployment | 8 | ssh-django-deploy, ssh-nextjs-deploy |
 | **build** | Docker image building | 2 | build-and-push |
 | **podman** | Container operations | 5 | remote-podman-exec, podman-run-service |
-| **infra** | Infrastructure setup | 6+ | prepare-ubuntu-host, setup-podman-user |
+| **infra** | Infrastructure setup | 6+ | prepare-ubuntu-host |
 | **common** | Shared utilities | 15+ | route-category, print-help |
 | **version** | Semantic versioning | 3 | compute-next, update-tags |
 
@@ -220,10 +220,9 @@ Three ways to connect:
 ### Infrastructure Actions (6+)
 
 1. **prepare-ubuntu-host** - Full server setup
-2. **setup-podman-user** - Configure Podman user
-3. **apache-manage-vhost** - Apache vhost management (deprecated)
-4. **certbot** - SSL certificate management
-5. And more...
+2. **apache-manage-vhost** - Apache vhost management (deprecated)
+3. **certbot** - SSL certificate management
+4. And more...
 
 ### Container Operations (5)
 

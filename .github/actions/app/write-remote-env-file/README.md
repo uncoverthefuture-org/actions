@@ -6,7 +6,7 @@ Write a `.env` file on a remote host via SSH. Uses the same SSH connection and u
 
 ## Inputs
 - `ssh_host`, `ssh_user`, `ssh_key`, `root_ssh_key?`, `ssh_port?`, `ssh_fingerprint?`
-- `podman_user?` (default `deployer`), `connect_mode?` (`auto|root|user`)
+- `connect_mode?` (`auto|root|user`)
 - `env_name` (required)
 - `env_file_path?`
 - `env_b64?` or `env_content?`
