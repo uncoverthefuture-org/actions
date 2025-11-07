@@ -287,8 +287,8 @@ runs: # Composite action implementation
           if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet traefik; then exit 0; fi
           # 2) podman container named "traefik" for the ssh user
           if command -v podman >/dev/null 2>&1 && podman ps -a --format '{{.Names}}' | grep -qx traefik; then exit 0; fi
-          # 3) podman container named "traefik" via sudo (legacy)
-          if command -v podman >/dev/null 2>&1 && podman ps -a --format '{{.Names}}' | grep -qx traefik; then exit 0; fi
+          # 3) podman container named "traefik" via sudo (legacy/root-owned)
+          if command -v podman >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1 && sudo -n podman ps -a --format '{{.Names}}' 2>/dev/null | grep -qx traefik; then exit 0; fi
           # Not found
           exit 1
 
