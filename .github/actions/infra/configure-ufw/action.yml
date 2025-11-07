@@ -57,6 +57,10 @@ inputs:
     description: 'Skip staging/upload (assumes scripts deployed via deploy-server-scripts)'
     required: false
     default: 'true'
+  show_root_install_hints:
+    description: 'Show explicit manual install instructions when root privileges are required (fail-fast messaging)'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
@@ -85,6 +89,32 @@ runs:
         else
           echo "reachable=false" >> "$GITHUB_OUTPUT"
         fi
+    - name: Fail fast if cannot escalate for UFW configuration
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.connect_mode != 'root' }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then exit 0; fi
+          if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then exit 0; fi
+          if [ '${{ inputs.show_root_install_hints }}' = 'true' ]; then
+            echo '::error::UFW configuration requires root privileges; current session cannot escalate.' >&2
+            echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
+            echo 'Install manually on the server (as root), then re-run:' >&2
+            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get install -y ufw' >&2
+            echo '  sudo ufw --force enable' >&2
+            echo '  sudo ufw allow 22/tcp   # plus any ports you need' >&2
+            echo 'Or re-run this action with connect_mode: root (or provide root_ssh_key).' >&2
+          else
+            echo '::error::Root privileges required to configure UFW.' >&2
+          fi
+          exit 1
     # Stage: Copy script from action path to workspace
     - name: Stage configure-ufw script
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}

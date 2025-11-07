@@ -12,7 +12,18 @@ PODMAN_IFACE_IN="${PODMAN_IFACE:-}"
 
 SUDO=""
 if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  SUDO="sudo"
+  SUDO="sudo -n"
+fi
+
+# Fail-fast if we cannot escalate for UFW operations
+if [ "$(id -u)" -ne 0 ] && [ -z "$SUDO" ]; then
+  echo '::error::UFW configuration requires root privileges; current session cannot escalate.' >&2
+  echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
+  echo 'Install UFW and enable it manually on the server (as root), then re-run:' >&2
+  echo '  sudo apt-get update -y' >&2
+  echo '  sudo apt-get install -y ufw' >&2
+  echo '  sudo ufw --force enable' >&2
+  exit 1
 fi
 
 # Install UFW only if missing

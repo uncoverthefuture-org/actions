@@ -8,16 +8,31 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 echo "🔧 Installing Certbot (Apache plugin) ..."
+IS_ROOT="no"
+if [ "$(id -u)" -eq 0 ]; then IS_ROOT="yes"; fi
+SUDO=""
+if [ "$IS_ROOT" = "no" ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO="sudo -n"; fi
+if [ "$IS_ROOT" = "no" ] && [ -z "$SUDO" ]; then
+  echo '::error::Certbot installation requires root privileges; current session cannot escalate.' >&2
+  echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
+  echo 'Install manually on the server (as root), then re-run:' >&2
+  echo '  sudo apt-get update -y' >&2
+  echo '  sudo apt-get install -y software-properties-common' >&2
+  echo '  sudo add-apt-repository -y ppa:certbot/certbot' >&2
+  echo '  sudo apt-get update -y' >&2
+  echo '  sudo apt-get install -y certbot python3-certbot-apache' >&2
+  exit 1
+fi
 echo "📥 Updating apt cache ..."
-apt-get update -y
+$SUDO apt-get update -y
 echo "📦 Installing prerequisite packages ..."
-apt-get install -y software-properties-common
+$SUDO apt-get install -y software-properties-common
 echo "➕ Adding Certbot PPA ..."
-add-apt-repository -y ppa:certbot/certbot || true
+$SUDO add-apt-repository -y ppa:certbot/certbot || true
 echo "📥 Updating apt cache (post-PPA) ..."
-apt-get update -y
+$SUDO apt-get update -y
 echo "📦 Installing certbot and apache plugin ..."
-apt-get install -y certbot python3-certbot-apache
+$SUDO apt-get install -y certbot python3-certbot-apache
 
 echo "✅ Certbot installed"
 echo "🔎 certbot --version"

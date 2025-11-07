@@ -35,8 +35,21 @@ if [ "$STAGING" = "true" ]; then
   STAGING_FLAG=( --staging )
 fi
 
+IS_ROOT="no"
+if [ "$(id -u)" -eq 0 ]; then IS_ROOT="yes"; fi
+SUDO=""
+if [ "$IS_ROOT" = "no" ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO="sudo -n"; fi
+if [ "$IS_ROOT" = "no" ] && [ -z "$SUDO" ]; then
+  echo '::error::Certbot (Apache plugin) requires root privileges to modify Apache configuration; current session cannot escalate.' >&2
+  echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
+  echo 'Install certbot as root and run the request manually or re-run with connect_mode: root.' >&2
+  echo 'Manual example:' >&2
+  echo '  sudo certbot --non-interactive --agree-tos --email EMAIL --apache -d example.com' >&2
+  exit 1
+fi
+
 echo "🚀 Requesting/Renewing certificate via Apache plugin for: ${DOM_OPTS[*]}"
-certbot --non-interactive --agree-tos --email "$EMAIL" \
+$SUDO certbot --non-interactive --agree-tos --email "$EMAIL" \
   --apache \
   "${STAGING_FLAG[@]}" \
   "${DOM_OPTS[@]}" || true

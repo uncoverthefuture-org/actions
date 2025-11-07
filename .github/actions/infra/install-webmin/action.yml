@@ -41,6 +41,10 @@ inputs:
     description: 'Skip staging/upload (assumes scripts deployed via deploy-server-scripts)'
     required: false
     default: 'true'
+  show_root_install_hints:
+    description: 'Show explicit manual install instructions when root privileges are required (fail-fast messaging)'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
@@ -69,6 +73,34 @@ runs:
         else
           echo "reachable=false" >> "$GITHUB_OUTPUT"
         fi
+    - name: Fail fast if cannot escalate for Webmin install
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.connect_mode != 'root' }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ssh_host }}
+        username: ${{ inputs.ssh_user }}
+        key: ${{ inputs.ssh_key }}
+        port: ${{ inputs.ssh_port }}
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then exit 0; fi
+          if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then exit 0; fi
+          if [ '${{ inputs.show_root_install_hints }}' = 'true' ]; then
+            echo '::error::Webmin/Usermin installation requires root privileges; current session cannot escalate.' >&2
+            echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
+            echo 'Install manually on the server (as root), then re-run:' >&2
+            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get install -y gnupg wget apt-transport-https software-properties-common' >&2
+            echo '  wget -qO- https://download.webmin.com/jcameron-key.asc | sudo gpg --dearmor -o /usr/share/keyrings/webmin.gpg' >&2
+            echo "  echo 'deb [signed-by=/usr/share/keyrings/webmin.gpg] https://download.webmin.com/download/repository sarge contrib' | sudo tee /etc/apt/sources.list.d/webmin.list" >&2
+            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get install -y webmin usermin' >&2
+            echo 'Or re-run this action with connect_mode: root (or provide root_ssh_key).' >&2
+          else
+            echo '::error::Root privileges required to install Webmin/Usermin.' >&2
+          fi
+          exit 1
     # Stage: Copy script from action path to workspace
     - name: Stage install-webmin script
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.skip_upload != 'true' }}

@@ -36,5 +36,17 @@ echo "🚀 Executing main certbot script ..."
 
 echo ""
 echo "🔄 Reloading Apache2 ..."
-systemctl reload apache2
+# SUDO detection and reload as needed
+IS_ROOT="no"
+if [ "$(id -u)" -eq 0 ]; then IS_ROOT="yes"; fi
+SUDO=""
+if [ "$IS_ROOT" = "no" ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO="sudo -n"; fi
+if [ "$IS_ROOT" = "no" ] && [ -z "$SUDO" ]; then
+  echo '::error::Reloading Apache requires root privileges; current session cannot escalate.' >&2
+  echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
+  echo 'Reload manually on the server (as root), then re-run if needed:' >&2
+  echo '  sudo systemctl reload apache2' >&2
+  exit 1
+fi
+$SUDO systemctl reload apache2
 echo "✅ Apache2 reloaded"
