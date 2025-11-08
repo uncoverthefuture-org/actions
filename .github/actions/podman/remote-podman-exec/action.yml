@@ -180,12 +180,18 @@ runs:
             ENV_ROOT="$HOME/deployments"
           fi
 
+          # Normalize common runner path prefixes to the remote $HOME and expand ~/
+          case "$ENV_ROOT" in
+            "~/"*) ENV_ROOT="$HOME/${ENV_ROOT#~/}" ;;
+            "/home/runner/"*) ENV_ROOT="$HOME/${ENV_ROOT#/home/runner/}" ;;
+          esac
+
           ENV_ROOT="${ENV_ROOT%/}"
 
           if [ -z "$ENV_NAME_INPUT" ]; then
             REF_NAME="${GITHUB_REF_NAME:-}"
             case "$REF_NAME" in
-              main|master|production) ENV_NAME_INPUT='production' ;;
+              main|master|production|prod|refs/heads/prod) ENV_NAME_INPUT='production' ;;
               stage|staging) ENV_NAME_INPUT='staging' ;;
               dev|develop|development) ENV_NAME_INPUT='development' ;;
               refs/tags/*) ENV_NAME_INPUT='production' ;;
@@ -208,17 +214,42 @@ runs:
 
           ENV_DIR="${ENV_ROOT}/${ENV_NAME_INPUT}/${APP_SLUG_INPUT}"
 
-          if ! mkdir -p "$ENV_DIR"; then
-            echo "::error::Unable to create environment directory" >&2
+          # Discover current user/group and sudo availability early for directory setup
+          CURRENT_USER="$(id -un)"
+          CURRENT_GROUP="$(id -gn)"
+          HAS_SUDO="no"
+          if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            HAS_SUDO="yes"
+          fi
+
+          # Ensure directory exists (attempt sudo fallback when needed)
+          if ! mkdir -p "$ENV_DIR" 2>/dev/null; then
+            if [ "$HAS_SUDO" = "yes" ]; then
+              sudo mkdir -p "$ENV_DIR" 2>/dev/null || true
+              sudo chown -R "$CURRENT_USER:$CURRENT_GROUP" "$ENV_DIR" 2>/dev/null || true
+            fi
+          fi
+
+          if [ ! -d "$ENV_DIR" ]; then
+            echo "::error::Unable to create environment directory: $ENV_DIR" >&2
+            echo "Hint: Create it on the server and grant ownership to $CURRENT_USER:" >&2
+            echo "  sudo mkdir -p '$ENV_DIR' && sudo chown -R '$CURRENT_USER:$CURRENT_GROUP' '$ENV_DIR'" >&2
+            echo "If you cannot use sudo non-interactively, SSH into the server and run the above commands." >&2
             exit 1
           fi
 
+          # Ensure writability (attempt sudo chown)
           if [ ! -w "$ENV_DIR" ]; then
-            if [ "$DEBUG" = "true" ]; then
-              echo "::warning::Current user $(id -un) lacks write permission to $ENV_DIR" >&2
-            else
-              echo "::warning::Current user lacks write permission to environment directory" >&2
+            if [ "$HAS_SUDO" = "yes" ]; then
+              sudo chown -R "$CURRENT_USER:$CURRENT_GROUP" "$ENV_DIR" 2>/dev/null || true
             fi
+          fi
+          if [ ! -w "$ENV_DIR" ]; then
+            echo "::error::Environment directory $ENV_DIR is not writable by $CURRENT_USER" >&2
+            echo "Hint: Adjust permissions or run:" >&2
+            echo "  sudo chown -R '$CURRENT_USER:$CURRENT_GROUP' '$ENV_DIR'" >&2
+            echo "Alternatively, set env_file_path to a user-owned location (e.g., ~/deployments)." >&2
+            exit 1
           fi
 
           ENV_FILE="${ENV_DIR}/.env"
