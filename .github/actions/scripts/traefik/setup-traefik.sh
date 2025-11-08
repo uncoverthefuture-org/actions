@@ -14,9 +14,13 @@
 #   TRAEFIK_VERSION        - Traefik image tag (default: v3.5.4)
 #   TRAEFIK_ENABLE_ACME    - "true" to request certificates via ACME (default: true)
 #   TRAEFIK_PING_ENABLED   - "true" to expose ping healthcheck endpoint (default: true)
-#   TRAEFIK_DASHBOARD      - "true" to expose dashboard on port 8080 (default: false)
-#   DASHBOARD_USER         - Basic auth username (required if dashboard enabled)
-#   DASHBOARD_PASS_BCRYPT  - Bcrypt hash for dashboard user (required if dashboard enabled)
+#   TRAEFIK_DASHBOARD      - "true" to expose dashboard (deprecated; prefer DASHBOARD_PUBLISH_MODES)
+#   DASHBOARD_PUBLISH_MODES- CSV: http8080, https8080, subdomain, or 'both' (https8080,subdomain)
+#   DASHBOARD_HOST         - FQDN for subdomain mode (e.g., traefik.example.com)
+#   DASHBOARD_USER         - Basic auth username (default: admin)
+#   DASHBOARD_PASS_BCRYPT  - Pre-hashed password (htpasswd format). If empty, see below.
+#   DASHBOARD_PASSWORD     - Plain password (script will hash; default: 12345678; prints warning)
+#   DASHBOARD_USERS_B64    - Base64-encoded users file contents; overrides other credential inputs
 #
 # Exit codes:
 #   0 - Success
@@ -41,6 +45,10 @@ TRAEFIK_ACME_DNS_RESOLVERS="${TRAEFIK_ACME_DNS_RESOLVERS:-}"
 TRAEFIK_DNS_SERVERS="${TRAEFIK_DNS_SERVERS:-}"
 DASHBOARD_USER="${DASHBOARD_USER:-}"
 DASHBOARD_PASS_BCRYPT="${DASHBOARD_PASS_BCRYPT:-}"
+DASHBOARD_PUBLISH_MODES="${DASHBOARD_PUBLISH_MODES:-}"
+DASHBOARD_HOST="${DASHBOARD_HOST:-}"
+DASHBOARD_PASSWORD="${DASHBOARD_PASSWORD:-}"
+DASHBOARD_USERS_B64="${DASHBOARD_USERS_B64:-}"
 
 # Validate required inputs
 if [[ "$TRAEFIK_ENABLE_ACME" == "true" && -z "$TRAEFIK_EMAIL" ]]; then
@@ -48,11 +56,9 @@ if [[ "$TRAEFIK_ENABLE_ACME" == "true" && -z "$TRAEFIK_EMAIL" ]]; then
   exit 1
 fi
 
-if [[ "$TRAEFIK_DASHBOARD" == "true" ]]; then
-  if [[ -z "$DASHBOARD_USER" || -z "$DASHBOARD_PASS_BCRYPT" ]]; then
-    echo "Error: DASHBOARD_USER and DASHBOARD_PASS_BCRYPT are required when TRAEFIK_DASHBOARD=true" >&2
-    exit 1
-  fi
+if [[ "$TRAEFIK_DASHBOARD" == "true" && -z "$DASHBOARD_PUBLISH_MODES" ]]; then
+  echo "::notice::TRAEFIK_DASHBOARD=true without DASHBOARD_PUBLISH_MODES; defaulting to 'http8080'" >&2
+  DASHBOARD_PUBLISH_MODES="http8080"
 fi
 
 # --- Preconditions ------------------------------------------------------------------
@@ -85,6 +91,70 @@ if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO_AVAILA
 echo "👤 User: ${CURRENT_USER_LOG}; sudo: ${SUDO_AVAILABLE}"
 if command -v getcap >/dev/null 2>&1; then
   echo "🔐 getcap $(command -v podman): $(getcap "$(command -v podman)" 2>/dev/null || true)"
+fi
+
+# Prepare dashboard credentials early (before config hash) when dashboard is requested
+DASH_ENABLED=false
+if [[ "$TRAEFIK_DASHBOARD" == "true" || -n "$DASHBOARD_PUBLISH_MODES" ]]; then
+  DASH_ENABLED=true
+fi
+
+DASH_AUTH_ENABLED=false
+DASH_USERS_LOCAL_FILE=""
+USED_DEFAULT_DASH_PASS=false
+
+if $DASH_ENABLED; then
+  # Decide destination path for users file
+  if [ "$SUDO_AVAILABLE" = "yes" ]; then
+    DASH_USERS_LOCAL_FILE="/etc/traefik/dashboard-users"
+    sudo mkdir -p /etc/traefik >/dev/null 2>&1 || true
+  else
+    DASH_USERS_LOCAL_FILE="$HOME/.config/traefik/dashboard-users"
+    mkdir -p "$HOME/.config/traefik" >/dev/null 2>&1 || true
+  fi
+
+  # If a pre-hashed users file is provided (base64), it wins
+  if [[ -n "$DASHBOARD_USERS_B64" ]]; then
+    if [ "$SUDO_AVAILABLE" = "yes" ] && [[ "$DASH_USERS_LOCAL_FILE" == /etc/traefik/* ]]; then
+      printf '%s' "$DASHBOARD_USERS_B64" | base64 -d | sudo tee "$DASH_USERS_LOCAL_FILE" >/dev/null || true
+    else
+      printf '%s' "$DASHBOARD_USERS_B64" | base64 -d > "$DASH_USERS_LOCAL_FILE" 2>/dev/null || true
+    fi
+    DASH_AUTH_ENABLED=true
+  else
+    # Compose a users file line. Precedence: explicit bcrypt → plain password → default
+    if [[ -n "$DASHBOARD_USER" && -n "$DASHBOARD_PASS_BCRYPT" ]]; then
+      line="${DASHBOARD_USER}:${DASHBOARD_PASS_BCRYPT}"
+    else
+      : "${DASHBOARD_USER:=admin}"
+      pass_src="$DASHBOARD_PASSWORD"
+      if [[ -z "$pass_src" ]]; then
+        pass_src="12345678"
+        USED_DEFAULT_DASH_PASS=true
+      fi
+      if command -v htpasswd >/dev/null 2>&1; then
+        # htpasswd -nB emits 'user:hash' on stdout
+        line="$(htpasswd -nB "$DASHBOARD_USER" "$pass_src" 2>/dev/null | head -n1)"
+      elif command -v openssl >/dev/null 2>&1; then
+        line="${DASHBOARD_USER}:$(openssl passwd -apr1 "$pass_src")"
+      else
+        echo "::warning::Neither 'htpasswd' nor 'openssl' found; cannot create dashboard users file. Dashboard will be unsecured." >&2
+        line=""
+      fi
+    fi
+    if [[ -n "$line" ]]; then
+      if [ "$SUDO_AVAILABLE" = "yes" ] && [[ "$DASH_USERS_LOCAL_FILE" == /etc/traefik/* ]]; then
+        printf '%s\n' "$line" | sudo tee "$DASH_USERS_LOCAL_FILE" >/dev/null || true
+      else
+        printf '%s\n' "$line" > "$DASH_USERS_LOCAL_FILE" 2>/dev/null || true
+      fi
+      DASH_AUTH_ENABLED=true
+    fi
+  fi
+
+  if $USED_DEFAULT_DASH_PASS; then
+    echo "::warning::Traefik dashboard using default credentials admin/12345678. Change immediately via DASHBOARD_PASSWORD or DASHBOARD_USERS_B64."
+  fi
 fi
 
 # Ensure setcap is available when sudo is present; needed for CAP_NET_BIND_SERVICE fallback
@@ -187,6 +257,7 @@ CONFIG_SRC="$(printf '%s\n' \
   "acme:$TRAEFIK_ENABLE_ACME:$TRAEFIK_EMAIL:$TRAEFIK_ACME_DNS_PROVIDER:$TRAEFIK_ACME_DNS_RESOLVERS" \
   "ping:$TRAEFIK_PING_ENABLED" \
   "dash:$TRAEFIK_DASHBOARD:$DASHBOARD_USER" \
+  "dashm:${DASHBOARD_PUBLISH_MODES}:${DASHBOARD_HOST}" \
   "metrics:$TRAEFIK_ENABLE_METRICS:$TRAEFIK_METRICS_ENTRYPOINT:$TRAEFIK_METRICS_ADDRESS" \
   "net:$TRAEFIK_USE_HOST_NETWORK:$TRAEFIK_NETWORK_NAME" \
   "dns:$TRAEFIK_DNS_SERVERS" \
@@ -410,22 +481,93 @@ if [[ "$TRAEFIK_PING_ENABLED" == "true" ]]; then
   RUN_ARGS+=(-e TRAEFIK_PING=true -e TRAEFIK_PING_ENTRYPOINT=web)
 fi
 
-if [[ "$TRAEFIK_DASHBOARD" == "true" ]]; then
-  echo "📊 Enabling Traefik dashboard on port 8080"
-  if [[ "$TRAEFIK_USE_HOST_NETWORK" != "true" ]]; then
-    RUN_ARGS+=(-p 8080:8080)
-  fi
+if [[ "$TRAEFIK_DASHBOARD" == "true" || -n "$DASHBOARD_PUBLISH_MODES" ]]; then
+  echo "📊 Enabling Traefik dashboard"
+  # Normalize modes
+  MODES_RAW="$DASHBOARD_PUBLISH_MODES"
+  if [[ -z "$MODES_RAW" ]]; then MODES_RAW="http8080"; fi
+  MODES_RAW="${MODES_RAW,,}"
+  MODES_RAW="${MODES_RAW// /}"
+  if [[ "$MODES_RAW" == "both" ]]; then MODES_RAW="https8080,subdomain"; fi
+  IFS=',' read -r -a MODES <<< "$MODES_RAW"
+
+  # Always enable API/dashboard features
   RUN_ARGS+=(
     -e TRAEFIK_API_ENABLED=true
     -e TRAEFIK_API=true
     -e TRAEFIK_API_DASHBOARD=true
     -e TRAEFIK_API_DEBUG=true
     -e TRAEFIK_API_INSECURE=false
-    -e TRAEFIK_ENTRYPOINTS_DASHBOARD_ADDRESS=:8080
-    -e TRAEFIK_ENTRYPOINTS_DASHBOARD_HTTP_REDIRECTIONS_ENTRYPOINT_TO=websecure
-    -e TRAEFIK_ENTRYPOINTS_DASHBOARD_HTTP_REDIRECTIONS_ENTRYPOINT_SCHEME=https
-    -e TRAEFIK_API_BASIC_AUTH_USERS="${DASHBOARD_USER}:${DASHBOARD_PASS_BCRYPT}"
   )
+
+  # Prepare labels and mounts for BasicAuth
+  DASH_LABELS=()
+  if $DASH_AUTH_ENABLED && [[ -n "$DASH_USERS_LOCAL_FILE" ]]; then
+    RUN_ARGS+=(-v "${DASH_USERS_LOCAL_FILE}:/etc/traefik/dashboard-users:Z")
+    DASH_LABELS+=(--label 'traefik.http.middlewares.traefik-auth.basicauth.usersfile=/etc/traefik/dashboard-users')
+  else
+    echo "::warning::Dashboard is enabled without BasicAuth; consider providing DASHBOARD_PASSWORD or DASHBOARD_USERS_B64."
+  fi
+
+  # Iterate modes
+  ADDED_TRAEFIK_ENTRYPOINT=false
+  ADDED_8080_PUBLISH=false
+  for m in "${MODES[@]}"; do
+    case "$m" in
+      http8080)
+        # 8080 HTTP entrypoint
+        if [[ "$TRAEFIK_USE_HOST_NETWORK" != "true" && "$ADDED_8080_PUBLISH" != "true" ]]; then
+          RUN_ARGS+=(-p 8080:8080)
+          ADDED_8080_PUBLISH=true
+        fi
+        if [[ "$ADDED_TRAEFIK_ENTRYPOINT" != "true" ]]; then
+          RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_TRAEFIK_ADDRESS=:8080)
+          ADDED_TRAEFIK_ENTRYPOINT=true
+        fi
+        DASH_LABELS+=(--label 'traefik.enable=true')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik.entrypoints=traefik')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik.rule=PathPrefix("/")')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik.service=api@internal')
+        if $DASH_AUTH_ENABLED; then DASH_LABELS+=(--label 'traefik.http.routers.traefik.middlewares=traefik-auth@docker'); fi
+        ;;
+      https8080)
+        if [[ "$TRAEFIK_USE_HOST_NETWORK" != "true" && "$ADDED_8080_PUBLISH" != "true" ]]; then
+          RUN_ARGS+=(-p 8080:8080)
+          ADDED_8080_PUBLISH=true
+        fi
+        if [[ "$ADDED_TRAEFIK_ENTRYPOINT" != "true" ]]; then
+          RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_TRAEFIK_ADDRESS=:8080)
+          ADDED_TRAEFIK_ENTRYPOINT=true
+        fi
+        RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_TRAEFIK_HTTP_TLS=true)
+        DASH_LABELS+=(--label 'traefik.enable=true')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik.entrypoints=traefik')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik.rule=PathPrefix("/")')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik.service=api@internal')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik.tls=true')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik.tls.certresolver=letsencrypt')
+        if $DASH_AUTH_ENABLED; then DASH_LABELS+=(--label 'traefik.http.routers.traefik.middlewares=traefik-auth@docker'); fi
+        ;;
+      subdomain)
+        if [[ -z "$DASHBOARD_HOST" ]]; then
+          echo "::error::DASHBOARD_PUBLISH_MODES includes 'subdomain' but DASHBOARD_HOST is empty." >&2
+          exit 1
+        fi
+        DASH_LABELS+=(--label 'traefik.enable=true')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik-secure.entrypoints=websecure')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik-secure.rule=Host("'"$DASHBOARD_HOST"'") && PathPrefix("/")')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik-secure.service=api@internal')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik-secure.tls=true')
+        DASH_LABELS+=(--label 'traefik.http.routers.traefik-secure.tls.certresolver=letsencrypt')
+        if $DASH_AUTH_ENABLED; then DASH_LABELS+=(--label 'traefik.http.routers.traefik-secure.middlewares=traefik-auth@docker'); fi
+        ;;
+    esac
+  done
+
+  # Append any accumulated labels
+  if [[ ${#DASH_LABELS[@]} -gt 0 ]]; then
+    RUN_ARGS+=("${DASH_LABELS[@]}")
+  fi
 fi
 
 if [[ "$TRAEFIK_ENABLE_METRICS" == "true" ]]; then
@@ -479,6 +621,9 @@ if ! out=$("${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}" 2>&1); then
       RUN_ARGS_ROOT+=(-v "$HOME/.config/traefik/traefik.yml":/etc/traefik/traefik.yml:ro)
       RUN_ARGS_ROOT+=(-v "$HOME/.local/share/traefik/acme.json":/letsencrypt/acme.json:Z)
       RUN_ARGS_ROOT+=(-v "$ROOT_SOCK":/var/run/docker.sock:Z)
+      if $DASH_AUTH_ENABLED && [[ -n "$DASH_USERS_LOCAL_FILE" ]]; then
+        RUN_ARGS_ROOT+=(-v "${DASH_USERS_LOCAL_FILE}:/etc/traefik/dashboard-users:Z")
+      fi
       RUN_ARGS_ROOT+=(-e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80)
       RUN_ARGS_ROOT+=(-e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443)
       RUN_ARGS_ROOT+=(--label org.uactions.managed-by=uactions --label "org.uactions.traefik.confighash=${CONFIG_HASH}")

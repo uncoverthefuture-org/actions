@@ -85,6 +85,26 @@ inputs: # All parameters accepted by this action
     description: 'Skip uploading Traefik scripts (assumes scripts already installed on server).'
     required: false
     default: 'true'
+  enable_dashboard:
+    description: 'Enable Traefik dashboard exposure (paired with dashboard_publish_modes)'
+    required: false
+    default: 'false'
+  dashboard_publish_modes:
+    description: 'CSV of dashboard modes: http8080, https8080, subdomain, or both'
+    required: false
+    default: ''
+  dashboard_host:
+    description: 'FQDN for dashboard when using subdomain mode'
+    required: false
+    default: ''
+  dashboard_password:
+    description: 'Plain password for admin user (hashed on host). Use dashboard_users_b64 for pre-hashed.'
+    required: false
+    default: ''
+  dashboard_users_b64:
+    description: 'Base64-encoded htpasswd-style users file for dashboard auth. Overrides dashboard_password when set.'
+    required: false
+    default: ''
   dns_servers:
     description: 'Optional comma or space-separated DNS servers for Traefik container (passed as --dns).'
     required: false
@@ -224,6 +244,10 @@ inputs: # All parameters accepted by this action
   include_www_alias: # When true and domain is set, also include www.<domain> as alias
     required: false
     default: 'false'
+  domain_hosts:
+    description: 'CSV of hostnames to route (preferred). Overrides aliases when provided.'
+    required: false
+    default: ''
   probe_path: # Path to probe on the domain (e.g., /health). Defaults to '/'
     required: false
     default: '/'
@@ -438,6 +462,11 @@ runs: # Composite action implementation
         network_name: ${{ inputs.traefik_network_name }}
         dns_servers: ${{ inputs.dns_servers }}
         skip_upload: ${{ inputs.traefik_skip_upload }}
+        enable_dashboard: ${{ inputs.enable_dashboard }}
+        dashboard_publish_modes: ${{ inputs.dashboard_publish_modes }}
+        dashboard_host: ${{ inputs.dashboard_host }}
+        dashboard_password: ${{ inputs.dashboard_password }}
+        dashboard_users_b64: ${{ inputs.dashboard_users_b64 }}
 
     # Guard preflight probe behind ensure_traefik to fully skip Traefik checks when requested
     - name: Traefik preflight health (fail fast)
@@ -579,6 +608,7 @@ runs: # Composite action implementation
           export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'
           export DOMAIN_ALIASES='${{ inputs.domain_aliases }}'
           export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
+          export DOMAIN_HOSTS='${{ inputs.domain_hosts }}'
           export DEBUG='${{ inputs.debug }}'
 
           # Execute deployment: prefer run-deployment.sh; fallback to deploy-container.sh

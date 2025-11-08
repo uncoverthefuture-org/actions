@@ -9,6 +9,12 @@
 #     mapfile -t LABEL_ARGS < <(/path/build-traefik-labels.sh ...)
 #     podman run ... "${LABEL_ARGS[@]}"
 
+# Notes:
+# - Host rule values use double quotes (e.g., Host("a") || Host("b")) to avoid shell backtick evaluation.
+# - When ACME is disabled, TLS labels are omitted and the primary router uses the `web` entrypoint.
+#   Example:
+#     ENABLE_ACME=false → entrypoints=web (no TLS), no HTTP→HTTPS redirect router emitted.
+
 set -euo pipefail
 
 ROUTER_NAME="${ROUTER_NAME:-${1:-}}"
@@ -32,33 +38,33 @@ if [[ -z "$ROUTER_NAME" || -z "$DOMAIN" || -z "$CONTAINER_PORT" ]]; then
   exit 2
 fi
 
-# Entrypoints: when ACME is enabled, include websecure; otherwise only web
+# Entrypoints: when ACME is enabled, use websecure; otherwise only web
 if [[ "$ENABLE_ACME" == "true" ]]; then
-  ENTRYPOINTS_VALUE="websecure,web"
+  ENTRYPOINTS_VALUE="websecure"
 else
   ENTRYPOINTS_VALUE="web"
 fi
 
 # Build host list for rule
 HOSTS=()
-HOSTS+=("$DOMAIN")
-
-# Parse aliases (comma or whitespace separated)
-if [[ -n "$DOMAIN_ALIASES_RAW" ]]; then
-  # Replace commas with spaces, then iterate
-  IFS=' ' read -r -a _aliases <<< "$(echo "$DOMAIN_ALIASES_RAW" | tr ',' ' ')"
-  for a in "${_aliases[@]}"; do
-    [[ -z "$a" ]] && continue
-    HOSTS+=("$a")
-  done
+DOMAIN_HOSTS_RAW="${DOMAIN_HOSTS:-}"
+if [[ -n "$DOMAIN_HOSTS_RAW" ]]; then
+  IFS=' ' read -r -a HOSTS <<< "$(echo "$DOMAIN_HOSTS_RAW" | tr ',' ' ')"
+else
+  HOSTS+=("$DOMAIN")
+  if [[ -n "$DOMAIN_ALIASES_RAW" ]]; then
+    IFS=' ' read -r -a _aliases <<< "$(echo "$DOMAIN_ALIASES_RAW" | tr ',' ' ')"
+    for a in "${_aliases[@]}"; do
+      [[ -z "$a" ]] && continue
+      HOSTS+=("$a")
+    done
+  fi
+  case "${INCLUDE_WWW_ALIAS,,}" in
+    1|y|yes|true)
+      HOSTS+=("www.${DOMAIN}")
+      ;;
+  esac
 fi
-
-# Optional www alias
-case "${INCLUDE_WWW_ALIAS,,}" in
-  1|y|yes|true)
-    HOSTS+=("www.${DOMAIN}")
-    ;;
-esac
 
 # De-duplicate while preserving order
 UNIQ_HOSTS=()
@@ -71,15 +77,15 @@ for h in "${HOSTS[@]}"; do
   fi
 done
 
-# Compose Host(`a`) || Host(`b`) expression for Traefik v3
+# Compose Host("a") || Host("b") expression for Traefik v3 (quote-safe, no backticks)
 HOST_RULE_EXPR=""
 for idx in "${!UNIQ_HOSTS[@]}"; do
   d="${UNIQ_HOSTS[$idx]}"
   if [[ $idx -gt 0 ]]; then HOST_RULE_EXPR+=" || "; fi
-  HOST_RULE_EXPR+="Host(\`${d}\`)"
+  HOST_RULE_EXPR+="Host(\"${d}\")"
 done
 
-# Emit labels (newline-separated) with proper quoting
+# Emit base labels (newline-separated). TLS labels are gated by ENABLE_ACME.
 printf '%s\n' \
   "--label" "traefik.enable=true" \
   "--label" "traefik.http.routers.${ROUTER_NAME}.rule=${HOST_RULE_EXPR}" \
@@ -88,5 +94,18 @@ printf '%s\n' \
   "--label" "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=${CONTAINER_PORT}"
 
 if [[ "$ENABLE_ACME" == "true" ]]; then
-  printf '%s\n' "--label" "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=${RESOLVER_NAME}"
+  # With ACME, enable TLS and set the resolver on the primary router.
+  printf '%s\n' \
+    "--label" "traefik.http.routers.${ROUTER_NAME}.tls=true" \
+    "--label" "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=${RESOLVER_NAME}"
+fi
+
+# HTTP redirect router (only when ACME/TLS is enabled)
+if [[ "$ENABLE_ACME" == "true" ]]; then
+  printf '%s\n' \
+    "--label" "traefik.http.routers.${ROUTER_NAME}-http.rule=${HOST_RULE_EXPR}" \
+    "--label" "traefik.http.routers.${ROUTER_NAME}-http.entrypoints=web" \
+    "--label" "traefik.http.routers.${ROUTER_NAME}-http.service=${ROUTER_NAME}" \
+    "--label" "traefik.http.middlewares.${ROUTER_NAME}-https-redirect.redirectscheme.scheme=https" \
+    "--label" "traefik.http.routers.${ROUTER_NAME}-http.middlewares=${ROUTER_NAME}-https-redirect"
 fi

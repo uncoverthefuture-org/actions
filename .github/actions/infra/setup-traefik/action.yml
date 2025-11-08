@@ -86,6 +86,22 @@ inputs:
     description: 'Bcrypt hash (htpasswd -nB) for Traefik dashboard user (required if dashboard enabled)'
     required: false
     default: ''
+  dashboard_publish_modes:
+    description: 'CSV modes for dashboard exposure: http8080, https8080, subdomain, or both (https8080,subdomain)'
+    required: false
+    default: ''
+  dashboard_host:
+    description: 'FQDN for dashboard when using subdomain mode (e.g., traefik.example.com)'
+    required: false
+    default: ''
+  dashboard_password:
+    description: 'Plain password to hash for dashboard auth (alternative to bcrypt hash)'
+    required: false
+    default: ''
+  dashboard_users_b64:
+    description: 'Base64-encoded users file contents; overrides other credential inputs'
+    required: false
+    default: ''
   skip_upload:
     description: 'Skip uploading per-script file (assumes scripts are already deployed via deploy-server-scripts)'
     required: false
@@ -146,6 +162,8 @@ runs:
         enable_ping: ${{ inputs.enable_ping }}
         enable_dashboard: ${{ inputs.enable_dashboard }}
         dashboard_user: ${{ inputs.dashboard_user }}
+        dashboard_publish_modes: ${{ inputs.dashboard_publish_modes }}
+        dashboard_host: ${{ inputs.dashboard_host }}
         enable_metrics: ${{ inputs.enable_metrics }}
         metrics_entrypoint: ${{ inputs.metrics_entrypoint }}
         metrics_address: ${{ inputs.metrics_address }}
@@ -192,6 +210,10 @@ runs:
         enable_dashboard: ${{ inputs.enable_dashboard }}
         dashboard_user: ${{ inputs.dashboard_user }}
         dashboard_password_bcrypt: ${{ inputs.dashboard_password_bcrypt }}
+        dashboard_publish_modes: ${{ inputs.dashboard_publish_modes }}
+        dashboard_host: ${{ inputs.dashboard_host }}
+        dashboard_password: ${{ inputs.dashboard_password }}
+        dashboard_users_b64: ${{ inputs.dashboard_users_b64 }}
         quadlet_enable_http3: ${{ inputs.quadlet_enable_http3 }}
         force_restart: ${{ inputs.force_restart }}
 
@@ -218,3 +240,101 @@ runs:
         route_ports: '8080'
         set_forward_policy_accept: 'true'
         skip_upload: 'false'
+
+    # Add step summary with dashboard warnings and configuration details
+    # NOTE: Added to support task "add step summary and warnings"
+    # from traefik-dashboard-and-domain-fix-eventkaban.md plan
+    - name: Traefik setup summary
+      if: always()
+      shell: bash
+      env:
+        ENABLE_DASHBOARD: ${{ inputs.enable_dashboard }}
+        DASHBOARD_PUBLISH_MODES: ${{ inputs.dashboard_publish_modes }}
+        DASHBOARD_HOST: ${{ inputs.dashboard_host }}
+        DASHBOARD_PASSWORD: ${{ inputs.dashboard_password }}
+        DASHBOARD_USERS_B64: ${{ inputs.dashboard_users_b64 }}
+        ENABLE_ACME: ${{ inputs.enable_acme }}
+        TRAEFIK_EMAIL: ${{ inputs.traefik_email }}
+        UP_TO_DATE: ${{ steps.probe_traefik.outputs.up_to_date }}
+      run: |
+        {
+          echo "## 🔧 Traefik Setup Summary"
+          echo ""
+          
+          if [[ "$UP_TO_DATE" == "true" ]]; then
+            echo "✅ **Status**: Traefik is up-to-date (no changes needed)"
+          else
+            echo "🔄 **Status**: Traefik was updated or recreated"
+          fi
+          echo ""
+          
+          # Dashboard configuration
+          if [[ "$ENABLE_DASHBOARD" == "true" || -n "$DASHBOARD_PUBLISH_MODES" ]]; then
+            echo "### 📊 Dashboard Configuration"
+            echo ""
+            MODES="${DASHBOARD_PUBLISH_MODES:-http8080}"
+            echo "**Publish Modes**: ${MODES}"
+            if [[ -n "$DASHBOARD_HOST" ]]; then
+              echo "**Dashboard Host**: ${DASHBOARD_HOST}"
+            fi
+            echo ""
+            
+            # Credentials warning
+            if [[ -z "$DASHBOARD_PASSWORD" && -z "$DASHBOARD_USERS_B64" ]]; then
+              echo "### ⚠️ **SECURITY WARNING: Default Dashboard Credentials**"
+              echo ""
+              echo "🔐 Traefik dashboard is using **default credentials**: \`admin/12345678\`"
+              echo ""
+              echo "**⚠️ CHANGE THIS IMMEDIATELY!**"
+              echo ""
+              echo "**To update credentials:**"
+              echo "1. Set \`dashboard_password\` input in your workflow, OR"
+              echo "2. Set \`dashboard_users_b64\` with pre-hashed credentials"
+              echo ""
+              echo "**Note**: Changing the password requires recreating the Traefik container."
+              echo ""
+              echo "**Quick command to hash a new password:**"
+              echo "\`\`\`bash"
+              echo "htpasswd -nB admin yourNewPassword | base64 -w0"
+              echo "\`\`\`"
+              echo ""
+            else
+              echo "✅ Custom credentials configured"
+              echo ""
+            fi
+          fi
+          
+          # ACME configuration
+          if [[ "$ENABLE_ACME" == "true" ]]; then
+            echo "### 🔒 ACME/Let's Encrypt"
+            echo ""
+            echo "**Enabled**: Yes"
+            if [[ -n "$TRAEFIK_EMAIL" ]]; then
+              echo "**Email**: ${TRAEFIK_EMAIL}"
+            fi
+            echo ""
+          fi
+          
+          # Cloudflare caveat for https8080
+          if [[ "$DASHBOARD_PUBLISH_MODES" == *"https8080"* ]]; then
+            echo "### ⚠️ Cloudflare Proxy Caveat"
+            echo ""
+            echo "**Mode \`https8080\` is NOT proxied by Cloudflare.**"
+            echo ""
+            echo "To access dashboard on port 8080 with HTTPS:"
+            echo "- Use DNS grey-cloud (direct connection), OR"
+            echo "- Access via server IP directly, OR"
+            echo "- Add hosts file mapping"
+            echo ""
+            echo "**Recommended**: Use \`subdomain\` mode on port 443 for Cloudflare compatibility."
+            echo ""
+          fi
+          
+        } >> "$GITHUB_STEP_SUMMARY"
+        
+        # Also emit workflow-level warnings
+        if [[ "$ENABLE_DASHBOARD" == "true" || -n "$DASHBOARD_PUBLISH_MODES" ]]; then
+          if [[ -z "$DASHBOARD_PASSWORD" && -z "$DASHBOARD_USERS_B64" ]]; then
+            echo "::warning::Traefik dashboard using DEFAULT credentials (admin/12345678). Change immediately via dashboard_password or dashboard_users_b64 input!"
+          fi
+        fi

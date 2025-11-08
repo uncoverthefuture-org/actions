@@ -104,6 +104,81 @@ if [ -n "$RUNTIME" ] && [ -n "$TRAEFIK_CTN" ]; then
   fi
 fi
 
+# Dashboard diagnostics
+# NOTE: Added to support task "add dashboard mode checks" 
+# from traefik-dashboard-and-domain-fix-eventkaban.md plan
+sec "Traefik Dashboard"
+if [ -n "$RUNTIME" ] && [ -n "$TRAEFIK_CTN" ]; then
+  if $RUNTIME inspect "$TRAEFIK_CTN" >/dev/null 2>&1; then
+    # Check port 8080 listener
+    L8080=$( (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null || true) | grep -E 'LISTEN' | grep -E '(:|\.)8080 ' || true )
+    if [ -n "$L8080" ]; then
+      echo "Port 8080: LISTENING"
+    else
+      echo "Port 8080: NOT LISTENING (dashboard may not be accessible)"
+    fi
+    
+    # Extract dashboard labels to identify mode
+    echo "Dashboard labels:"
+    $RUNTIME inspect --format '{{range $k,$v := .Config.Labels}}{{if or (contains $k "traefik.http.routers.traefik") (contains $k "traefik.http.routers.traefik-secure")}}{{printf "%s=%s\n" $k $v}}{{end}}{{end}}' "$TRAEFIK_CTN" 2>/dev/null || echo "No dashboard labels found"
+    
+    # Check dashboard routers
+    echo ""
+    echo "Dashboard access methods:"
+    DASH_ROUTERS=$($RUNTIME inspect --format '{{range $k,$v := .Config.Labels}}{{if contains $k "traefik.http.routers.traefik"}}{{printf "%s=%s\n" $k $v}}{{end}}{{end}}' "$TRAEFIK_CTN" 2>/dev/null || true)
+    
+    if echo "$DASH_ROUTERS" | grep -q 'entrypoints.*traefik'; then
+      echo "  ✓ http8080 or https8080 mode detected (port 8080)"
+      if [ -n "$PUB_IP" ]; then
+        echo "    curl http://${PUB_IP}:8080/dashboard/"
+        echo "    curl -k https://${PUB_IP}:8080/dashboard/"
+      fi
+    fi
+    
+    if echo "$DASH_ROUTERS" | grep -q 'entrypoints.*websecure'; then
+      DASH_HOST=$(echo "$DASH_ROUTERS" | grep -oP 'Host\(`\K[^`]+' || true)
+      if [ -n "$DASH_HOST" ]; then
+        echo "  ✓ subdomain mode detected: $DASH_HOST"
+        echo "    curl https://${DASH_HOST}/dashboard/"
+      else
+        echo "  ✓ subdomain mode labels present but host not extracted"
+      fi
+    fi
+    
+    if [ -z "$DASH_ROUTERS" ]; then
+      echo "  ✗ No dashboard routers detected (dashboard not exposed)"
+    fi
+    
+    # Check authentication
+    echo ""
+    AUTH_LABELS=$($RUNTIME inspect --format '{{range $k,$v := .Config.Labels}}{{if contains $k "basicauth"}}{{printf "%s\n" $k}}{{end}}{{end}}' "$TRAEFIK_CTN" 2>/dev/null || true)
+    if [ -n "$AUTH_LABELS" ]; then
+      echo "Authentication: BasicAuth enabled"
+      echo "  ⚠️  Default credentials: admin/12345678 (change immediately!)"
+    else
+      echo "Authentication: None detected"
+    fi
+    
+    # Try local API probe
+    echo ""
+    if has curl; then
+      echo "Local API probe:"
+      API_CODE=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:8080/api/overview 2>/dev/null || echo "000")
+      if [ "$API_CODE" = "200" ]; then
+        echo "  ✓ API reachable at http://127.0.0.1:8080/api/overview"
+      elif [ "$API_CODE" = "401" ]; then
+        echo "  ⚠️  API requires authentication (HTTP 401)"
+      else
+        echo "  ✗ API not reachable (HTTP $API_CODE)"
+      fi
+    fi
+  else
+    echo "Traefik container not running - dashboard unavailable"
+  fi
+else
+  echo "Container runtime or Traefik container not configured"
+fi
+
 sec "App container"
 if [ -n "$RUNTIME" ] && [ -n "$APP_CTN" ]; then
   if $RUNTIME inspect "$APP_CTN" >/dev/null 2>&1; then

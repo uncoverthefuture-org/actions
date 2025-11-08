@@ -31,6 +31,12 @@ inputs:
   dashboard_user:
     required: false
     default: ''
+  dashboard_publish_modes:
+    required: false
+    default: ''
+  dashboard_host:
+    required: false
+    default: ''
   enable_metrics:
     required: true
   metrics_entrypoint:
@@ -72,6 +78,8 @@ runs:
         TRAEFIK_PING_ENABLED: ${{ inputs.enable_ping }}
         TRAEFIK_DASHBOARD: ${{ inputs.enable_dashboard }}
         DASHBOARD_USER: ${{ inputs.dashboard_user }}
+        DASHBOARD_PUBLISH_MODES: ${{ inputs.dashboard_publish_modes }}
+        DASHBOARD_HOST: ${{ inputs.dashboard_host }}
         TRAEFIK_ENABLE_METRICS: ${{ inputs.enable_metrics }}
         TRAEFIK_METRICS_ENTRYPOINT: ${{ inputs.metrics_entrypoint }}
         TRAEFIK_METRICS_ADDRESS: ${{ inputs.metrics_address }}
@@ -116,6 +124,7 @@ runs:
           "acme:$TRAEFIK_ENABLE_ACME:$TRAEFIK_EMAIL:$TRAEFIK_ACME_DNS_PROVIDER:$TRAEFIK_ACME_DNS_RESOLVERS" \
           "ping:$TRAEFIK_PING_ENABLED" \
           "dash:$TRAEFIK_DASHBOARD:$DASHBOARD_USER" \
+          "dashm:${DASHBOARD_PUBLISH_MODES}:${DASHBOARD_HOST}" \
           "metrics:$TRAEFIK_ENABLE_METRICS:$TRAEFIK_METRICS_ENTRYPOINT:$TRAEFIK_METRICS_ADDRESS" \
           "net:$TRAEFIK_USE_HOST_NETWORK:$TRAEFIK_NETWORK_NAME" \
           "dns:$TRAEFIK_DNS_SERVERS" \
@@ -132,3 +141,89 @@ runs:
         echo "desired_hash=$desired" >> "$GITHUB_OUTPUT"
         echo "remote_hash=$LABEL" >> "$GITHUB_OUTPUT"
         echo "up_to_date=$up" >> "$GITHUB_OUTPUT"
+
+    # Check dashboard accessibility and provide curl hints
+    # NOTE: Added to support task "add dashboard mode checks and curl hints"
+    # from traefik-dashboard-and-domain-fix-eventkaban.md plan
+    - name: Check dashboard accessibility
+      if: ${{ steps.probe.outputs.up_to_date == 'true' && (inputs.enable_dashboard == 'true' || inputs.dashboard_publish_modes != '') }}
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        DASHBOARD_PUBLISH_MODES: ${{ inputs.dashboard_publish_modes }}
+        DASHBOARD_HOST: ${{ inputs.dashboard_host }}
+      run: |
+        set -uo pipefail
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+        
+        echo "::group::Dashboard Accessibility Check"
+        
+        # Normalize modes
+        MODES="${DASHBOARD_PUBLISH_MODES:-http8080}"
+        MODES="${MODES,,}"
+        MODES="${MODES// /}"
+        if [[ "$MODES" == "both" ]]; then MODES="https8080,subdomain"; fi
+        
+        # Check port 8080 listener
+        L8080=$(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+          "ss -ltnH 2>/dev/null | awk '{print \$4}' | grep -qE '(^|:)8080\$' && echo yes || echo no" 2>/dev/null || echo no)
+        
+        if [[ "$L8080" == "yes" ]]; then
+          echo "✅ Port 8080 is listening"
+        else
+          echo "⚠️ Port 8080 is NOT listening (dashboard may not be accessible)"
+        fi
+        
+        # Provide access hints based on modes
+        echo ""
+        echo "📊 **Dashboard Access Methods:**"
+        echo ""
+        
+        IFS=',' read -ra MODE_ARRAY <<< "$MODES"
+        for mode in "${MODE_ARRAY[@]}"; do
+          mode="${mode// /}"
+          case "$mode" in
+            http8080)
+              echo "**Mode: http8080** (HTTP on port 8080)"
+              echo "  curl http://${SSH_HOST}:8080/dashboard/"
+              echo "  Note: Accessible via server IP or grey-cloud DNS"
+              echo ""
+              ;;
+            https8080)
+              echo "**Mode: https8080** (HTTPS on port 8080)"
+              echo "  curl -k https://${SSH_HOST}:8080/dashboard/"
+              echo "  ⚠️ NOT proxied by Cloudflare - use direct IP or hosts mapping"
+              echo "  Example hosts entry: ${SSH_HOST} traefik.local"
+              echo ""
+              ;;
+            subdomain)
+              if [[ -n "$DASHBOARD_HOST" ]]; then
+                echo "**Mode: subdomain** (HTTPS on port 443)"
+                echo "  curl https://${DASHBOARD_HOST}/dashboard/"
+                echo "  ✅ Works behind Cloudflare proxy"
+                echo ""
+              else
+                echo "⚠️ Mode: subdomain requested but DASHBOARD_HOST not set"
+                echo ""
+              fi
+              ;;
+            *)
+              echo "⚠️ Unknown mode: $mode"
+              echo ""
+              ;;
+          esac
+        done
+        
+        echo "🔐 **Authentication:** Default is admin/12345678 (change immediately!)"
+        echo ""
+        echo "::endgroup::"

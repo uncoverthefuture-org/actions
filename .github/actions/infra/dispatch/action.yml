@@ -302,6 +302,10 @@ runs:
         quadlet_enable_http3=$(get '.quadlet_enable_http3')
         dashboard_user=$(get '.dashboard_user')
         dashboard_password_bcrypt=$(get '.dashboard_password_bcrypt')
+        dashboard_publish_modes=$(get '.dashboard_publish_modes')
+        dashboard_host=$(get '.dashboard_host')
+        dashboard_password=$(get '.dashboard_password')
+        dashboard_users_b64=$(get '.dashboard_users_b64')
         skip_upload=$(get '.skip_upload')
         {
           echo "traefik_email=${traefik_email}"
@@ -320,6 +324,10 @@ runs:
           echo "quadlet_enable_http3=${quadlet_enable_http3}"
           echo "dashboard_user=${dashboard_user}"
           echo "dashboard_password_bcrypt=${dashboard_password_bcrypt}"
+          echo "dashboard_publish_modes=${dashboard_publish_modes}"
+          echo "dashboard_host=${dashboard_host}"
+          echo "dashboard_password=${dashboard_password}"
+          echo "dashboard_users_b64=${dashboard_users_b64}"
           echo "skip_upload=${skip_upload}"
         } >> "$GITHUB_OUTPUT"
 
@@ -348,6 +356,10 @@ runs:
         quadlet_enable_http3: ${{ steps.trafparams.outputs.quadlet_enable_http3 || 'false' }}
         dashboard_user: ${{ steps.trafparams.outputs.dashboard_user }}
         dashboard_password_bcrypt: ${{ steps.trafparams.outputs.dashboard_password_bcrypt }}
+        dashboard_publish_modes: ${{ steps.trafparams.outputs.dashboard_publish_modes }}
+        dashboard_host: ${{ steps.trafparams.outputs.dashboard_host }}
+        dashboard_password: ${{ steps.trafparams.outputs.dashboard_password }}
+        dashboard_users_b64: ${{ steps.trafparams.outputs.dashboard_users_b64 }}
         skip_upload: ${{ steps.trafparams.outputs.skip_upload || 'true' }}
 
     - name: Extract diagnose-routing params

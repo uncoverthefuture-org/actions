@@ -114,6 +114,49 @@ preflight() {
   log "✅ Preflight OK"
 }
 
+check_network_cohesion() {
+  # Validate that both Traefik and app container are on the same Podman network.
+  # This check ensures routing can work between containers.
+  # NOTE: Added to support task "Validate both Traefik and app are attached to the same Podman network"
+  # from traefik-domain-routing-not-reaching-container.md plan.
+  local app_container="${1:-}"
+  local network_name="${2:-traefik-network}"
+  
+  if [ -z "$app_container" ]; then
+    notice "Network cohesion check: app container name not provided (skipping)"
+    return 0
+  fi
+  
+  if ! command -v podman >/dev/null 2>&1; then
+    notice "Network cohesion check: podman not available (skipping)"
+    return 0
+  fi
+  
+  # Get networks for both containers
+  local traefik_nets app_nets
+  traefik_nets=$(podman inspect -f '{{ range $k := .NetworkSettings.Networks }}{{ $k }} {{ end }}' traefik 2>/dev/null || echo "")
+  app_nets=$(podman inspect -f '{{ range $k := .NetworkSettings.Networks }}{{ $k }} {{ end }}' "$app_container" 2>/dev/null || echo "")
+  
+  if [ -z "$traefik_nets" ]; then
+    err "Traefik container not found or has no networks"
+    return 1
+  fi
+  
+  if [ -z "$app_nets" ]; then
+    err "App container '$app_container' not found or has no networks"
+    return 1
+  fi
+  
+  # Check if both are on the target network
+  if printf '%s' "$traefik_nets" | grep -qw "$network_name" && printf '%s' "$app_nets" | grep -qw "$network_name"; then
+    log "✅ Network cohesion OK: both containers on $network_name"
+    return 0
+  else
+    err "Network mismatch: traefik on [$traefik_nets], app on [$app_nets], expected both on $network_name"
+    return 1
+  fi
+}
+
 post() {
   local router="$ROUTER_NAME" domain="$DOMAIN" port="$SERVICE_PORT" path="$PROBE_PATH"
   if [ -z "$domain" ]; then

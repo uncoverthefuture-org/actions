@@ -1,0 +1,137 @@
+name: 'app: summary/container-status'
+description: 'Gather container status, ports, and recent logs for deployment summary.'
+
+# This sub-action extracts container inspection logic from deployment-status-summary.
+# It queries the remote host via SSH to collect:
+# - Container presence and status
+# - Port mappings
+# - Recent container logs (tail N lines)
+# Example usage:
+#   - uses: ./.github/actions/app/summary/container-status
+#     with:
+#       ssh_host: ${{ secrets.SERVER_HOST }}
+#       ssh_user: ${{ secrets.SERVER_USER }}
+#       ssh_key: ${{ secrets.SERVER_SSH_KEY }}
+#       container_name: my-app-prod
+#       tail_lines: '80'
+
+inputs:
+  ssh_host:
+    description: 'Remote SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username'
+    required: true
+  ssh_key:
+    description: 'SSH private key'
+    required: true
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  container_name:
+    description: 'Container name to inspect'
+    required: true
+  tail_lines:
+    description: 'Number of log lines to tail'
+    required: false
+    default: '80'
+
+outputs:
+  container_present:
+    description: 'Whether container exists (yes/no)'
+    value: ${{ steps.inspect.outputs.container_present }}
+  containers_table:
+    description: 'Full podman ps -a output'
+    value: ${{ steps.inspect.outputs.containers_table }}
+  recent_logs:
+    description: 'Recent container logs (tail N)'
+    value: ${{ steps.inspect.outputs.recent_logs }}
+  in_container_listeners:
+    description: 'Network listeners inside container (ss/netstat)'
+    value: ${{ steps.inspect.outputs.in_container_listeners }}
+  app_labels:
+    description: 'Traefik labels on container'
+    value: ${{ steps.inspect.outputs.app_labels }}
+  app_networks:
+    description: 'Networks container is connected to'
+    value: ${{ steps.inspect.outputs.app_networks }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Inspect container status
+      id: inspect
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        CONTAINER_NAME: ${{ inputs.container_name }}
+        TAIL_LINES: ${{ inputs.tail_lines }}
+      run: |
+        set -uo pipefail
+
+        # Prepare SSH key file
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+
+        # SSH base command with timeout and connection settings
+        SSH_BASE=(ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "${SSH_USER}@${SSH_HOST}")
+
+        # Query container presence
+        CONT_PRESENT=$(${SSH_BASE[@]} "podman ps -a --format '{{.Names}}' | grep -Fx '${CONTAINER_NAME}' >/dev/null && echo yes || echo no" 2>/dev/null || echo no)
+
+        # Get full containers table
+        CONTAINERS_TBL="$(${SSH_BASE[@]} "podman ps -a --format 'table {{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}\t{{.Image}}'" 2>/dev/null || echo "unavailable")"
+
+        # Get recent logs if container exists
+        RECENT_LOGS=""
+        if [ "$CONT_PRESENT" = "yes" ]; then
+          RECENT_LOGS="$(${SSH_BASE[@]} "podman logs --tail ${TAIL_LINES} '${CONTAINER_NAME}' 2>/dev/null" || true)"
+        fi
+
+        # Get in-container listeners if container exists
+        IN_CONTAINER_LISTENERS=""
+        if [ "$CONT_PRESENT" = "yes" ]; then
+          IN_CONTAINER_LISTENERS="$(${SSH_BASE[@]} "podman exec '${CONTAINER_NAME}' sh -lc 'ss -ltnp 2>/dev/null | head -n 60 || netstat -ltnp 2>/dev/null | head -n 60'" 2>/dev/null || echo "")"
+        fi
+
+        # Get Traefik labels on container
+        APP_LABELS=""
+        if [ "$CONT_PRESENT" = "yes" ]; then
+          TEMPLATE_LABELS='{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}'
+          APP_LABELS=$(${SSH_BASE[@]} env TPL="$TEMPLATE_LABELS" CN="$CONTAINER_NAME" bash -lc 'podman inspect -f "$TPL" "$CN" 2>/dev/null | grep -i "^traefik\." || true' 2>/dev/null || echo "")
+        fi
+
+        # Get networks container is connected to
+        APP_NETWORKS=""
+        if [ "$CONT_PRESENT" = "yes" ]; then
+          TEMPLATE_NETS='{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }} {{ end }}'
+          APP_NETWORKS=$(${SSH_BASE[@]} env TPL="$TEMPLATE_NETS" CN="$CONTAINER_NAME" bash -lc 'podman inspect -f "$TPL" "$CN" 2>/dev/null | sed "s/ *$//"' 2>/dev/null || echo "")
+        fi
+
+        # Output results (escaped for GitHub Actions)
+        {
+          echo "container_present=$CONT_PRESENT"
+          echo "containers_table<<CONTAINERS_EOF"
+          echo "$CONTAINERS_TBL"
+          echo "CONTAINERS_EOF"
+          echo "recent_logs<<LOGS_EOF"
+          echo "$RECENT_LOGS"
+          echo "LOGS_EOF"
+          echo "in_container_listeners<<LISTENERS_EOF"
+          echo "$IN_CONTAINER_LISTENERS"
+          echo "LISTENERS_EOF"
+          echo "app_labels<<LABELS_EOF"
+          echo "$APP_LABELS"
+          echo "LABELS_EOF"
+          echo "app_networks=$APP_NETWORKS"
+        } >> "$GITHUB_OUTPUT"

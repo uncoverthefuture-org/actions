@@ -178,6 +178,21 @@ inputs:
   require_dns_match:
     required: false
     default: 'true'
+  enable_dashboard:
+    required: false
+    default: 'false'
+  dashboard_publish_modes:
+    required: false
+    default: ''
+  dashboard_host:
+    required: false
+    default: ''
+  dashboard_password:
+    required: false
+    default: ''
+  dashboard_users_b64:
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -389,6 +404,11 @@ runs:
         traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || fromJSON(steps.params.outputs.json).traefik_email }}
         dns_servers: ${{ inputs.dns_servers != '' && inputs.dns_servers || fromJSON(steps.params.outputs.json).dns_servers }}
         ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
+        enable_dashboard: ${{ inputs.enable_dashboard != '' && inputs.enable_dashboard || fromJSON(steps.params.outputs.json).enable_dashboard }}
+        dashboard_publish_modes: ${{ inputs.dashboard_publish_modes != '' && inputs.dashboard_publish_modes || fromJSON(steps.params.outputs.json).dashboard_publish_modes }}
+        dashboard_host: ${{ inputs.dashboard_host != '' && inputs.dashboard_host || fromJSON(steps.params.outputs.json).dashboard_host }}
+        dashboard_password: ${{ inputs.dashboard_password != '' && inputs.dashboard_password || fromJSON(steps.params.outputs.json).dashboard_password }}
+        dashboard_users_b64: ${{ inputs.dashboard_users_b64 != '' && inputs.dashboard_users_b64 || fromJSON(steps.params.outputs.json).dashboard_users_b64 }}
 
     - name: ssh-container-deploy
       if: ${{ inputs.subaction == 'ssh-container-deploy' }}
@@ -433,7 +453,13 @@ runs:
         domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
         domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
         enable_traefik: ${{ inputs.enable_traefik != '' && inputs.enable_traefik || fromJSON(steps.params.outputs.json).enable_traefik || 'true' }}
+        enable_dashboard: ${{ inputs.enable_dashboard != '' && inputs.enable_dashboard || fromJSON(steps.params.outputs.json).enable_dashboard }}
+        dashboard_publish_modes: ${{ inputs.dashboard_publish_modes != '' && inputs.dashboard_publish_modes || fromJSON(steps.params.outputs.json).dashboard_publish_modes }}
+        dashboard_host: ${{ inputs.dashboard_host != '' && inputs.dashboard_host || fromJSON(steps.params.outputs.json).dashboard_host }}
+        dashboard_password: ${{ inputs.dashboard_password != '' && inputs.dashboard_password || fromJSON(steps.params.outputs.json).dashboard_password }}
+        dashboard_users_b64: ${{ inputs.dashboard_users_b64 != '' && inputs.dashboard_users_b64 || fromJSON(steps.params.outputs.json).dashboard_users_b64 }}
         ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
+        domain_hosts: ${{ inputs.domain_hosts != '' && inputs.domain_hosts || fromJSON(steps.params.outputs.json).domain_hosts }}
     - name: ssh-react-deploy
       if: ${{ inputs.subaction == 'ssh-react-deploy' }}
       uses: ./.github/actions/app/ssh-react-deploy

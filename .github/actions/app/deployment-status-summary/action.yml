@@ -68,6 +68,9 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    # Step 1: Server diagnostics (domain->container routing)
+    # Runs comprehensive diagnostics to troubleshoot routing issues.
+    # Escalates with sudo when available for root-level checks.
     - name: Server diagnostics (domain->container)
       if: ${{ inputs.reachable == 'true' && inputs.run_diagnostics == 'true' }}
       continue-on-error: true
@@ -92,6 +95,105 @@ runs:
         traefik_network_name: ${{ inputs.traefik_network_name }}
         traefik_email: ${{ inputs.diagnostics_traefik_email }}
 
+    # Step 2: Gather container status (via sub-action)
+    # Queries container presence, ports, logs, labels, and network configuration.
+    - name: Gather container status
+      if: ${{ inputs.reachable == 'true' }}
+      id: container_status
+      continue-on-error: true
+      uses: ./.github/actions/app/summary/container-status
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        container_name: ${{ env.CONT_NAME }}
+        tail_lines: '80'
+
+    # Step 3: Gather resource statistics (via sub-action)
+    # Collects Podman version, pods, networks, listeners, and stats.
+    - name: Gather resource statistics
+      if: ${{ inputs.reachable == 'true' }}
+      id: resources
+      continue-on-error: true
+      uses: ./.github/actions/app/summary/resources
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        container_name: ${{ env.CONT_NAME }}
+
+    # Step 4: Probe domain endpoint (via sub-action)
+    # Captures HTTP status, timing, protocol, and forwarding headers.
+    - name: Probe domain endpoint
+      if: ${{ inputs.reachable == 'true' && inputs.enable_traefik == 'true' && inputs.domain_effective != '' }}
+      id: domain_probe
+      continue-on-error: true
+      uses: ./.github/actions/app/summary/domain-probe
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        domain: ${{ inputs.domain_effective }}
+        use_https: 'true'
+        curl_timeout: '10'
+
+    # Step 5: Probe Traefik API (via sub-action)
+    # Checks API reachability and router/service presence.
+    - name: Probe Traefik API
+      if: ${{ inputs.reachable == 'true' && inputs.router_name != '' }}
+      id: traefik_api
+      continue-on-error: true
+      uses: ./.github/actions/app/summary/traefik-api
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        router_name: ${{ inputs.router_name }}
+        api_timeout: '4'
+
+    # Step 6: Generate deployment status summary
+    # Orchestrates all gathered data into a comprehensive markdown report.
+    # Step 6 (continued): Compute container name and setup
+    # This step prepares environment variables for the summary generation.
+    - name: Compute container name
+      if: ${{ inputs.reachable == 'true' }}
+      id: compute
+      shell: bash
+      env:
+        ENV_NAME: ${{ inputs.env_name }}
+        APP_SLUG: ${{ inputs.app_slug }}
+        CONTAINER_NAME_IN: ${{ inputs.container_name }}
+        TRAEFIK_ENABLED: ${{ inputs.enable_traefik }}
+        DOMAIN_EFFECTIVE: ${{ inputs.domain_effective }}
+        HOST_PORT_IN: ${{ inputs.host_port }}
+        CONTAINER_PORT_IN: ${{ inputs.container_port }}
+      run: |
+        set -uo pipefail
+        # Compute canonical environment name (lowercase)
+        ENV_CANON=$(printf '%s' "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
+        # Use provided container name or derive from app slug and environment
+        if [ -n "$CONTAINER_NAME_IN" ]; then
+          CONT_NAME="$CONTAINER_NAME_IN"
+        else
+          CONT_NAME="${APP_SLUG}-${ENV_CANON}"
+        fi
+        # Determine endpoint URL based on Traefik enablement
+        if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
+          URL_LABEL="https://${DOMAIN_EFFECTIVE}"
+        else
+          URL_LABEL="http://${{ inputs.ssh_host }}:${HOST_PORT_IN}"
+        fi
+        # Export computed values for use in summary step
+        {
+          echo "env_canon=$ENV_CANON"
+          echo "cont_name=$CONT_NAME"
+          echo "url_label=$URL_LABEL"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Deployment status summary
       if: ${{ inputs.reachable == 'true' }}
       shell: bash
@@ -102,7 +204,9 @@ runs:
         SSH_PORT: ${{ inputs.ssh_port }}
         APP_SLUG: ${{ inputs.app_slug }}
         ENV_NAME: ${{ inputs.env_name }}
-        CONTAINER_NAME_IN: ${{ inputs.container_name }}
+        ENV_CANON: ${{ steps.compute.outputs.env_canon }}
+        CONT_NAME: ${{ steps.compute.outputs.cont_name }}
+        URL_LABEL: ${{ steps.compute.outputs.url_label }}
         TRAEFIK_ENABLED: ${{ inputs.enable_traefik }}
         DOMAIN_EFFECTIVE: ${{ inputs.domain_effective }}
         HOST_PORT_IN: ${{ inputs.host_port }}
@@ -110,6 +214,29 @@ runs:
         ROUTER_NAME_IN: ${{ inputs.router_name }}
         WHOAMI_PROBE: ${{ inputs.whoami_probe }}
         TRAEFIK_NETWORK_NAME: ${{ inputs.traefik_network_name }}
+        # Sub-action outputs
+        CONTAINERS_TBL: ${{ steps.container_status.outputs.containers_table }}
+        CONT_PRESENT: ${{ steps.container_status.outputs.container_present }}
+        RECENT_LOGS: ${{ steps.container_status.outputs.recent_logs }}
+        IN_CONTAINER_LISTENERS: ${{ steps.container_status.outputs.in_container_listeners }}
+        APP_LABELS: ${{ steps.container_status.outputs.app_labels }}
+        APP_NETWORKS: ${{ steps.container_status.outputs.app_networks }}
+        PODMAN_VERSION: ${{ steps.resources.outputs.podman_version }}
+        PODS_TBL: ${{ steps.resources.outputs.pods_table }}
+        NETWORKS_TBL: ${{ steps.resources.outputs.networks_table }}
+        LISTENERS: ${{ steps.resources.outputs.listeners }}
+        STATS_TBL: ${{ steps.resources.outputs.stats_table }}
+        HTTP_STATUS_DOMAIN: ${{ steps.domain_probe.outputs.remote_http_status }}
+        DOMAIN_TIMING: ${{ steps.domain_probe.outputs.remote_timing }}
+        DOMAIN_PROTO: ${{ steps.domain_probe.outputs.remote_protocol }}
+        RUNNER_HTTP_STATUS_DOMAIN: ${{ steps.domain_probe.outputs.runner_http_status }}
+        RUNNER_DOMAIN_TIMING: ${{ steps.domain_probe.outputs.runner_timing }}
+        HDR_XFF: ${{ steps.domain_probe.outputs.forwarded_for }}
+        HDR_XRI: ${{ steps.domain_probe.outputs.real_ip }}
+        HDR_FWD: ${{ steps.domain_probe.outputs.forwarded }}
+        TRAEFIK_API_CODE: ${{ steps.traefik_api.outputs.api_status }}
+        ROUTER_MATCH: ${{ steps.traefik_api.outputs.router_presence }}
+        SERVICE_MATCH: ${{ steps.traefik_api.outputs.service_presence }}
       run: |
         set -uo pipefail
 
@@ -122,21 +249,9 @@ runs:
         fi
         chmod 600 "$KEY_FILE"
 
-        ENV_CANON=$(printf '%s' "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
-        if [ -n "$CONTAINER_NAME_IN" ]; then
-          CONT_NAME="$CONTAINER_NAME_IN"
-        else
-          CONT_NAME="${APP_SLUG}-${ENV_CANON}"
-        fi
         HOST_PORT="$HOST_PORT_IN"
         CONT_PORT="$CONTAINER_PORT_IN"
         ROUTER_NAME="$ROUTER_NAME_IN"
-
-        if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
-          URL_LABEL="https://${DOMAIN_EFFECTIVE}"
-        else
-          URL_LABEL="http://${SSH_HOST}:${HOST_PORT}"
-        fi
 
         SSH_BASE=(ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "${SSH_USER}@${SSH_HOST}")
 
@@ -233,65 +348,33 @@ runs:
           printf '%s\n' "$1" | sed 's/password=[^ ]*//gi; s/token=[^ ]*//gi; s/secret=[^ ]*//gi; s/key=[^ ]*//gi'
         }
 
-        PODMAN_VERSION="$(${SSH_BASE[@]} 'podman --version' 2>/dev/null || echo "unavailable")"
-        CONTAINERS_TBL="$(${SSH_BASE[@]} "podman ps -a --format 'table {{.ID}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}\t{{.Image}}'" 2>/dev/null || echo "unavailable")"
-        PODS_TBL="$(${SSH_BASE[@]} "podman pod ps -a --format 'table {{.ID}}\t{{.Status}}\t{{.Name}}\t{{.Networks}}'" 2>/dev/null || echo "unavailable")"
-        NETWORKS_TBL="$(${SSH_BASE[@]} "podman network ls --format 'table {{.Name}}\t{{.Driver}}\t{{.Labels}}'" 2>/dev/null || echo "unavailable")"
-        LISTENERS="$(${SSH_BASE[@]} "ss -ltnp 2>/dev/null | head -n 80 || netstat -ltnp 2>/dev/null | head -n 80" 2>/dev/null || echo "unavailable")"
+        # NOTE: Data gathering has been moved to sub-actions for modularity.
+        # The following variables are now populated from sub-action outputs:
+        # - PODMAN_VERSION, CONTAINERS_TBL, PODS_TBL, NETWORKS_TBL, LISTENERS (from resources sub-action)
+        # - CONT_PRESENT, RECENT_LOGS, IN_CONTAINER_LISTENERS, APP_LABELS, APP_NETWORKS (from container-status sub-action)
+        # - HTTP_STATUS_DOMAIN, DOMAIN_TIMING, DOMAIN_PROTO, RUNNER_HTTP_STATUS_DOMAIN, RUNNER_DOMAIN_TIMING, HDR_XFF, HDR_XRI, HDR_FWD (from domain-probe sub-action)
+        # - TRAEFIK_API_CODE, ROUTER_MATCH, SERVICE_MATCH (from traefik-api sub-action)
 
-        CONT_PRESENT=$(${SSH_BASE[@]} "podman ps -a --format '{{.Names}}' | grep -Fx '${CONT_NAME}' >/dev/null && echo yes || echo no" 2>/dev/null || echo no)
-
-        HTTP_STATUS_DOMAIN="N/A"
-        DOMAIN_TIMING="N/A"
-        DOMAIN_PROTO="N/A"
-        if [ "${TRAEFIK_ENABLED}" = "true" ] && [ -n "${DOMAIN_EFFECTIVE}" ]; then
-          HTTP_STATUS_DOMAIN="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 'https://${DOMAIN_EFFECTIVE}'" 2>/dev/null || echo "ERR")"
-          # Capture timing and HTTP version (best-effort)
-          DOMAIN_TIMING="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w '%{time_total}' --max-time 10 'https://${DOMAIN_EFFECTIVE}'" 2>/dev/null || echo "N/A")"
-          DOMAIN_PROTO="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w 'HTTP/%{http_version}' --max-time 10 'https://${DOMAIN_EFFECTIVE}'" 2>/dev/null || echo "N/A")"
-          # Runner-side probe to seed access logs with an external client and capture headers
-          RUNNER_HTTP_STATUS_DOMAIN=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "https://${DOMAIN_EFFECTIVE}" || echo "ERR")
-          RUNNER_DOMAIN_TIMING=$(curl -ksS -o /dev/null -w '%{time_total}' --max-time 10 "https://${DOMAIN_EFFECTIVE}" || echo "N/A")
-          RUNNER_HEADERS=$(curl -ksSI --max-time 10 "https://${DOMAIN_EFFECTIVE}" 2>/dev/null || true)
-          HDR_XFF=$(printf '%s\n' "$RUNNER_HEADERS" | grep -i '^X-Forwarded-For:' | head -n1 | sed 's/^X-Forwarded-For:[[:space:]]*//I' || true)
-          HDR_XRI=$(printf '%s\n' "$RUNNER_HEADERS" | grep -i '^X-Real-Ip:' | head -n1 | sed 's/^X-Real-Ip:[[:space:]]*//I' || true)
-          HDR_FWD=$(printf '%s\n' "$RUNNER_HEADERS" | grep -i '^Forwarded:' | head -n1 | sed 's/^Forwarded:[[:space:]]*//I' || true)
-        fi
+        # Probe host port (still done here as it's a simple check)
         HTTP_STATUS_PORT="$(${SSH_BASE[@]} "curl -fsS -o /dev/null -w '%{http_code}' --max-time 5 'http://127.0.0.1:${HOST_PORT}'" 2>/dev/null || echo "ERR")"
 
+        # Probe container port (still done here as it requires container exec)
         IN_CONTAINER_PROBE="N/A"
         if [ "$CONT_PRESENT" = "yes" ]; then
           IN_CONTAINER_PROBE="$(${SSH_BASE[@]} "podman exec '${CONT_NAME}' sh -lc 'if command -v curl >/dev/null 2>&1; then curl -fsS -o /dev/null -w \"%{http_code}\" http://127.0.0.1:${CONT_PORT} --max-time 5; elif command -v wget >/dev/null 2>&1; then wget -qO- --server-response http://127.0.0.1:${CONT_PORT} 2>&1 | awk \"/HTTP\/{print \$2; exit}\"; else echo NO_CURL_WGET; fi'" 2>/dev/null || echo "ERR")"
         fi
 
-        # App container routing context: labels and networks
-        APP_LABELS=""
-        APP_NETWORKS=""
+        # Check Traefik network join (still done here as it requires container inspection)
         TRAEFIK_NETWORKS=""
         NETWORK_JOIN_CHECK="unknown"
-        IN_CONTAINER_LISTENERS=""
         if [ "$CONT_PRESENT" = "yes" ]; then
-          # NOTE: Prevent local shell expansion of Go-template vars ($k/$v) under `set -u`.
-          # We pass the template via an env var and evaluate it remotely with bash -lc.
-          # Example:
-          #   TEMPLATE_LABELS='{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}'
-          #   ${SSH_BASE[@]} env TPL="$TEMPLATE_LABELS" CN="$CONT_NAME" bash -lc 'podman inspect -f "$TPL" "$CN"'
-          TEMPLATE_LABELS='{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}'
           TEMPLATE_NETS='{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }} {{ end }}'
-          APP_LABELS=$(${SSH_BASE[@]} env TPL="$TEMPLATE_LABELS" CN="$CONT_NAME" bash -lc 'podman inspect -f "$TPL" "$CN" 2>/dev/null | grep -i "^traefik\." || true' 2>/dev/null || echo "")
-          APP_NETWORKS=$(${SSH_BASE[@]} env TPL="$TEMPLATE_NETS" CN="$CONT_NAME" bash -lc 'podman inspect -f "$TPL" "$CN" 2>/dev/null | sed "s/ *$//"' 2>/dev/null || echo "")
           TRAEFIK_NETWORKS=$(${SSH_BASE[@]} env TPL="$TEMPLATE_NETS" bash -lc 'podman inspect -f "$TPL" traefik 2>/dev/null | sed "s/ *$//"' 2>/dev/null || echo "")
-          IN_CONTAINER_LISTENERS=$(${SSH_BASE[@]} "podman exec '${CONT_NAME}' sh -lc 'ss -ltnp 2>/dev/null | head -n 60 || netstat -ltnp 2>/dev/null | head -n 60'" 2>/dev/null || echo "")
           if printf '%s' "$APP_NETWORKS" | grep -qw "${TRAEFIK_NETWORK_NAME}" && printf '%s' "$TRAEFIK_NETWORKS" | grep -qw "${TRAEFIK_NETWORK_NAME}"; then
             NETWORK_JOIN_CHECK="✅ both containers on ${TRAEFIK_NETWORK_NAME}"
           else
             NETWORK_JOIN_CHECK="⚠️ check networks: app=[${APP_NETWORKS:-none}] traefik=[${TRAEFIK_NETWORKS:-none}]"
           fi
-        fi
-
-        RECENT_LOGS=""
-        if [ "$CONT_PRESENT" = "yes" ]; then
-          RECENT_LOGS="$(${SSH_BASE[@]} "podman logs --tail 80 '${CONT_NAME}' 2>/dev/null" || true)"
         fi
 
         # Traefik access logs: prefer container logs, fallback to journal (quadlet)
@@ -380,18 +463,16 @@ runs:
           if [ -n "$ROUTER_NAME" ]; then
             echo "## Traefik API (best-effort)"
             echo
-            TRAEFIK_API_CODE=$(${SSH_BASE[@]} "curl -fsS -o /dev/null -w '%{http_code}' --max-time 4 http://127.0.0.1:8080/api/http/routers" 2>/dev/null || echo "ERR")
+            # NOTE: Traefik API probing is now done via traefik-api sub-action.
+            # Results are available in TRAEFIK_API_CODE, ROUTER_MATCH, SERVICE_MATCH env vars.
             echo "- **API /http/routers**: ${TRAEFIK_API_CODE}"
             if [ "$TRAEFIK_API_CODE" = "200" ]; then
-              # Try to detect router presence for this app
-              ROUTER_MATCH=$(${SSH_BASE[@]} "curl -fsS --max-time 4 http://127.0.0.1:8080/api/http/routers 2>/dev/null | tr -d '\n' | grep -o '"name":"[^\"]*"' | grep -c '\\"${ROUTER_NAME}@docker\\"'" 2>/dev/null || echo 0)
-              if [ "${ROUTER_MATCH:-0}" -gt 0 ]; then
+              if [ "$ROUTER_MATCH" = "found" ]; then
                 echo "- **Router presence**: ${ROUTER_NAME}@docker found"
               else
                 echo "- **Router presence**: ${ROUTER_NAME}@docker not found"
               fi
-              SERVICE_MATCH=$(${SSH_BASE[@]} "curl -fsS --max-time 4 http://127.0.0.1:8080/api/http/services 2>/dev/null | tr -d '\n' | grep -o '"name":"[^\"]*"' | grep -c '\\"${ROUTER_NAME}@docker\\"'" 2>/dev/null || echo 0)
-              if [ "${SERVICE_MATCH:-0}" -gt 0 ]; then
+              if [ "$SERVICE_MATCH" = "found" ]; then
                 echo "- **Service presence**: ${ROUTER_NAME}@docker found"
               else
                 echo "- **Service presence**: ${ROUTER_NAME}@docker not found"
@@ -453,7 +534,7 @@ runs:
             ${SSH_BASE[@]} "podman rm -f '$WHOAMI_NAME' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
             # Build labels: Host(`domain`) && PathPrefix(`/__whoami`)
             L1="traefik.enable=true"
-            L2="traefik.http.routers.${WHOAMI_ROUTER}.rule=Host(\`${DOMAIN_EFFECTIVE}\`) && PathPrefix(\`/__whoami\`)"
+            L2="traefik.http.routers.${WHOAMI_ROUTER}.rule=Host(\"${DOMAIN_EFFECTIVE}\") && PathPrefix(\"/__whoami\")"
             L3="traefik.http.routers.${WHOAMI_ROUTER}.entrypoints=websecure,web"
             L4="traefik.http.routers.${WHOAMI_ROUTER}.tls.certresolver=letsencrypt"
             L5="traefik.http.services.${WHOAMI_ROUTER}.loadbalancer.server.port=80"
@@ -517,6 +598,8 @@ runs:
           fi
         } >> "$GITHUB_STEP_SUMMARY"
 
+    # Step 7: Fail on diagnostics issues (if configured)
+    # Reads diagnostics log from server and fails if critical issues are detected.
     - name: Fail on diagnostics issues (after summary)
       if: ${{ always() && inputs.reachable == 'true' && inputs.run_diagnostics == 'true' && inputs.diagnostics_fail_on_issues == 'true' }}
       shell: bash
@@ -566,6 +649,8 @@ runs:
           exit 1
         fi
 
+    # Step 8: Deployment summary (unreachable)
+    # Fallback summary when SSH host is not reachable.
     - name: Deployment summary (unreachable)
       if: ${{ inputs.reachable != 'true' }}
       shell: bash

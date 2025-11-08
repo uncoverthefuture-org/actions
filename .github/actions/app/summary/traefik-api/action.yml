@@ -1,0 +1,110 @@
+name: 'app: summary/traefik-api'
+description: 'Probe Traefik API for router and service presence.'
+
+# This sub-action extracts Traefik API probing logic from deployment-status-summary.
+# It queries the Traefik API endpoint (http://127.0.0.1:8080/api/http/routers) to:
+# - Check if the API is reachable
+# - Detect router presence for the app (e.g., router-name@docker)
+# - Detect service presence for the app
+# Example usage:
+#   - uses: ./.github/actions/app/summary/traefik-api
+#     with:
+#       ssh_host: ${{ secrets.SERVER_HOST }}
+#       ssh_user: ${{ secrets.SERVER_USER }}
+#       ssh_key: ${{ secrets.SERVER_SSH_KEY }}
+#       router_name: my-app-prod
+
+inputs:
+  ssh_host:
+    description: 'Remote SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username'
+    required: true
+  ssh_key:
+    description: 'SSH private key'
+    required: true
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  router_name:
+    description: 'Router name to search for (e.g., my-app-prod)'
+    required: true
+  api_timeout:
+    description: 'Timeout for API calls in seconds'
+    required: false
+    default: '4'
+
+outputs:
+  api_status:
+    description: 'HTTP status code from Traefik API (200, 401, ERR, etc.)'
+    value: ${{ steps.probe.outputs.api_status }}
+  router_presence:
+    description: 'Whether router exists (found/not-found/unknown)'
+    value: ${{ steps.probe.outputs.router_presence }}
+  service_presence:
+    description: 'Whether service exists (found/not-found/unknown)'
+    value: ${{ steps.probe.outputs.service_presence }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Probe Traefik API
+      id: probe
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        ROUTER_NAME: ${{ inputs.router_name }}
+        API_TIMEOUT: ${{ inputs.api_timeout }}
+      run: |
+        set -uo pipefail
+
+        # Prepare SSH key file
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+
+        # SSH base command with timeout and connection settings
+        SSH_BASE=(ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "${SSH_USER}@${SSH_HOST}")
+
+        # Probe Traefik API endpoint
+        TRAEFIK_API_CODE=$(${SSH_BASE[@]} "curl -fsS -o /dev/null -w '%{http_code}' --max-time ${API_TIMEOUT} http://127.0.0.1:8080/api/http/routers" 2>/dev/null || echo "ERR")
+
+        # Initialize outputs
+        ROUTER_PRESENCE="unknown"
+        SERVICE_PRESENCE="unknown"
+
+        # If API is reachable, check for router and service presence
+        if [ "$TRAEFIK_API_CODE" = "200" ]; then
+          # Check router presence: search for "router_name@docker" in API response
+          ROUTER_MATCH=$(${SSH_BASE[@]} "curl -fsS --max-time ${API_TIMEOUT} http://127.0.0.1:8080/api/http/routers 2>/dev/null | tr -d '\n' | grep -o '\"name\":\"[^\"]*\"' | grep -c '\"${ROUTER_NAME}@docker\"'" 2>/dev/null || echo 0)
+          if [ "${ROUTER_MATCH:-0}" -gt 0 ]; then
+            ROUTER_PRESENCE="found"
+          else
+            ROUTER_PRESENCE="not-found"
+          fi
+
+          # Check service presence: search for "router_name@docker" in services
+          SERVICE_MATCH=$(${SSH_BASE[@]} "curl -fsS --max-time ${API_TIMEOUT} http://127.0.0.1:8080/api/http/services 2>/dev/null | tr -d '\n' | grep -o '\"name\":\"[^\"]*\"' | grep -c '\"${ROUTER_NAME}@docker\"'" 2>/dev/null || echo 0)
+          if [ "${SERVICE_MATCH:-0}" -gt 0 ]; then
+            SERVICE_PRESENCE="found"
+          else
+            SERVICE_PRESENCE="not-found"
+          fi
+        fi
+
+        # Output results
+        {
+          echo "api_status=$TRAEFIK_API_CODE"
+          echo "router_presence=$ROUTER_PRESENCE"
+          echo "service_presence=$SERVICE_PRESENCE"
+        } >> "$GITHUB_OUTPUT"

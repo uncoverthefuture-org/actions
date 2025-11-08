@@ -52,6 +52,18 @@ inputs:
   dashboard_password_bcrypt:
     required: false
     default: ''
+  dashboard_publish_modes:
+    required: false
+    default: ''
+  dashboard_host:
+    required: false
+    default: ''
+  dashboard_password:
+    required: false
+    default: ''
+  dashboard_users_b64:
+    required: false
+    default: ''
   quadlet_enable_http3:
     required: false
     default: 'false'
@@ -114,6 +126,10 @@ runs:
           export TRAEFIK_DASHBOARD='${{ inputs.enable_dashboard }}'
           export DASHBOARD_USER='${{ inputs.dashboard_user }}'
           export DASHBOARD_PASS_BCRYPT='${{ inputs.dashboard_password_bcrypt }}'
+          export DASHBOARD_PUBLISH_MODES='${{ inputs.dashboard_publish_modes }}'
+          export DASHBOARD_HOST='${{ inputs.dashboard_host }}'
+          export DASHBOARD_PASSWORD='${{ inputs.dashboard_password }}'
+          export DASHBOARD_USERS_B64='${{ inputs.dashboard_users_b64 }}'
           export QUADLET_ENABLE_HTTP3='${{ inputs.quadlet_enable_http3 }}'
           export TRAEFIK_FORCE_RESTART='${{ inputs.force_restart }}'
 

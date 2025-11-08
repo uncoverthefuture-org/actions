@@ -127,11 +127,20 @@ Each action has its own detailed README with inputs, outputs, and examples. Star
         }
   ```
 
-- **Traefik on/off switch**:
-  - Pass a `domain` or `base_domain` to enable Traefik routing with automatic TLS. Optionally set `enable_traefik: true` (default) to attach labels. When Traefik mode is active, any supplied `host_port` is ignored and a notice is emitted because Traefik terminates traffic on ports 80/443.
-  - Omit `domain`/`base_domain` (or set `enable_traefik: false`) to publish `-p host:container` instead. This avoids port 80/443 and lets multiple branches run side-by-side.
-  - When using `prepare_host: true`, Traefik can be provisioned with `install_traefik: true` and `traefik_email` (Let's Encrypt). To open firewall ports during preparation, set `ufw_allow_ports` (e.g., "22 80 443 3000 3001").
-  - Optional dashboard: set `traefik_dashboard: true` together with `traefik_dashboard_user` and `traefik_dashboard_pass_bcrypt` (bcrypt hash from `htpasswd -nB`). The shared setup script automatically maps port 8080, enables HTTPS redirects, and guards the dashboard behind HTTP basic auth. The installer also seeds `/etc/traefik/dashboard-users` so you can add credentials later if you defer the hash.
+  - **Traefik on/off switch**:
+    - Pass a `domain` or `base_domain` to enable Traefik routing with automatic TLS. Optionally set `enable_traefik: true` (default) to attach labels. When Traefik mode is active, any supplied `host_port` is ignored and a notice is emitted because Traefik terminates traffic on ports 80/443.
+    - Omit `domain`/`base_domain` (or set `enable_traefik: false`) to publish `-p host:container` instead. This avoids port 80/443 and lets multiple branches run side-by-side.
+    - When using `prepare_host: true`, Traefik can be provisioned with `install_traefik: true` and `traefik_email` (Let's Encrypt). To open firewall ports during preparation, set `ufw_allow_ports` (e.g., "22 80 443 3000 3001").
+    - Dashboard exposure modes:
+      - Prefer `dashboard_publish_modes`: CSV values `http8080`, `https8080`, `subdomain` (alias `both` = `https8080,subdomain`).
+      - For `subdomain`, set `dashboard_host` (e.g., `traefik.example.com`).
+      - Credentials:
+        - Provide `dashboard_users_b64` (base64-encoded users file) OR `dashboard_password` (plain; hashed by the action) with `dashboard_user` (default `admin`).
+        - Deprecated alias: `traefik_dashboard: true` with `traefik_dashboard_user`/`traefik_dashboard_pass_bcrypt` still works.
+        - If no credentials are supplied, a default `admin/12345678` is created and a warning is printed; change immediately.
+      - Notes:
+        - `https8080` is not Cloudflare-proxied; access via direct IP/hosts mapping.
+        - Combining modes deduplicates the single :8080 entrypoint/publish.
   - Config reuse: every Traefik run calls `scripts/traefik/ensure-traefik-config.sh` to verify `/etc/traefik/traefik.yml` and `/var/lib/traefik/acme.json` exist with the correct ownership (rootless podman user). If permissions are wrong, the action fails fast with remediation steps.
   - Podman socket detection: if the per-user podman socket is unavailable, the setup script falls back to `/var/run/podman/podman.sock` and logs guidance for enabling linger / restarting `podman.socket` under the SSH user before the next deploy.
   - Disable ACME temporarily by passing `enable_acme: false`; the deployment action skips the `traefik.http.routers.*.tls.certresolver` label so Traefik runs without hitting Let's Encrypt while you debug port 80. Re-enable once connectivity is restored. When ACME is off, downstream labels automatically switch to the `web` entrypoint so HTTP continues to work.

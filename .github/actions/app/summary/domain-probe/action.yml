@@ -1,0 +1,132 @@
+name: 'app: summary/domain-probe'
+description: 'Probe domain endpoint with timing, protocol, and header capture.'
+
+# This sub-action extracts domain probing logic from deployment-status-summary.
+# It performs HTTP/HTTPS probes from both the remote host and GitHub runner to:
+# - Capture HTTP status code
+# - Measure response timing
+# - Detect HTTP version (HTTP/1.1, HTTP/2, etc.)
+# - Capture forwarding headers (X-Forwarded-For, X-Real-Ip, Forwarded)
+# Example usage:
+#   - uses: ./.github/actions/app/summary/domain-probe
+#     with:
+#       ssh_host: ${{ secrets.SERVER_HOST }}
+#       ssh_user: ${{ secrets.SERVER_USER }}
+#       ssh_key: ${{ secrets.SERVER_SSH_KEY }}
+#       domain: example.com
+#       use_https: 'true'
+
+inputs:
+  ssh_host:
+    description: 'Remote SSH host'
+    required: true
+  ssh_user:
+    description: 'SSH username'
+    required: true
+  ssh_key:
+    description: 'SSH private key'
+    required: true
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  domain:
+    description: 'Domain to probe (e.g., example.com)'
+    required: true
+  use_https:
+    description: 'Use HTTPS (true) or HTTP (false)'
+    required: false
+    default: 'true'
+  curl_timeout:
+    description: 'Timeout for curl in seconds'
+    required: false
+    default: '10'
+
+outputs:
+  remote_http_status:
+    description: 'HTTP status from remote host probe'
+    value: ${{ steps.probe.outputs.remote_http_status }}
+  remote_timing:
+    description: 'Response timing from remote host (seconds)'
+    value: ${{ steps.probe.outputs.remote_timing }}
+  remote_protocol:
+    description: 'HTTP version detected (HTTP/1.1, HTTP/2, etc.)'
+    value: ${{ steps.probe.outputs.remote_protocol }}
+  runner_http_status:
+    description: 'HTTP status from GitHub runner probe'
+    value: ${{ steps.probe.outputs.runner_http_status }}
+  runner_timing:
+    description: 'Response timing from runner (seconds)'
+    value: ${{ steps.probe.outputs.runner_timing }}
+  forwarded_for:
+    description: 'X-Forwarded-For header value'
+    value: ${{ steps.probe.outputs.forwarded_for }}
+  real_ip:
+    description: 'X-Real-Ip header value'
+    value: ${{ steps.probe.outputs.real_ip }}
+  forwarded:
+    description: 'Forwarded header value'
+    value: ${{ steps.probe.outputs.forwarded }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Probe domain endpoint
+      id: probe
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        DOMAIN: ${{ inputs.domain }}
+        USE_HTTPS: ${{ inputs.use_https }}
+        CURL_TIMEOUT: ${{ inputs.curl_timeout }}
+      run: |
+        set -uo pipefail
+
+        # Prepare SSH key file
+        KEY_FILE="$(mktemp)"
+        trap "rm -f '$KEY_FILE'" EXIT
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+        else
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        fi
+        chmod 600 "$KEY_FILE"
+
+        # SSH base command with timeout and connection settings
+        SSH_BASE=(ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "${SSH_USER}@${SSH_HOST}")
+
+        # Determine protocol prefix
+        PROTO="http"
+        if [ "$USE_HTTPS" = "true" ]; then
+          PROTO="https"
+        fi
+
+        # Remote host probe: status, timing, protocol
+        REMOTE_HTTP_STATUS="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w '%{http_code}' --max-time ${CURL_TIMEOUT} '${PROTO}://${DOMAIN}'" 2>/dev/null || echo "ERR")"
+        REMOTE_TIMING="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w '%{time_total}' --max-time ${CURL_TIMEOUT} '${PROTO}://${DOMAIN}'" 2>/dev/null || echo "N/A")"
+        REMOTE_PROTOCOL="$(${SSH_BASE[@]} "curl -ksS -o /dev/null -w 'HTTP/%{http_version}' --max-time ${CURL_TIMEOUT} '${PROTO}://${DOMAIN}'" 2>/dev/null || echo "N/A")"
+
+        # Runner probe: status, timing, headers
+        RUNNER_HTTP_STATUS=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time ${CURL_TIMEOUT} "${PROTO}://${DOMAIN}" 2>/dev/null || echo "ERR")
+        RUNNER_TIMING=$(curl -ksS -o /dev/null -w '%{time_total}' --max-time ${CURL_TIMEOUT} "${PROTO}://${DOMAIN}" 2>/dev/null || echo "N/A")
+
+        # Capture headers from runner probe
+        RUNNER_HEADERS=$(curl -ksSI --max-time ${CURL_TIMEOUT} "${PROTO}://${DOMAIN}" 2>/dev/null || true)
+        HDR_XFF=$(printf '%s\n' "$RUNNER_HEADERS" | grep -i '^X-Forwarded-For:' | head -n1 | sed 's/^X-Forwarded-For:[[:space:]]*//I' || true)
+        HDR_XRI=$(printf '%s\n' "$RUNNER_HEADERS" | grep -i '^X-Real-Ip:' | head -n1 | sed 's/^X-Real-Ip:[[:space:]]*//I' || true)
+        HDR_FWD=$(printf '%s\n' "$RUNNER_HEADERS" | grep -i '^Forwarded:' | head -n1 | sed 's/^Forwarded:[[:space:]]*//I' || true)
+
+        # Output results
+        {
+          echo "remote_http_status=$REMOTE_HTTP_STATUS"
+          echo "remote_timing=$REMOTE_TIMING"
+          echo "remote_protocol=$REMOTE_PROTOCOL"
+          echo "runner_http_status=$RUNNER_HTTP_STATUS"
+          echo "runner_timing=$RUNNER_TIMING"
+          echo "forwarded_for=$HDR_XFF"
+          echo "real_ip=$HDR_XRI"
+          echo "forwarded=$HDR_FWD"
+        } >> "$GITHUB_OUTPUT"

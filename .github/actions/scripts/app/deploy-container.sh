@@ -353,8 +353,21 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
     echo "🔖 Traefik labels will advertise container port $CONTAINER_PORT"
   fi
   if [[ -x "$HOME/uactions/scripts/app/build-traefik-labels.sh" ]]; then
-    mapfile -t BUILT_LABELS < <("$HOME/uactions/scripts/app/build-traefik-labels.sh" "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME:-false}")
+    TRAEFIK_ENABLE_ACME_EFF="${TRAEFIK_ENABLE_ACME:-true}"
+    mapfile -t BUILT_LABELS < <( \
+      ROUTER_NAME="$ROUTER_NAME" \
+      DOMAIN="$DOMAIN" \
+      CONTAINER_PORT="$CONTAINER_PORT" \
+      ENABLE_ACME="$TRAEFIK_ENABLE_ACME_EFF" \
+      DOMAIN_HOSTS="${DOMAIN_HOSTS:-}" \
+      DOMAIN_ALIASES="${DOMAIN_ALIASES:-${ALIASES:-}}" \
+      INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}" \
+      "$HOME/uactions/scripts/app/build-traefik-labels.sh"
+    )
     LABEL_ARGS+=("${BUILT_LABELS[@]}")
+    if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
+      LABEL_ARGS+=(--label "traefik.docker.network=${TRAEFIK_NETWORK_NAME}")
+    fi
   else
     LABEL_ARGS+=(--label "traefik.enable=true")
 
@@ -388,16 +401,19 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
     for idx in "${!UNIQ_HOSTS[@]}"; do
       d="${UNIQ_HOSTS[$idx]}"
       if [[ $idx -gt 0 ]]; then HOST_RULE_EXPR+=" || "; fi
-      HOST_RULE_EXPR+="Host(\`${d}\`)"
+      HOST_RULE_EXPR+="Host(\"${d}\")"
     done
     printf -v ROUTER_RULE_LABEL 'traefik.http.routers.%s.rule=%s' "$ROUTER_NAME" "$HOST_RULE_EXPR"
     LABEL_ARGS+=(--label "$ROUTER_RULE_LABEL")
     printf -v ROUTER_SERVICE_LABEL 'traefik.http.routers.%s.service=%s' "$ROUTER_NAME" "$ROUTER_NAME"
     LABEL_ARGS+=(--label "$ROUTER_SERVICE_LABEL")
-    LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.entrypoints=websecure")
-    LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls=true")
-    if [[ "${TRAEFIK_ENABLE_ACME:-false}" == "true" ]]; then
+    TRAEFIK_ENABLE_ACME_EFF="${TRAEFIK_ENABLE_ACME:-true}"
+    if [[ "$TRAEFIK_ENABLE_ACME_EFF" == "true" ]]; then
+      LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.entrypoints=websecure")
+      LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls=true")
       LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt")
+    else
+      LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}.entrypoints=web")
     fi
     printf -v SERVICE_PORT_LABEL 'traefik.http.services.%s.loadbalancer.server.port=%s' "$ROUTER_NAME" "$CONTAINER_PORT"
     LABEL_ARGS+=(--label "$SERVICE_PORT_LABEL")
@@ -405,12 +421,14 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
       LABEL_ARGS+=(--label "traefik.docker.network=${TRAEFIK_NETWORK_NAME}")
     fi
 
-    printf -v ROUTER_HTTP_RULE_LABEL 'traefik.http.routers.%s-http.rule=%s' "$ROUTER_NAME" "$HOST_RULE_EXPR"
-    LABEL_ARGS+=(--label "$ROUTER_HTTP_RULE_LABEL")
-    LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}-http.entrypoints=web")
-    LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}-http.service=${ROUTER_NAME}")
-    LABEL_ARGS+=(--label "traefik.http.middlewares.${ROUTER_NAME}-https-redirect.redirectscheme.scheme=https")
-    LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}-http.middlewares=${ROUTER_NAME}-https-redirect")
+    if [[ "$TRAEFIK_ENABLE_ACME_EFF" == "true" ]]; then
+      printf -v ROUTER_HTTP_RULE_LABEL 'traefik.http.routers.%s-http.rule=%s' "$ROUTER_NAME" "$HOST_RULE_EXPR"
+      LABEL_ARGS+=(--label "$ROUTER_HTTP_RULE_LABEL")
+      LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}-http.entrypoints=web")
+      LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}-http.service=${ROUTER_NAME}")
+      LABEL_ARGS+=(--label "traefik.http.middlewares.${ROUTER_NAME}-https-redirect.redirectscheme.scheme=https")
+      LABEL_ARGS+=(--label "traefik.http.routers.${ROUTER_NAME}-http.middlewares=${ROUTER_NAME}-https-redirect")
+    fi
   fi
 else
   echo "ℹ️  Traefik disabled; container will rely on host port mapping"
