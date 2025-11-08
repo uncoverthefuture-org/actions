@@ -221,6 +221,8 @@ runs:
         IN_CONTAINER_LISTENERS: ${{ steps.container_status.outputs.in_container_listeners }}
         APP_LABELS: ${{ steps.container_status.outputs.app_labels }}
         APP_NETWORKS: ${{ steps.container_status.outputs.app_networks }}
+        DNS_STRATEGY: ${{ steps.container_status.outputs.dns_strategy }}
+        RESOLV_PREVIEW: ${{ steps.container_status.outputs.resolv_conf_preview }}
         PODMAN_VERSION: ${{ steps.resources.outputs.podman_version }}
         PODS_TBL: ${{ steps.resources.outputs.pods_table }}
         NETWORKS_TBL: ${{ steps.resources.outputs.networks_table }}
@@ -402,6 +404,22 @@ runs:
 
         {
           echo "# Deployment Status Summary"
+          echo
+          echo "## DNS Resolver Inside Container"
+          echo
+          if [ "$CONT_PRESENT" = "yes" ]; then
+            echo "- **Strategy**: ${DNS_STRATEGY:-unknown}"
+            if [ -n "${RESOLV_PREVIEW}" ]; then
+              echo
+              echo "### /etc/resolv.conf (preview)"
+              echo
+              echo '```'
+              sanitize_output "$RESOLV_PREVIEW"
+              echo '```'
+            fi
+          else
+            echo "- **Strategy**: (container not present)"
+          fi
           echo
           echo "- **App**: ${APP_SLUG}"
           echo "- **Environment**: ${ENV_CANON}"

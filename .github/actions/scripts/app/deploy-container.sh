@@ -475,10 +475,31 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$TRAEFIK_NETWORK_NAME" ]]; then
   NETWORK_ARGS+=(--network "$TRAEFIK_NETWORK_NAME")
 fi
 
+# --- DNS/Resolver handling --------------------------------------------------------
+# Prefer mounting the host's real resolv.conf (systemd-resolved) so the container
+# inherits accurate nameservers. If not readable/present, fallback to public DNS.
+# Example:
+#   - Mount: -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro
+#   - Fallback: --dns 1.1.1.1 --dns 8.8.8.8
+DNS_ARGS=()
+RESOLV_SRC="/run/systemd/resolve/resolv.conf"
+if [ -r "$RESOLV_SRC" ] && [ -s "$RESOLV_SRC" ]; then
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "🧭 DNS: mounting host resolv.conf from $RESOLV_SRC"
+  fi
+  DNS_ARGS+=( -v "$RESOLV_SRC:/etc/resolv.conf:ro" )
+else
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "🧭 DNS: using public resolvers (1.1.1.1, 8.8.8.8)"
+  fi
+  DNS_ARGS+=( --dns 1.1.1.1 --dns 8.8.8.8 )
+fi
+
 podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
   "${PORT_ARGS[@]}" \
   --restart="$RESTART_POLICY" \
   --memory="$MEMORY_LIMIT" --memory-swap="$MEMORY_LIMIT" \
+  "${DNS_ARGS[@]}" \
   "${NETWORK_ARGS[@]}" \
   ${EXTRA_RUN_ARGS:+$EXTRA_RUN_ARGS} \
   "${LABEL_ARGS[@]}" \

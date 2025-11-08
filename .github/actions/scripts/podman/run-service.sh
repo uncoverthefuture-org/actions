@@ -74,9 +74,29 @@ fi
 
 # Run container
 echo "🚀 Starting service: $SERVICE_NAME"
+# --- DNS/Resolver handling --------------------------------------------------------
+# Prefer host resolv.conf from systemd-resolved; fallback to public DNS resolvers.
+# Example:
+#   - Mount: -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro
+#   - Fallback: --dns 1.1.1.1 --dns 8.8.8.8
+DNS_ARGS=()
+RESOLV_SRC="/run/systemd/resolve/resolv.conf"
+if [ -r "$RESOLV_SRC" ] && [ -s "$RESOLV_SRC" ]; then
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "🧭 DNS: mounting host resolv.conf from $RESOLV_SRC"
+  fi
+  DNS_ARGS+=( -v "$RESOLV_SRC:/etc/resolv.conf:ro" )
+else
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "🧭 DNS: using public resolvers (1.1.1.1, 8.8.8.8)"
+  fi
+  DNS_ARGS+=( --dns 1.1.1.1 --dns 8.8.8.8 )
+fi
+
 podman run -d --name "$SERVICE_NAME" \
   ${ENV_FILE:+--env-file "$ENV_FILE"} \
   "${PORT_ARGS[@]}" \
+  "${DNS_ARGS[@]}" \
   "${VOL_ARGS[@]}" \
   --restart="$RESTART_POLICY" \
   --memory="$MEMORY_LIMIT" --memory-swap="$MEMORY_LIMIT" \

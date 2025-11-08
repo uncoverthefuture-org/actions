@@ -146,8 +146,18 @@ runs:
             esac
           fi
 
+          # DNS/Resolver handling: prefer host resolv.conf mount; fallback to public DNS
+          DNS_ARGS=""
+          RSRC="/run/systemd/resolve/resolv.conf"
+          if [ -r "$RSRC" ] && [ -s "$RSRC" ]; then
+            DNS_ARGS="-v $RSRC:/etc/resolv.conf:ro"
+          else
+            DNS_ARGS="--dns 1.1.1.1 --dns 8.8.8.8"
+          fi
+
           run_podman run -d --name "$NAME" \
             ${PORT_ARGS} \
+            ${DNS_ARGS} \
             --restart=unless-stopped \
             --memory="$MEM" --memory-swap="$MEM" \
             ${VOL_ARGS} \

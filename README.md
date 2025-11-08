@@ -52,6 +52,29 @@ The actions are organized into categories. **Primary user-facing actions** are l
 - **Database support**: MySQL/PostgreSQL container deployment
 - **Service management**: Background workers and schedulers
 
+### DNS resolver handling (automatic)
+
+- All actions that start containers now ensure in-container DNS works by default.
+- Strategy:
+  - Prefer mounting the host's real resolv.conf from `/run/systemd/resolve/resolv.conf` into the container at `/etc/resolv.conf` (read-only).
+  - If that file is unavailable, fallback to public DNS resolvers `1.1.1.1` (Cloudflare) and `8.8.8.8` (Google).
+- Visibility:
+  - The deployment status summary includes a "DNS Resolver Inside Container" section indicating the strategy used and a short preview of `/etc/resolv.conf` from inside the app container.
+- Example (no changes required in workflows):
+
+```yaml
+- name: Deploy App
+  uses: ./.github/actions/app/ssh-container-deploy
+  with:
+    ssh_host: ${{ secrets.SSH_HOST }}
+    ssh_user: ${{ secrets.SSH_USER }}
+    ssh_key:  ${{ secrets.SSH_KEY }}
+    image_name: ${{ github.repository }}
+    image_tag: ${{ github.sha }}
+    # DNS is handled automatically: host resolv.conf mounted when available;
+    # otherwise --dns 1.1.1.1 --dns 8.8.8.8 are applied.
+```
+
 ## 📁 Directory Structure
 
 ```

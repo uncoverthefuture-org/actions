@@ -56,6 +56,12 @@ outputs:
   app_networks:
     description: 'Networks container is connected to'
     value: ${{ steps.inspect.outputs.app_networks }}
+  dns_strategy:
+    description: 'How DNS is configured inside the container (host_resolv_mount|public_dns|default_or_unknown)'
+    value: ${{ steps.inspect.outputs.dns_strategy }}
+  resolv_conf_preview:
+    description: 'First lines of /etc/resolv.conf inside the container (best-effort)'
+    value: ${{ steps.inspect.outputs.resolv_conf_preview }}
 
 runs:
   using: 'composite'
@@ -118,6 +124,28 @@ runs:
           APP_NETWORKS=$(${SSH_BASE[@]} env TPL="$TEMPLATE_NETS" CN="$CONTAINER_NAME" bash -lc 'podman inspect -f "$TPL" "$CN" 2>/dev/null | sed "s/ *$//"' 2>/dev/null || echo "")
         fi
 
+        # DNS strategy detection and resolv.conf preview
+        DNS_STRATEGY="default_or_unknown"
+        RESOLV_PREVIEW=""
+        if [ "$CONT_PRESENT" = "yes" ]; then
+          # Try to detect mount source for /etc/resolv.conf
+          TPL_MNT='{{ range .Mounts }}{{ if eq .Destination "/etc/resolv.conf" }}{{ .Source }}{{ end }}{{ end }}'
+          MNT_SRC=$(${SSH_BASE[@]} env TPL="$TPL_MNT" CN="$CONTAINER_NAME" bash -lc 'podman inspect -f "$TPL" "$CN" 2>/dev/null' 2>/dev/null || echo "")
+          # Read first lines of container /etc/resolv.conf
+          RESOLV_PREVIEW=$(${SSH_BASE[@]} "podman exec '${CONTAINER_NAME}' sh -lc 'head -n 12 /etc/resolv.conf 2>/dev/null || true'" 2>/dev/null || echo "")
+          if [ -n "$MNT_SRC" ] && [ "$MNT_SRC" = "/run/systemd/resolve/resolv.conf" ]; then
+            DNS_STRATEGY="host_resolv_mount"
+          else
+            if printf '%s' "$RESOLV_PREVIEW" | grep -Eq '(^|[[:space:]])(1\.1\.1\.1|8\.8\.8\.8)([[:space:]]|$)'; then
+              DNS_STRATEGY="public_dns"
+            fi
+          fi
+          # Fallback if preview empty and no mount detected
+          if [ -z "$RESOLV_PREVIEW" ] && [ -z "$MNT_SRC" ]; then
+            DNS_STRATEGY="default_or_unknown"
+          fi
+        fi
+
         # Output results (escaped for GitHub Actions)
         {
           echo "container_present=$CONT_PRESENT"
@@ -134,4 +162,8 @@ runs:
           echo "$APP_LABELS"
           echo "LABELS_EOF"
           echo "app_networks=$APP_NETWORKS"
+          echo "dns_strategy=$DNS_STRATEGY"
+          echo "resolv_conf_preview<<RESOLV_EOF"
+          echo "$RESOLV_PREVIEW"
+          echo "RESOLV_EOF"
         } >> "$GITHUB_OUTPUT"

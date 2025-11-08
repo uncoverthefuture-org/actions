@@ -475,7 +475,19 @@ runs:
           podman rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
           if [ "${{ inputs.migrate }}" = "true" ]; then
+            # DNS handling for migration ephemeral run
+            DNS_ARGS=()
+            RSRC="/run/systemd/resolve/resolv.conf"
+            if [ -r "$RSRC" ] && [ -s "$RSRC" ]; then
+              [ "${DEBUG:-false}" = "true" ] && echo "🧭 DNS (migrate): mount $RSRC"
+              DNS_ARGS+=( -v "$RSRC:/etc/resolv.conf:ro" )
+            else
+              [ "${DEBUG:-false}" = "true" ] && echo "🧭 DNS (migrate): public resolvers 1.1.1.1, 8.8.8.8"
+              DNS_ARGS+=( --dns 1.1.1.1 --dns 8.8.8.8 )
+            fi
+
             podman run --rm --env-file "$ENV_FILE" \
+              "${DNS_ARGS[@]}" \
               "$IMAGE" \
               ${{ inputs.migrate_cmd }}
           fi
@@ -501,8 +513,20 @@ runs:
             PORT_ARGS=(-p "$HOST_PORT:$CONTAINER_PORT")
           fi
 
+          # DNS handling for main app container
+          DNS_ARGS=()
+          RSRC="/run/systemd/resolve/resolv.conf"
+          if [ -r "$RSRC" ] && [ -s "$RSRC" ]; then
+            [ "${DEBUG:-false}" = "true" ] && echo "🧭 DNS: mount $RSRC"
+            DNS_ARGS+=( -v "$RSRC:/etc/resolv.conf:ro" )
+          else
+            [ "${DEBUG:-false}" = "true" ] && echo "🧭 DNS: public resolvers 1.1.1.1, 8.8.8.8"
+            DNS_ARGS+=( --dns 1.1.1.1 --dns 8.8.8.8 )
+          fi
+
           podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
             "${PORT_ARGS[@]}" \
+            "${DNS_ARGS[@]}" \
             --restart=${{ inputs.restart_policy }} \
             --memory='${{ inputs.memory_limit }}' --memory-swap='${{ inputs.memory_limit }}' \
             ${EXTRA_ARGS:+$EXTRA_ARGS} \
