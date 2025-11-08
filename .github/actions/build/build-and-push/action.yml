@@ -135,6 +135,16 @@ runs:
       uses: docker/setup-buildx-action@v3
     
     # ========================================================================
+    # STEP 3.4: Ensure bundled actions are available in the caller workspace
+    # ========================================================================
+    # Copies this repository's .github/actions directory into the workflow
+    # workspace so subsequent local-path `uses: ./.github/actions/...` resolve
+    # correctly when this action is consumed from external repositories.
+    # ========================================================================
+    - name: Ensure bundled actions
+      uses: uncoverthefuture-org/actions/.github/actions/common/ensure-bundled-actions@master
+
+    # ========================================================================
     # STEP 3.5: Prepare build-time env as a BuildKit secret
     # ========================================================================
     # Resolves the environment context and decodes the corresponding base64
@@ -148,7 +158,7 @@ runs:
     # ========================================================================
     - name: Prepare app env for build
       id: prep_env
-      uses: uncoverthefuture-org/actions/.github/actions/common/prepare-app-env@master
+      uses: ./.github/actions/common/prepare-app-env
       with:
         env_name: ${{ inputs.env_name }}
         env_key: ${{ inputs.env_key }}
