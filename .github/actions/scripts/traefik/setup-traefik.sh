@@ -268,12 +268,16 @@ else
   CONFIG_HASH="$(printf '%s' "$CONFIG_SRC" | shasum -a 256 | awk '{print $1}')"
 fi
 
+# Summarize desired config hash for visibility
+echo "🔎 Desired Traefik confighash: ${CONFIG_HASH}"
+
 if [[ "${TRAEFIK_FORCE_RESTART:-false}" = "true" ]]; then
   echo "::notice::TRAEFIK_FORCE_RESTART=true; bypassing reuse fast-path and recreating Traefik."
 else
   if podman container exists traefik >/dev/null 2>&1; then
     EXIST_HASH="$(podman inspect -f '{{ index .Config.Labels "org.uactions.traefik.confighash" }}' traefik 2>/dev/null || true)"
     STATUS="$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)"
+    echo "🔎 Remote Traefik confighash: ${EXIST_HASH:-missing} (status: ${STATUS})"
     if [[ "$EXIST_HASH" = "$CONFIG_HASH" ]]; then
       if [[ "$STATUS" = "running" ]]; then
         if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
@@ -325,6 +329,9 @@ else
         fi
         echo "::warning::Traefik start did not show listeners; will recreate container."
       fi
+    else
+      # Mismatch (or missing) confighash will lead to reconcile below
+      echo "::notice::Traefik confighash differs (remote=${EXIST_HASH:-missing} → desired=${CONFIG_HASH}); proceeding to reconcile ..."
     fi
   fi
 fi

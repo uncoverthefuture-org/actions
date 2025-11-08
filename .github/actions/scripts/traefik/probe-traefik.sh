@@ -179,15 +179,41 @@ post() {
   done
 
   err "Domain probe failed after $tries attempts (last HTTP $code)"
+  notice "--- Probe Summary ---"
+  notice "URL: https://$domain$path"
+  notice "Tries: $tries, Delay: ${delay}s, Last code: $code"
+  if [ -n "$router" ]; then
+    notice "Router: $router (declared service port: $port)"
+  fi
   if command -v podman >/dev/null 2>&1; then
-    notice "Recent Traefik logs:"
+    app_cid=""; app_name=""; label_port=""
+    for cid in $(podman ps -aq 2>/dev/null); do
+      val=$(podman inspect -f '{{ index .Config.Labels "traefik.http.services.'"$router"'.loadbalancer.server.port" }}' "$cid" 2>/dev/null || true)
+      if [ -n "$val" ]; then app_cid="$cid"; label_port="$val"; break; fi
+    done
+    if [ -n "$label_port" ]; then
+      notice "Detected label service port: $label_port"
+    fi
+    if [ -n "$app_cid" ]; then
+      app_name=$(podman inspect -f '{{.Name}}' "$app_cid" 2>/dev/null | sed 's,^/,,')
+      app_nets=$(podman inspect -f '{{ range $k := .NetworkSettings.Networks }}{{ $k }} {{ end }}' "$app_cid" 2>/dev/null || echo "")
+      traefik_nets=$(podman inspect -f '{{ range $k := .NetworkSettings.Networks }}{{ $k }} {{ end }}' traefik 2>/dev/null || echo "")
+      notice "App container: ${app_name:-unknown}"
+      notice "Networks: app=[$app_nets] traefik=[$traefik_nets]"
+    fi
+  fi
+  notice "--- Recent Traefik logs ---"
+  if command -v podman >/dev/null 2>&1; then
     podman logs --tail=120 traefik 2>/dev/null || true
   else
     notice "Traefik logs unavailable (podman not installed)"
   fi
-  if [ -n "$router" ]; then
-    notice "Router hint: $router (service port $port)"
-  fi
+  notice "--- Next steps ---"
+  notice "1) Ensure the app listens on the advertised port and on 0.0.0.0 (not 127.0.0.1)."
+  notice "   - If needed, set container_port input or WEB_CONTAINER_PORT/TARGET_PORT/PORT in .env"
+  notice "2) Verify both containers share a network (e.g., traefik-network)."
+  notice "   - podman inspect traefik | grep -A2 Networks; podman inspect <app> | grep -A2 Networks"
+  notice "3) If your health path is not '/', set probe_path accordingly."
   exit 4
 }
 

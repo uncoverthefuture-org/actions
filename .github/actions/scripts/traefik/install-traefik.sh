@@ -142,26 +142,50 @@ http:
   services: {}
 EOF
 
-if [[ -n "$SUDO_CMD" ]]; then
-  $SUDO_CMD cp "$CONFIG_TMP" /etc/traefik/traefik.yml
+if command -v sha256sum >/dev/null 2>&1; then
+  NEW_SHA=$(sha256sum "$CONFIG_TMP" | awk '{print $1}')
+  OLD_SHA=$([ -f /etc/traefik/traefik.yml ] && sha256sum /etc/traefik/traefik.yml | awk '{print $1}' || echo "")
 else
-  cp "$CONFIG_TMP" /etc/traefik/traefik.yml
+  NEW_SHA=$(shasum -a 256 "$CONFIG_TMP" | awk '{print $1}')
+  OLD_SHA=$([ -f /etc/traefik/traefik.yml ] && shasum -a 256 /etc/traefik/traefik.yml | awk '{print $1}' || echo "")
 fi
-echo "  ✓ Config written to /etc/traefik/traefik.yml"
+
+if [ -n "$OLD_SHA" ] && [ "$OLD_SHA" = "$NEW_SHA" ]; then
+  echo "  ✓ Config already up-to-date; skipping write"
+else
+  if [[ -n "$SUDO_CMD" ]]; then
+    $SUDO_CMD cp "$CONFIG_TMP" /etc/traefik/traefik.yml
+  else
+    cp "$CONFIG_TMP" /etc/traefik/traefik.yml
+  fi
+  if [ -n "$OLD_SHA" ]; then
+    echo "  ✏️  Updated Traefik config (content changed)"
+  else
+    echo "  ✓ Config written to /etc/traefik/traefik.yml"
+  fi
+fi
 
 echo "👥 Preparing dashboard basic-auth users file ..."
 DASHBOARD_USERS_FILE="/etc/traefik/dashboard-users"
 if [[ -n "$DASHBOARD_PASS_BCRYPT" ]]; then
   DASHBOARD_ENTRY="${DASHBOARD_USER}:${DASHBOARD_PASS_BCRYPT}"
-  printf '%s\n' "$DASHBOARD_ENTRY" | $SUDO_CMD tee "$DASHBOARD_USERS_FILE" >/dev/null
-  echo "  ✓ Dashboard credentials written for user '${DASHBOARD_USER}'"
+  if [ -f "$DASHBOARD_USERS_FILE" ] && grep -qF "$DASHBOARD_ENTRY" "$DASHBOARD_USERS_FILE" 2>/dev/null; then
+    echo "  ✓ Dashboard credentials already set for user '${DASHBOARD_USER}'"
+  else
+    printf '%s\n' "$DASHBOARD_ENTRY" | $SUDO_CMD tee "$DASHBOARD_USERS_FILE" >/dev/null
+    echo "  ✓ Dashboard credentials written for user '${DASHBOARD_USER}'"
+  fi
 else
-  $SUDO_CMD tee "$DASHBOARD_USERS_FILE" >/dev/null <<'EOF'
+  if [ -s "$DASHBOARD_USERS_FILE" ]; then
+    echo "  ✓ Dashboard users file present; leaving unchanged"
+  else
+    $SUDO_CMD tee "$DASHBOARD_USERS_FILE" >/dev/null <<'EOF'
 # Add bcrypt entries (htpasswd -nB <user>) to enable dashboard access.
 # Example:
 # admin:$2y$05$abcdefghijklmnopqrstuv1234567890abcdefghijklmno
 EOF
-  echo "::warning::No DASHBOARD_PASS_BCRYPT provided; wrote placeholder dashboard-users file. Update it with htpasswd entries before enabling dashboard."
+    echo "::warning::No DASHBOARD_PASS_BCRYPT provided; wrote placeholder dashboard-users file. Update it with htpasswd entries before enabling dashboard."
+  fi
 fi
 $SUDO_CMD chmod 640 "$DASHBOARD_USERS_FILE"
 $SUDO_CMD chown "$PODMAN_USER:$PODMAN_USER" "$DASHBOARD_USERS_FILE"
