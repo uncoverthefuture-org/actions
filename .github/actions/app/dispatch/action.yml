@@ -171,10 +171,10 @@ inputs:
     default: ''
   domain_prefix_staging:
     required: false
-    default: 'staging'
+    default: ''
   domain_prefix_dev:
     required: false
-    default: 'dev'
+    default: ''
   require_dns_match:
     required: false
     default: 'true'
