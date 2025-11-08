@@ -51,6 +51,24 @@ DOMAIN_INPUT="${DOMAIN_INPUT:-}"
 DOMAIN_DEFAULT="${DOMAIN_DEFAULT:-}"
 ROUTER_NAME="${ROUTER_NAME:-app}"
 
+# --- Image reference normalization ---------------------------------------------------
+# Ensure registry host and image repository path are lowercase to satisfy registry
+# constraints (e.g., GHCR requires repository paths to be lowercase). Keep tag as-is.
+if [ -n "$IMAGE_REGISTRY" ]; then
+  _REG_ORIG="$IMAGE_REGISTRY"
+  IMAGE_REGISTRY="$(printf '%s' "$IMAGE_REGISTRY" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${DEBUG:-false}" == "true" && "$_REG_ORIG" != "$IMAGE_REGISTRY" ]]; then
+    echo "🔤 Normalized registry to lowercase: $IMAGE_REGISTRY"
+  fi
+fi
+if [ -n "$IMAGE_NAME" ]; then
+  _NAME_ORIG="$IMAGE_NAME"
+  IMAGE_NAME="$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${DEBUG:-false}" == "true" && "$_NAME_ORIG" != "$IMAGE_NAME" ]]; then
+    echo "🔤 Normalized image name to lowercase: $IMAGE_NAME"
+  fi
+fi
+
 if [[ -z "$IMAGE_NAME" || -z "$APP_SLUG" || -z "$ENV_NAME" ]]; then
   echo "Error: IMAGE_NAME, APP_SLUG, and ENV_NAME are required." >&2
   exit 1

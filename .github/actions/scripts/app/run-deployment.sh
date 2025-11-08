@@ -69,6 +69,27 @@ DOMAIN_INPUT="${DOMAIN_INPUT:-}"
 DOMAIN_DEFAULT="${DOMAIN_DEFAULT:-}"
 ROUTER_NAME="${ROUTER_NAME:-}"
 
+# --- Image reference normalization ---------------------------------------------------
+# Some registries (including GHCR) require repository paths to be lowercase.
+# Normalize the registry host and image repository path to lowercase while
+# preserving the tag as-is. Example:
+#   Input:  ghcr.io/AdmissionBOOX/MyApp:Dev-SHA
+#   Becomes: ghcr.io/admissionboox/myapp:Dev-SHA
+if [ -n "$IMAGE_REGISTRY" ]; then
+  REG_ORIG="$IMAGE_REGISTRY"
+  IMAGE_REGISTRY="$(printf '%s' "$IMAGE_REGISTRY" | tr '[:upper:]' '[:lower:]')"
+  if [ "${DEBUG:-false}" = "true" ] && [ "$REG_ORIG" != "$IMAGE_REGISTRY" ]; then
+    echo "🔤 Normalized registry to lowercase: $IMAGE_REGISTRY"
+  fi
+fi
+if [ -n "$IMAGE_NAME" ]; then
+  NAME_ORIG="$IMAGE_NAME"
+  IMAGE_NAME="$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
+  if [ "${DEBUG:-false}" = "true" ] && [ "$NAME_ORIG" != "$IMAGE_NAME" ]; then
+    echo "🔤 Normalized image name to lowercase: $IMAGE_NAME"
+  fi
+fi
+
 # --- Environment Setup ---------------------------------------------------------------
 echo "🔧 Setting up deployment environment..."
 

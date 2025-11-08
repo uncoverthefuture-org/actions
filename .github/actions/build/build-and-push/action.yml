@@ -133,6 +133,45 @@ runs:
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
+    
+    # ========================================================================
+    # STEP 3.5: Prepare build-time env as a BuildKit secret
+    # ========================================================================
+    # Resolves the environment context and decodes the corresponding base64
+    # secret (e.g., DEV_ENV_B64/STAGING_ENV_B64/PROD_ENV_B64) into a temporary
+    # .env file in the runner workspace. This file is NOT baked into the image.
+    # It will be passed to the docker build as a BuildKit secret so the
+    # Dockerfile can source it during RUN steps that need configuration.
+    #
+    # If no secret exists for the current env, the step succeeds with
+    # an empty env_file output and the build continues without secrets.
+    # ========================================================================
+    - name: Prepare app env for build
+      id: prep_env
+      uses: ./.github/actions/common/prepare-app-env
+      with:
+        env_name: ${{ inputs.env_name }}
+        env_key: ${{ inputs.env_key }}
+        export_to_github_env: 'true'
+        secret_required: 'false'
+
+    # ========================================================================
+    # STEP 3.6: Compute BuildKit secret spec for docker/build-push-action
+    # ========================================================================
+    # When an env file exists, format the BuildKit secret specification as:
+    #   id=app_env,src=/absolute/path/to/.env
+    # This is consumed by docker/build-push-action via its `secrets:` input,
+    # enabling Dockerfile lines like:
+    #   RUN --mount=type=secret,id=app_env bash -c 'set -a;. /run/secrets/app_env; set +a; <build-cmd>'
+    # The secret is ephemeral and not persisted in image layers.
+    # ========================================================================
+    - name: Compute build secrets spec
+      id: secrets_spec
+      if: ${{ steps.prep_env.outputs.env_file != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'spec=%s\n' "id=app_env,src=${{ steps.prep_env.outputs.env_file }}" >> "$GITHUB_OUTPUT"
 
     # ========================================================================
     # STEP 4: Build and push Docker image
@@ -161,5 +200,6 @@ runs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+        secrets: ${{ steps.secrets_spec.outputs.spec }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
