@@ -107,7 +107,7 @@ runs:
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
-        container_name: ${{ env.CONT_NAME }}
+        container_name: ${{ inputs.container_name != '' && inputs.container_name || format('{0}-{1}', inputs.app_slug, inputs.env_name) }}
         tail_lines: '80'
 
     # Step 3: Gather resource statistics (via sub-action)
@@ -122,7 +122,7 @@ runs:
         ssh_user: ${{ inputs.ssh_user }}
         ssh_key: ${{ inputs.ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
-        container_name: ${{ env.CONT_NAME }}
+        container_name: ${{ inputs.container_name != '' && inputs.container_name || format('{0}-{1}', inputs.app_slug, inputs.env_name) }}
 
     # Step 4: Probe domain endpoint (via sub-action)
     # Captures HTTP status, timing, protocol, and forwarding headers.
@@ -400,6 +400,22 @@ runs:
           CLIENT_IPS=$(printf '%s\n' "$TRAEFIK_LOGS" | grep -Eo '([0-9]{1,3}[.]){3}[0-9]{1,3}' | grep -v '^127\.0\.0\.1$' | tail -n 200 | sort -u | tr '\n' ' ' | sed 's/ *$//' || true)
         fi
 
+        ROUTER_RULE=""
+        HOSTS_PARSED=""
+        MISMATCH=""
+        if [ -n "$APP_LABELS" ]; then
+          ROUTER_RULE=$(printf '%s\n' "$APP_LABELS" | grep -i -E "^traefik\\.http\\.routers\\..*\\.rule=" | head -n 1 | sed -E 's/^[^=]+=//' || true)
+          if [ -n "$ROUTER_RULE" ]; then
+            HOSTS_PARSED=$(printf '%s\n' "$ROUTER_RULE" | grep -Eo 'Host\("[^"]+"\)' | sed -E 's/^Host\("//' | sed -E 's/"\)$//' | tr '\n' ' ' | sed 's/ *$//')
+          fi
+        fi
+        if [ -n "$DOMAIN_EFFECTIVE" ] && [ -n "$HOSTS_PARSED" ]; then
+          case " $HOSTS_PARSED " in
+            *" $DOMAIN_EFFECTIVE "*) ;;
+            *) MISMATCH="yes" ;;
+          esac
+        fi
+
         now_utc=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
 
         {
@@ -424,6 +440,13 @@ runs:
           echo "- **App**: ${APP_SLUG}"
           echo "- **Environment**: ${ENV_CANON}"
           echo "- **Container name**: ${CONT_NAME}"
+          echo "- **Resolved domain (effective)**: ${DOMAIN_EFFECTIVE:-N/A}"
+          if [ "${TRAEFIK_ENABLED}" = "true" ]; then
+            if [ -n "${ROUTER_NAME}" ]; then echo "- **Traefik router**: ${ROUTER_NAME}"; fi
+            if [ -n "${ROUTER_RULE}" ]; then echo "- **Traefik rule**: ${ROUTER_RULE}"; fi
+            if [ -n "${HOSTS_PARSED}" ]; then echo "- **Hosts configured**: ${HOSTS_PARSED}"; fi
+            if [ "${MISMATCH}" = "yes" ]; then echo "- **Warning**: Effective domain not present in Traefik rule hosts"; fi
+          fi
           echo "- **Endpoint**: ${URL_LABEL}"
           echo "- **SSH Host**: ${SSH_HOST}"
           echo "- **Generated**: ${now_utc}"

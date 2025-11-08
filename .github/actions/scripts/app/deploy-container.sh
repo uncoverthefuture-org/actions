@@ -352,6 +352,7 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
     echo "🔀 Traefik mode for domain (router: $ROUTER_NAME)"
     echo "🔖 Traefik labels will advertise container port $CONTAINER_PORT"
   fi
+  echo "🌍 Resolved domain (effective): $DOMAIN"
   if [[ -x "$HOME/uactions/scripts/app/build-traefik-labels.sh" ]]; then
     TRAEFIK_ENABLE_ACME_EFF="${TRAEFIK_ENABLE_ACME:-true}"
     mapfile -t BUILT_LABELS < <( \
@@ -364,6 +365,24 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
       INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}" \
       "$HOME/uactions/scripts/app/build-traefik-labels.sh"
     )
+    RULE_LABEL=""
+    for val in "${BUILT_LABELS[@]}"; do
+      if [[ "$val" == traefik.http.routers."${ROUTER_NAME}".rule=* ]]; then
+        RULE_LABEL="$val"; break
+      fi
+    done
+    if [[ -n "$RULE_LABEL" ]]; then
+      RULE_EXPR="${RULE_LABEL#*=}"
+      echo "🧭 Traefik rule: ${RULE_EXPR}"
+      HOSTS_PARSED=$(printf '%s\n' "$RULE_EXPR" | grep -Eo 'Host\("[^"]+"\)' | sed -E 's/^Host\("//' | sed -E 's/"\)$//' | tr '\n' ' ' | sed 's/ *$//')
+      if [[ -n "$HOSTS_PARSED" ]]; then
+        echo "🧭 Hosts configured: ${HOSTS_PARSED}"
+        case " ${HOSTS_PARSED} " in
+          *" ${DOMAIN} "*) ;;
+          *) echo "::warning::Effective domain '${DOMAIN}' not present in Traefik rule hosts" ;;
+        esac
+      fi
+    fi
     LABEL_ARGS+=("${BUILT_LABELS[@]}")
     if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
       LABEL_ARGS+=(--label "traefik.docker.network=${TRAEFIK_NETWORK_NAME}")
@@ -396,6 +415,7 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
         seen+="${seen:+,}${h}"
       fi
     done
+    echo "🧭 Hosts configured: ${UNIQ_HOSTS[*]}"
     # Compose Host(`a`) || Host(`b`) for Traefik v3
     HOST_RULE_EXPR=""
     for idx in "${!UNIQ_HOSTS[@]}"; do
