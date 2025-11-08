@@ -148,7 +148,7 @@ runs:
     # ========================================================================
     - name: Prepare app env for build
       id: prep_env
-      uses: ./.github/actions/common/prepare-app-env
+      uses: uncoverthefuture-org/actions/.github/actions/common/prepare-app-env@master
       with:
         env_name: ${{ inputs.env_name }}
         env_key: ${{ inputs.env_key }}
