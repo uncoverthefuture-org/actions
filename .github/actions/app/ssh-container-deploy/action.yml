@@ -121,7 +121,7 @@ inputs: # All parameters accepted by this action
   # Host prep
   prepare_host: # If true, prepare a fresh Ubuntu host (podman, users, dirs)
     required: false
-    default: 'false'
+    default: 'true'
   install_podman: # Install Podman during host prep
     required: false
     default: 'true'
@@ -641,6 +641,11 @@ runs: # Composite action implementation
           DOMAIN_EFFECTIVE='${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }}'
           SERVICE_PORT='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'
           PROBE_PATH='${{ inputs.probe_path }}'
+          # Probe tuning: enable HTTP fallback and slightly extend timeout for slow DNS/ACME
+          export PROBE_HTTP_FALLBACK=true
+          export PROBE_TIMEOUT=12
+          export PROBE_TRIES=12
+          export PROBE_DELAY=5
           "$HOME/uactions/scripts/traefik/probe-traefik.sh" post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT" "$PROBE_PATH"
 
     # Respect summary_mode: full|light|off

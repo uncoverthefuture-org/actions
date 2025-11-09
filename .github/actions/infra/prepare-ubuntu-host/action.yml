@@ -356,7 +356,9 @@ runs:
         ssh_key: ${{ inputs.ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        ufw_allow_ports: ${{ inputs.ufw_allow_ports }}
+        # If the caller omits ufw_allow_ports, default to allowing 22,80,443
+        # to ensure HTTP/HTTPS reachability on fresh servers.
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || '22 80 443' }}
         enable_podman_forward: 'true'
         route_ports: '80 443'
         set_forward_policy_accept: 'true'

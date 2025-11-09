@@ -59,9 +59,20 @@ else
       HOSTS+=("$a")
     done
   fi
+  # Include www.<apex> only when DOMAIN itself is the apex (no subdomain)
   case "${INCLUDE_WWW_ALIAS,,}" in
     1|y|yes|true)
-      HOSTS+=("www.${DOMAIN}")
+      # derive apex from DOMAIN (last two labels)
+      dom_lower=$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')
+      IFS='.' read -r -a parts <<< "$dom_lower"
+      count=${#parts[@]}
+      if (( count >= 2 )); then
+        apex="${parts[count-2]}.${parts[count-1]}"
+        # if DOMAIN equals apex (no extra subdomain), add www.apex
+        if [[ "$dom_lower" = "$apex" ]]; then
+          HOSTS+=("www.${apex}")
+        fi
+      fi
       ;;
   esac
 fi

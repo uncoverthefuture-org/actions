@@ -407,22 +407,39 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
     fi
   else
     LABEL_ARGS+=(--label "traefik.enable=true")
-
-    # Build Host() list with optional aliases and www
-    HOSTS=("$DOMAIN")
-    if [[ -n "${DOMAIN_ALIASES:-}" ]]; then
-      # commas to spaces
-      read -r -a _aliases <<< "$(echo "${DOMAIN_ALIASES}" | tr ',' ' ')"
-      for a in "${_aliases[@]}"; do
-        [[ -z "$a" ]] && continue
-        HOSTS+=("$a")
-      done
+    
+    # Build Host() list with precedence:
+    # 1) DOMAIN_HOSTS (explicit, CSV/space-separated)
+    # 2) DOMAIN + DOMAIN_ALIASES (+ www.<apex> only when DOMAIN is apex)
+    HOSTS=()
+    if [[ -n "${DOMAIN_HOSTS:-}" ]]; then
+      # Use explicit list as-is when provided (overrides aliases/www behavior)
+      read -r -a HOSTS <<< "$(echo "${DOMAIN_HOSTS}" | tr ',' ' ')"
+    else
+      HOSTS+=("$DOMAIN")
+      if [[ -n "${DOMAIN_ALIASES:-}" ]]; then
+        # commas to spaces
+        read -r -a _aliases <<< "$(echo "${DOMAIN_ALIASES}" | tr ',' ' ')"
+        for a in "${_aliases[@]}"; do
+          [[ -z "$a" ]] && continue
+          HOSTS+=("$a")
+        done
+      fi
+      # Only include www.<apex> when DOMAIN itself is apex (no subdomain)
+      case "${INCLUDE_WWW_ALIAS,,}" in
+        1|y|yes|true)
+          dom_lower="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')"
+          IFS='.' read -r -a parts <<< "$dom_lower"
+          count=${#parts[@]}
+          if (( count >= 2 )); then
+            apex="${parts[count-2]}.${parts[count-1]}"
+            if [[ "$dom_lower" = "$apex" ]]; then
+              HOSTS+=("www.${apex}")
+            fi
+          fi
+          ;;
+      esac
     fi
-    case "${INCLUDE_WWW_ALIAS,,}" in
-      1|y|yes|true)
-        HOSTS+=("www.${DOMAIN}")
-        ;;
-    esac
     # De-duplicate
     UNIQ_HOSTS=()
     seen=""

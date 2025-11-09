@@ -32,6 +32,16 @@ case "$PROBE_PATH" in
   *) PROBE_PATH="/$PROBE_PATH" ;;
 esac
 
+# Probe tuning knobs (overridable via environment)
+# - PROBE_TRIES:   number of attempts before failing (default 12)
+# - PROBE_DELAY:   delay between attempts in seconds (default 5)
+# - PROBE_TIMEOUT: per-attempt curl timeout in seconds (default 8)
+# - PROBE_HTTP_FALLBACK: when true, try HTTP after HTTPS fails (default true)
+PROBE_TRIES="${PROBE_TRIES:-12}"
+PROBE_DELAY="${PROBE_DELAY:-5}"
+PROBE_TIMEOUT="${PROBE_TIMEOUT:-8}"
+PROBE_HTTP_FALLBACK="${PROBE_HTTP_FALLBACK:-true}"
+
 log() { printf '%s\n' "$*"; }
 err() { printf '❌ %s\n' "$*" >&2; }
 notice() { printf 'ℹ️  %s\n' "$*"; }
@@ -165,18 +175,50 @@ post() {
   fi
   require_cmd curl
 
-  local tries=12 delay=5 i=1 code=""
+  # DNS resolution hint before probing to surface misconfigured records early
+  if command -v getent >/dev/null 2>&1; then
+    resolved_ips=$(getent hosts "$domain" | awk '{print $1}' | tr '\n' ' ' | sed 's/ *$//')
+  elif command -v dig >/dev/null 2>&1; then
+    resolved_ips=$(dig +short "$domain" | tr '\n' ' ' | sed 's/ *$//')
+  elif command -v nslookup >/dev/null 2>&1; then
+    resolved_ips=$(nslookup "$domain" 2>/dev/null | awk '/^Address: /{print $2}' | tr '\n' ' ' | sed 's/ *$//')
+  else
+    resolved_ips=""
+  fi
+  if [ -n "$resolved_ips" ]; then
+    notice "DNS: $domain → $resolved_ips"
+  else
+    notice "DNS: $domain did not resolve (continuing; network probe may time out)"
+  fi
+
+  local tries="$PROBE_TRIES" delay="$PROBE_DELAY" timeout="$PROBE_TIMEOUT" i=1 code=""
   notice "Probing https://$domain$path via Traefik (up to $tries tries) ..."
   while [ $i -le $tries ]; do
-    code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 "https://$domain$path" || echo "000")
+    code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time "$timeout" "https://$domain$path" || echo "000")
     if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
-      log "✅ Domain probe succeeded (HTTP $code)"
+      log "✅ Domain probe succeeded (HTTPS, HTTP $code)"
       return 0
     fi
     notice "Attempt $i/$tries: got HTTP $code; retrying in ${delay}s ..."
     sleep "$delay"
     i=$((i+1))
   done
+
+  # Optional HTTP fallback (useful when ACME/TLS is not yet provisioned or disabled)
+  if [ "${PROBE_HTTP_FALLBACK,,}" = "true" ]; then
+    i=1; code=""
+    notice "HTTPS probe failed; trying HTTP fallback to http://$domain$path (up to $tries tries) ..."
+    while [ $i -le $tries ]; do
+      code=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time "$timeout" "http://$domain$path" || echo "000")
+      if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+        log "✅ Domain probe succeeded (HTTP, HTTP $code)"
+        return 0
+      fi
+      notice "Attempt $i/$tries: got HTTP $code; retrying in ${delay}s ..."
+      sleep "$delay"
+      i=$((i+1))
+    done
+  fi
 
   err "Domain probe failed after $tries attempts (last HTTP $code)"
   notice "--- Probe Summary ---"
