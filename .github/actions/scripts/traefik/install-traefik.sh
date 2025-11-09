@@ -87,7 +87,7 @@ fi
 echo "📝 Writing Traefik config to /etc/traefik/traefik.yml ..."
 CONFIG_TMP="$(mktemp)"
 trap 'rm -f "$CONFIG_TMP"' EXIT
-cat >"$CONFIG_TMP" <<EOF
+cat >"$CONFIG_TMP" <<'EOF'
 entryPoints:
   web:
     address: ":80"
@@ -141,6 +141,14 @@ http:
 
   services: {}
 EOF
+
+# Replace the literal placeholder with the concrete email value before hashing
+if [ -n "$TRAEFIK_EMAIL" ]; then
+  if command -v sed >/dev/null 2>&1; then
+    sed -i.bak -E 's#email:[[:space:]]*"\$\{TRAEFIK_EMAIL\}"#email: "'"$TRAEFIK_EMAIL"'"#' "$CONFIG_TMP" || true
+    rm -f "$CONFIG_TMP.bak" 2>/dev/null || true
+  fi
+fi
 
 if command -v sha256sum >/dev/null 2>&1; then
   NEW_SHA=$(sha256sum "$CONFIG_TMP" | awk '{print $1}')
