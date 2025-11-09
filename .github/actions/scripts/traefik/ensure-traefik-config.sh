@@ -78,3 +78,25 @@ else
     echo "🆕 Created new ACME storage at $ACME_PATH (600)"
   fi
 fi
+
+# Ensure certificatesResolvers.letsencrypt exists in user config with a concrete email value
+EMAIL="${TRAEFIK_EMAIL:-}"
+if [ -n "$EMAIL" ] && [ -f "$CONFIG_PATH" ]; then
+  if ! grep -q "certificatesResolvers:" "$CONFIG_PATH"; then
+    cat >>"$CONFIG_PATH" <<EOF
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "$EMAIL"
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+EOF
+  else
+    if grep -q "email:.*\${TRAEFIK_EMAIL" "$CONFIG_PATH"; then
+      if command -v sed >/dev/null 2>&1; then
+        sed -i.bak -E "s#email:[[:space:]]*\"?\\\${TRAEFIK_EMAIL[^\"}]*\"?#email: \"$EMAIL\"#" "$CONFIG_PATH" || true
+      fi
+    fi
+  fi
+fi

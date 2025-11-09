@@ -87,7 +87,7 @@ fi
 echo "📝 Writing Traefik config to /etc/traefik/traefik.yml ..."
 CONFIG_TMP="$(mktemp)"
 trap 'rm -f "$CONFIG_TMP"' EXIT
-cat >"$CONFIG_TMP" <<'EOF'
+cat >"$CONFIG_TMP" <<EOF
 entryPoints:
   web:
     address: ":80"
