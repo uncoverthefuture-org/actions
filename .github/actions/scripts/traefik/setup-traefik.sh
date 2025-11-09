@@ -608,10 +608,14 @@ if ! out=$("${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}" 2>&1); then
     fi
   elif printf '%s' "$out" | grep -qi 'rootlessport .* privileged port'; then
     # Rootless publishing to ports 80/443 is still blocked even after sysctl/setcap attempts.
-    # As a last-resort, and only when sudo is available, run Traefik as a ROOTFUL container
-    # to bind privileged ports. This avoids slirp4netns rootless restrictions.
+    # To avoid Traefik/app network mismatches, only allow host-network fallback when explicitly requested.
+    if [ "$TRAEFIK_USE_HOST_NETWORK" != "true" ]; then
+      echo "::error::Rootless publish to 80/443 failed and use_host_network=false. Refusing host-network fallback to avoid Traefik not seeing app containers on traefik-network."
+      echo "Hint: Either (a) enable low-port binding for rootless podman (sysctl net.ipv4.ip_unprivileged_port_start=80), or (b) set use_host_network=true explicitly in setup-traefik inputs (apps would also need to run on host)."
+      exit 1
+    fi
     if [ "$SUDO_AVAILABLE" = "yes" ]; then
-      echo "::notice::Rootless publish to 80/443 failed; attempting rootful fallback via sudo podman (host network)."
+      echo "::notice::Rootless publish to 80/443 failed; attempting rootful fallback via sudo podman (host network) because use_host_network=true."
       ROOT_SOCK="/var/run/podman/podman.sock"
       # Build minimal rootful run args using host networking to avoid user-network mismatch
       RUN_ARGS_ROOT=(

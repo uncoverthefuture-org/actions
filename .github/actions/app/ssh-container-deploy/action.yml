@@ -80,7 +80,7 @@ inputs: # All parameters accepted by this action
   traefik_use_host_network:
     description: 'Run Traefik on host network to avoid CNI DNS issues (true recommended).'
     required: false
-    default: 'true'
+    default: 'false'
   traefik_skip_upload:
     description: 'Skip uploading Traefik scripts (assumes scripts already installed on server).'
     required: false
