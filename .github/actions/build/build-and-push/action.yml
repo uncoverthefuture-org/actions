@@ -213,3 +213,7 @@ runs:
         secrets: ${{ steps.secrets_spec.outputs.spec }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        build-args: |
+          NEXT_PUBLIC_BASE_URL='https://dev-api.eventkaban.com/api'
+          NEXT_PUBLIC_APP_ENV=development
+          
