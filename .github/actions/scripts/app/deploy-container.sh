@@ -280,6 +280,7 @@ echo "Port args: ${PORT_ARGS[*]}"
 echo "DNS args: ${DNS_ARGS}"
 echo "Network args: ${NETWORK_ARGS[*]}"
 echo "Label args: ${LABEL_ARGS[*]}"
+echo "Env file: $ENV_FILE"
 echo "================================================================" >&2
 
 # Assemble and execute podman run with a DEBUG preview via shared helper.

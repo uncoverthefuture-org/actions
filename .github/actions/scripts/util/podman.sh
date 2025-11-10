@@ -216,12 +216,12 @@ podman_run_with_preview() {
   cmd+=("${label_args[@]}")
   cmd+=("$image_ref")
 
-  if [[ "$debug" == "true" ]]; then
+  # if [[ "$debug" == "true" ]]; then
     echo "🐚 podman run command (preview):"
     printf '  '
     printf '%q ' "${cmd[@]}"
     printf '\n'
-  fi
+  # fi
 
   "${cmd[@]}"
 }
