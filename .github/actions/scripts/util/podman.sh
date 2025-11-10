@@ -20,7 +20,8 @@
 #   3) Environment fallbacks: WEB_CONTAINER_PORT, TARGET_PORT, PORT (default 8080)
 #   Emits the resolved port to stdout and exits non-zero if invalid.
 #   Example:
-#     CONTAINER_PORT="$(podman_resolve_container_port "$CONTAINER_PORT_IN" "$TRAEFIK_ENABLED" "$ROUTER_NAME" "$CONTAINER_NAME" "${DEBUG:-false}")"
+
+
 podman_resolve_container_port() {
   local in_port="$1"; shift
   local traefik_enabled="$1"; shift
@@ -272,4 +273,11 @@ podman_pull_image() {
   fi
   export PODMAN_PULL_STATUS
   return 0
+}
+
+# --- Helper: run_podman as current user ---------------------------------------------
+# Trim repetition: every podman invocation runs as the SSH user, so centralize
+# the call. Candidate for util/podman.sh if reused elsewhere.
+run_podman() {
+  podman "$@"
 }

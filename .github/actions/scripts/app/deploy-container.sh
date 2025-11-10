@@ -130,13 +130,6 @@ fi
 HOST_PORT_FILE="${ENV_DIR}/.host-port"
 AUTO_HOST_PORT_ASSIGNED=false
 
-# --- Helper: run_podman as current user ---------------------------------------------
-# Trim repetition: every podman invocation runs as the SSH user, so centralize
-# the call. Candidate for util/podman.sh if reused elsewhere.
-run_podman() {
-  podman "$@"
-}
-
 # --- Inspect existing container for port reuse --------------------------------------
 # Check whether the target container already exists so we can harvest prior
 # port assignments and label data before replacing it.

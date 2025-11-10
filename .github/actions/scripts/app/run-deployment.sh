@@ -70,6 +70,8 @@ APP_SLUG=$(normalize_string "$APP_SLUG_RAW" "app slug")
 ENV_NAME_RAW="${ENV_NAME:-}"
 ENV_NAME=$(normalize_string "$ENV_NAME_RAW" "env name")
 REF_NAME="${GITHUB_REF_NAME:-}"
+ENV_B64="${ENV_B64:-}"
+ENV_CONTENT="${ENV_CONTENT:-}"
 REPO_NAME_RAW="${GITHUB_REPOSITORY:-}"
 CONTAINER_NAME_IN="${CONTAINER_NAME_IN:-}"
 ENV_FILE_PATH_BASE="${ENV_FILE_PATH_BASE:-${HOME}/deployments}"
@@ -110,19 +112,21 @@ if [ "${DEBUG:-false}" = "true" ]; then
 fi
 
 # --- Execute Deployment ---------------------------------------------------------------
+echo "================================================================"
 echo "🚀 Executing Setup Environmental Variable Script..."
 echo "================================================================"
 echo "  Script: $HOME/uactions/scripts/app/setup-env-file.sh"
 echo "  App: $APP_SLUG"
-echo "================================================================"
+
 
 # --- Export Deployment Variables -----------------------------------------------------
+echo "================================================================"
 echo "📤 Exporting deployment variables..."
 echo "================================================================"
 
 # Export environment variables for scripts
-export REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-}"
-export REMOTE_ENV_DIR="${REMOTE_ENV_DIR:-}"
+export REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-$ENV_B64}"
+export REMOTE_ENV_DIR="${REMOTE_ENV_DIR:-$ENV_FILE_PATH_BASE}"
 
 # Registry settings
 export IMAGE_REGISTRY

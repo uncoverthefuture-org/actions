@@ -392,41 +392,41 @@ runs: # Composite action implementation
           echo "env_b64 not found in job env for $varname (will proceed without writing .env)"
         fi
 
-    # - name: Deploy preflight # Validate inputs, optional host prep, write env, registry login
-    #   id: preflight
-    #   if: ${{ steps.reach.outputs.reachable == 'true' }}
-    #   uses: ./.github/actions/app/common/deploy-preflight
-    #   with:
-    #     ssh_host: ${{ inputs.ssh_host }} # Remote host
-    #     ssh_user: ${{ inputs.ssh_user }} # SSH user
-    #     ssh_key: ${{ inputs.ssh_key }} # SSH key for ssh_user
-    #     root_ssh_key: ${{ inputs.root_ssh_key }} # Optional root key
-    #     ssh_port: ${{ inputs.ssh_port }} # SSH port
-    #     ssh_fingerprint: ${{ inputs.ssh_fingerprint }} # Host key pin
-    #     app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }} # Derived slug
-    #     prepare_host: ${{ steps.eff.outputs.prepare_host }} # Run host prep?
-    #     install_podman: ${{ inputs.install_podman }} # Install podman
-    #     install_traefik: ${{ inputs.install_traefik }} # Install Traefik
-    #     traefik_enable_acme: ${{ inputs.enable_acme }} # Whether to enable ACME in Traefik setup
-    #     traefik_email: ${{ inputs.traefik_email }} # Email for LE certs
-    #     traefik_domain: ${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }} # FQDN for Traefik
-    #     traefik_domain_apex: ${{ steps.dfl.outputs.domain_apex }} # Apex for fallback email
-    #     env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }} # Env dir on host
-    #     additional_packages: ${{ inputs.additional_packages }} # Extra apt packages
-    #     ufw_allow_ports: ${{ inputs.ufw_allow_ports }} # Ports to allow via UFW
-    #     debug: ${{ inputs.debug }}
-    #     write_env_file: ${{ (inputs.write_env_file == 'true') || (inputs.env_b64 != '' || inputs.env_content != '' || steps.envsel.outputs.env_b64 != '') }} # Whether to write the .env
-    #     env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }} # Env name
-    #     env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }} # Base env path
-    #     env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || steps.envsel.outputs.env_b64 }} # Base64 payload for .env
-    #     env_content: ${{ inputs.env_content }} # Raw payload for .env
-    #     registry: ${{ inputs.registry }} # Registry host
-    #     registry_username: ${{ inputs.registry_username }} # Registry user
-    #     registry_token: ${{ inputs.registry_token }} # Registry token
-    #     registry_login: ${{ inputs.registry_login }} # Login before pull
-    #     perform_pull: 'false'
-    #     image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }} # Image path
-    #     image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }} # Tag
+    - name: Deploy preflight # Validate inputs, optional host prep, write env, registry login
+      id: preflight
+      if: ${{ steps.reach.outputs.reachable == 'true' }}
+      uses: ./.github/actions/app/common/deploy-preflight
+      with:
+        ssh_host: ${{ inputs.ssh_host }} # Remote host
+        ssh_user: ${{ inputs.ssh_user }} # SSH user
+        ssh_key: ${{ inputs.ssh_key }} # SSH key for ssh_user
+        root_ssh_key: ${{ inputs.root_ssh_key }} # Optional root key
+        ssh_port: ${{ inputs.ssh_port }} # SSH port
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }} # Host key pin
+        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }} # Derived slug
+        prepare_host: ${{ steps.eff.outputs.prepare_host }} # Run host prep?
+        install_podman: ${{ inputs.install_podman }} # Install podman
+        install_traefik: ${{ inputs.install_traefik }} # Install Traefik
+        traefik_enable_acme: ${{ inputs.enable_acme }} # Whether to enable ACME in Traefik setup
+        traefik_email: ${{ inputs.traefik_email }} # Email for LE certs
+        traefik_domain: ${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }} # FQDN for Traefik
+        traefik_domain_apex: ${{ steps.dfl.outputs.domain_apex }} # Apex for fallback email
+        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }} # Env dir on host
+        additional_packages: ${{ inputs.additional_packages }} # Extra apt packages
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports }} # Ports to allow via UFW
+        debug: ${{ inputs.debug }}
+        write_env_file: ${{ (inputs.write_env_file == 'true') || (inputs.env_b64 != '' || inputs.env_content != '' || steps.envsel.outputs.env_b64 != '') }} # Whether to write the .env
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }} # Env name
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }} # Base env path
+        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || steps.envsel.outputs.env_b64 }} # Base64 payload for .env
+        env_content: ${{ inputs.env_content }} # Raw payload for .env
+        registry: ${{ inputs.registry }} # Registry host
+        registry_username: ${{ inputs.registry_username }} # Registry user
+        registry_token: ${{ inputs.registry_token }} # Registry token
+        registry_login: ${{ inputs.registry_login }} # Login before pull
+        perform_pull: 'false'
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }} # Image path
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }} # Tag
 
     # # Fast-path: Only reconcile Traefik when explicitly enabled and allowed by ensure_traefik
     # # setup-traefik itself probes first and skips work when up_to_date (no-op).
@@ -577,6 +577,7 @@ runs: # Composite action implementation
           export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
           export DOMAIN_HOSTS='${{ inputs.domain_hosts }}'
           export DEBUG='${{ inputs.debug }}'
+
 
 
           echo "================================================================"
