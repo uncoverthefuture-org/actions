@@ -536,8 +536,9 @@ runs: # Composite action implementation
         port: ${{ inputs.ssh_port }}
         fingerprint: ${{ inputs.ssh_fingerprint }}
         script: |
+          echo "================================================================"
           echo "Deploying container via SSH..."
-
+          echo "================================================================"
           # Export deployment variables for run-deployment.sh
           # Env payload (optional): prefer explicit inputs, else resolved secret
           export ENV_B64='${{ inputs.env_b64 != '' && inputs.env_b64 || steps.envsel.outputs.env_b64 }}'
@@ -576,6 +577,34 @@ runs: # Composite action implementation
           export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
           export DOMAIN_HOSTS='${{ inputs.domain_hosts }}'
           export DEBUG='${{ inputs.debug }}'
+
+
+          echo "================================================================"
+          echo "Install scripts on remote host."
+          echo "================================================================"
+          mkdir -p "$HOME/uactions"
+          if [ ! -f "$HOME/uactions-scripts.tgz" ]; then
+            echo '::error::Missing $HOME/uactions-scripts.tgz on remote host (upload failed or was skipped)';
+            exit 1
+          fi
+          # Validate tarball integrity to avoid 'tar: empty archive'
+          if ! tar -tzf "$HOME/uactions-scripts.tgz" >/dev/null 2>&1; then
+            echo '::error::Invalid or empty tar archive at $HOME/uactions-scripts.tgz (tar -tzf failed)';
+            ls -lh "$HOME/uactions-scripts.tgz" || true
+            exit 1
+          fi
+          # Replace scripts atomically
+          TMPDIR="$(mktemp -d)"
+          tar -xzf "$HOME/uactions-scripts.tgz" -C "$TMPDIR"
+          rm -rf "$HOME/uactions/scripts"
+          mv "$TMPDIR/scripts" "$HOME/uactions/scripts"
+          rm -rf "$TMPDIR"
+          # Ensure all scripts are executable
+          find "$HOME/uactions/scripts" -type f -name '*.sh' -exec chmod +x {} +
+          # Stamp version marker for visibility
+          date -u +'%Y-%m-%d %H:%M:%S UTC' > "$HOME/uactions/scripts/.deployed_at"
+          echo '${{ github.sha }}' > "$HOME/uactions/scripts/.version"
+          echo "================================================================"
 
           "$HOME/uactions/scripts/app/run-deployment.sh"
 
