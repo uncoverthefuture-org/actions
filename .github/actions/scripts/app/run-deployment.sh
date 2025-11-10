@@ -42,11 +42,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # diagnostics. RUN_SCRIPT_NAME labels log entries for easier aggregation.
 RUN_SCRIPT_NAME="run-deployment.sh"
 # shellcheck source=../log/logging.sh
-source "${SCRIPT_DIR}/log/logging.sh"
+source "${SCRIPT_DIR}/../log/logging.sh"
 # shellcheck source=../util/normalize.sh
-source "${SCRIPT_DIR}/util/normalize.sh"
+source "${SCRIPT_DIR}/../util/normalize.sh"
 # shellcheck source=../util/sudo.sh
-source "${SCRIPT_DIR}/util/sudo.sh"
+source "${SCRIPT_DIR}/../util/sudo.sh"
 
 if [ "${DEBUG:-false}" = "true" ]; then set -x; fi
 
