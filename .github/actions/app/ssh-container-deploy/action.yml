@@ -88,7 +88,7 @@ inputs: # All parameters accepted by this action
   enable_dashboard:
     description: 'Enable Traefik dashboard exposure (paired with dashboard_publish_modes)'
     required: false
-    default: 'false'
+    default: 'true'
   dashboard_publish_modes:
     description: 'CSV of dashboard modes: http8080, https8080, subdomain, or both'
     required: false
@@ -267,32 +267,14 @@ runs: # Composite action implementation
         domain_prefix_staging: ${{ inputs.domain_prefix_staging }} # Staging prefix
         domain_prefix_dev: ${{ inputs.domain_prefix_dev }} # Dev prefix
 
-    - name: Check SSH reachability # Fast pre-probe to avoid noisy timeouts
+    - name: Probe SSH reachability # Fast pre-probe to avoid noisy timeouts
       id: reach
-      shell: bash
-      env:
-        SSH_HOST: ${{ inputs.ssh_host }}
-        SSH_USER: ${{ inputs.ssh_user }}
-        SSH_KEY: ${{ inputs.ssh_key }}
-        SSH_PORT: ${{ inputs.ssh_port }}
-      run: |
-        set -euo pipefail
-        KEY_FILE="$(mktemp)"
-        trap "rm -f '$KEY_FILE'" EXIT
-        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
-          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
-        else
-          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
-        fi
-        chmod 600 "$KEY_FILE"
-        ok=false
-        for i in 1 2 3; do
-          if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" true 2>/dev/null; then
-            ok=true; break
-          fi
-          sleep 5
-        done
-        if $ok; then echo "reachable=true" >> "$GITHUB_OUTPUT"; else echo "reachable=false" >> "$GITHUB_OUTPUT"; fi
+      uses: ./.github/actions/common/ssh-probe
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
 
     - name: Ensure server scripts bundle is deployed
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.ensure_scripts_deployed == 'true' }}
@@ -304,85 +286,85 @@ runs: # Composite action implementation
         ssh_port: ${{ inputs.ssh_port }}
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
 
-    - name: Check Traefik presence (optional) # Probe server for Traefik if enabled
-      id: check_traefik
-      if: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
-      uses: appleboy/ssh-action@v1.0.3
-      continue-on-error: true
-      with:
-        host: ${{ inputs.ssh_host }}
-        username: ${{ inputs.ssh_user }}
-        key: ${{ inputs.ssh_key }}
-        port: ${{ inputs.ssh_port }}
-        fingerprint: ${{ inputs.ssh_fingerprint }}
-        script: |
-          set -euo pipefail
-          # 1) systemd service (if Traefik was started as service)
-          if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet traefik; then exit 0; fi
-          # 2) podman container named "traefik" for the ssh user
-          if command -v podman >/dev/null 2>&1 && podman ps -a --format '{{.Names}}' | grep -qx traefik; then exit 0; fi
-          # 3) podman container named "traefik" via sudo (legacy/root-owned)
-          if command -v podman >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1 && sudo -n podman ps -a --format '{{.Names}}' 2>/dev/null | grep -qx traefik; then exit 0; fi
-          # Not found
-          exit 1
+    # - name: Check Traefik presence (optional) # Probe server for Traefik if enabled
+    #   id: check_traefik
+    #   if: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
+    #   uses: appleboy/ssh-action@v1.0.3
+    #   continue-on-error: true
+    #   with:
+    #     host: ${{ inputs.ssh_host }}
+    #     username: ${{ inputs.ssh_user }}
+    #     key: ${{ inputs.ssh_key }}
+    #     port: ${{ inputs.ssh_port }}
+    #     fingerprint: ${{ inputs.ssh_fingerprint }}
+    #     script: |
+    #       set -euo pipefail
+    #       # 1) systemd service (if Traefik was started as service)
+    #       if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet traefik; then exit 0; fi
+    #       # 2) podman container named "traefik" for the ssh user
+    #       if command -v podman >/dev/null 2>&1 && podman ps -a --format '{{.Names}}' | grep -qx traefik; then exit 0; fi
+    #       # 3) podman container named "traefik" via sudo (legacy/root-owned)
+    #       if command -v podman >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1 && sudo -n podman ps -a --format '{{.Names}}' 2>/dev/null | grep -qx traefik; then exit 0; fi
+    #       # Not found
+    #       exit 1
 
-    - name: Compute effective prepare_host # Auto-enable prep when Traefik missing
-      id: eff
-      shell: bash
-      env:
-        PREPARE_IN: ${{ inputs.prepare_host }}
-        ENABLE_TRAEFIK: ${{ inputs.enable_traefik }}
-        CHECK_OUTCOME: ${{ steps.check_traefik.outcome }}
-      run: |
-        set -euo pipefail
-        echo "🔍 Computing effective prepare_host..."
-        echo "  PREPARE_IN: '$PREPARE_IN'"
-        echo "  ENABLE_TRAEFIK: '$ENABLE_TRAEFIK'"
-        echo "  CHECK_OUTCOME: '$CHECK_OUTCOME'"
-        EFFECTIVE="false"
-        if [ "${PREPARE_IN}" = "true" ]; then
-          echo "  → Setting EFFECTIVE=true (explicit prepare_host=true)"
-          EFFECTIVE="true"
-        elif [ "${ENABLE_TRAEFIK}" = "true" ] && [ "${CHECK_OUTCOME:-skipped}" = "failure" ]; then
-          echo "  → Setting EFFECTIVE=true (Traefik enabled but check failed)"
-          EFFECTIVE="true"
-        else
-          echo "  → Keeping EFFECTIVE=false (no host prep needed)"
-        fi
-        echo "  EFFECTIVE: '$EFFECTIVE'"
-        printf 'prepare_host=%s\n' "$EFFECTIVE" >> "$GITHUB_OUTPUT"
+    # - name: Compute effective prepare_host # Auto-enable prep when Traefik missing
+    #   id: eff
+    #   shell: bash
+    #   env:
+    #     PREPARE_IN: ${{ inputs.prepare_host }}
+    #     ENABLE_TRAEFIK: ${{ inputs.enable_traefik }}
+    #     CHECK_OUTCOME: ${{ steps.check_traefik.outcome }}
+    #   run: |
+    #     set -euo pipefail
+    #     echo "🔍 Computing effective prepare_host..."
+    #     echo "  PREPARE_IN: '$PREPARE_IN'"
+    #     echo "  ENABLE_TRAEFIK: '$ENABLE_TRAEFIK'"
+    #     echo "  CHECK_OUTCOME: '$CHECK_OUTCOME'"
+    #     EFFECTIVE="false"
+    #     if [ "${PREPARE_IN}" = "true" ]; then
+    #       echo "  → Setting EFFECTIVE=true (explicit prepare_host=true)"
+    #       EFFECTIVE="true"
+    #     elif [ "${ENABLE_TRAEFIK}" = "true" ] && [ "${CHECK_OUTCOME:-skipped}" = "failure" ]; then
+    #       echo "  → Setting EFFECTIVE=true (Traefik enabled but check failed)"
+    #       EFFECTIVE="true"
+    #     else
+    #       echo "  → Keeping EFFECTIVE=false (no host prep needed)"
+    #     fi
+    #     echo "  EFFECTIVE: '$EFFECTIVE'"
+    #     printf 'prepare_host=%s\n' "$EFFECTIVE" >> "$GITHUB_OUTPUT"
 
-    - name: Fail fast if podman missing and not preparing host
-      if: ${{ steps.reach.outputs.reachable == 'true' }}
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ inputs.ssh_host }}
-        username: ${{ inputs.ssh_user }}
-        key: ${{ inputs.ssh_key }}
-        port: ${{ inputs.ssh_port }}
-        fingerprint: ${{ inputs.ssh_fingerprint }}
-        script: |
-          set -euo pipefail
-          # If host prep will run, let install-podman handle the privilege check and messaging
-          if [ '${{ steps.eff.outputs.prepare_host }}' = 'true' ]; then
-            exit 0
-          fi
-          # If podman exists, continue
-          if command -v podman >/dev/null 2>&1; then
-            exit 0
-          fi
-          # Otherwise, fail fast with explicit instructions
-          SUDO_AVAIL=no
-          if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO_AVAIL=yes; fi
-          echo '::error::Podman is required on the remote host to deploy containers, but it is not installed and prepare_host=false.' >&2
-          if [ '${{ inputs.show_root_install_hints }}' = 'true' ]; then
-            echo "Detected: user=$(id -un); sudo(non-interactive)=${SUDO_AVAIL}" >&2
-            echo 'Install manually as root then re-run:' >&2
-            echo '  sudo apt-get update -y' >&2
-            echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
-            echo 'Or re-run this action with prepare_host: true and root privileges.' >&2
-          fi
-          exit 1
+    # - name: Fail fast if podman missing and not preparing host
+    #   if: ${{ steps.reach.outputs.reachable == 'true' }}
+    #   uses: appleboy/ssh-action@v1.0.3
+    #   with:
+    #     host: ${{ inputs.ssh_host }}
+    #     username: ${{ inputs.ssh_user }}
+    #     key: ${{ inputs.ssh_key }}
+    #     port: ${{ inputs.ssh_port }}
+    #     fingerprint: ${{ inputs.ssh_fingerprint }}
+    #     script: |
+    #       set -euo pipefail
+    #       # If host prep will run, let install-podman handle the privilege check and messaging
+    #       if [ '${{ steps.eff.outputs.prepare_host }}' = 'true' ]; then
+    #         exit 0
+    #       fi
+    #       # If podman exists, continue
+    #       if command -v podman >/dev/null 2>&1; then
+    #         exit 0
+    #       fi
+    #       # Otherwise, fail fast with explicit instructions
+    #       SUDO_AVAIL=no
+    #       if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO_AVAIL=yes; fi
+    #       echo '::error::Podman is required on the remote host to deploy containers, but it is not installed and prepare_host=false.' >&2
+    #       if [ '${{ inputs.show_root_install_hints }}' = 'true' ]; then
+    #         echo "Detected: user=$(id -un); sudo(non-interactive)=${SUDO_AVAIL}" >&2
+    #         echo 'Install manually as root then re-run:' >&2
+    #         echo '  sudo apt-get update -y' >&2
+    #         echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
+    #         echo 'Or re-run this action with prepare_host: true and root privileges.' >&2
+    #       fi
+    #       exit 1
 
     - name: Resolve env secret (optional)
       id: envsel
@@ -410,170 +392,151 @@ runs: # Composite action implementation
           echo "env_b64 not found in job env for $varname (will proceed without writing .env)"
         fi
 
-    - name: Deploy preflight # Validate inputs, optional host prep, write env, registry login
-      id: preflight
+    # - name: Deploy preflight # Validate inputs, optional host prep, write env, registry login
+    #   id: preflight
+    #   if: ${{ steps.reach.outputs.reachable == 'true' }}
+    #   uses: ./.github/actions/app/common/deploy-preflight
+    #   with:
+    #     ssh_host: ${{ inputs.ssh_host }} # Remote host
+    #     ssh_user: ${{ inputs.ssh_user }} # SSH user
+    #     ssh_key: ${{ inputs.ssh_key }} # SSH key for ssh_user
+    #     root_ssh_key: ${{ inputs.root_ssh_key }} # Optional root key
+    #     ssh_port: ${{ inputs.ssh_port }} # SSH port
+    #     ssh_fingerprint: ${{ inputs.ssh_fingerprint }} # Host key pin
+    #     app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }} # Derived slug
+    #     prepare_host: ${{ steps.eff.outputs.prepare_host }} # Run host prep?
+    #     install_podman: ${{ inputs.install_podman }} # Install podman
+    #     install_traefik: ${{ inputs.install_traefik }} # Install Traefik
+    #     traefik_enable_acme: ${{ inputs.enable_acme }} # Whether to enable ACME in Traefik setup
+    #     traefik_email: ${{ inputs.traefik_email }} # Email for LE certs
+    #     traefik_domain: ${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }} # FQDN for Traefik
+    #     traefik_domain_apex: ${{ steps.dfl.outputs.domain_apex }} # Apex for fallback email
+    #     env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }} # Env dir on host
+    #     additional_packages: ${{ inputs.additional_packages }} # Extra apt packages
+    #     ufw_allow_ports: ${{ inputs.ufw_allow_ports }} # Ports to allow via UFW
+    #     debug: ${{ inputs.debug }}
+    #     write_env_file: ${{ (inputs.write_env_file == 'true') || (inputs.env_b64 != '' || inputs.env_content != '' || steps.envsel.outputs.env_b64 != '') }} # Whether to write the .env
+    #     env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }} # Env name
+    #     env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }} # Base env path
+    #     env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || steps.envsel.outputs.env_b64 }} # Base64 payload for .env
+    #     env_content: ${{ inputs.env_content }} # Raw payload for .env
+    #     registry: ${{ inputs.registry }} # Registry host
+    #     registry_username: ${{ inputs.registry_username }} # Registry user
+    #     registry_token: ${{ inputs.registry_token }} # Registry token
+    #     registry_login: ${{ inputs.registry_login }} # Login before pull
+    #     perform_pull: 'false'
+    #     image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }} # Image path
+    #     image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }} # Tag
+
+    # # Fast-path: Only reconcile Traefik when explicitly enabled and allowed by ensure_traefik
+    # # setup-traefik itself probes first and skips work when up_to_date (no-op).
+    # - name: Reconcile Traefik config (per-deploy)
+    #   if: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
+    #   uses: ./.github/actions/infra/setup-traefik
+    #   with:
+    #     ssh_host: ${{ inputs.ssh_host }}
+    #     ssh_user: ${{ inputs.ssh_user }}
+    #     ssh_key: ${{ inputs.ssh_key }}
+    #     ssh_port: ${{ inputs.ssh_port }}
+    #     traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || steps.preflight.outputs.traefik_email }}
+    #     enable_acme: ${{ inputs.enable_acme }}
+    #     use_host_network: ${{ inputs.traefik_use_host_network }}
+    #     network_name: ${{ inputs.traefik_network_name }}
+    #     dns_servers: ${{ inputs.dns_servers }}
+    #     skip_upload: ${{ inputs.traefik_skip_upload }}
+    #     enable_dashboard: ${{ inputs.enable_dashboard }}
+    #     dashboard_publish_modes: ${{ inputs.dashboard_publish_modes }}
+    #     dashboard_host: ${{ inputs.dashboard_host }}
+    #     dashboard_password: ${{ inputs.dashboard_password }}
+    #     dashboard_users_b64: ${{ inputs.dashboard_users_b64 }}
+
+    # # Guard preflight probe behind ensure_traefik to fully skip Traefik checks when requested
+    # - name: Traefik preflight health (fail fast)
+    #   if: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
+    #   uses: ./.github/actions/podman/remote-podman-exec
+    #   with:
+    #     ssh_host: ${{ inputs.ssh_host }}
+    #     ssh_user: ${{ inputs.ssh_user }}
+    #     ssh_key: ${{ inputs.ssh_key }}
+    #     ssh_port: ${{ inputs.ssh_port }}
+    #     ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+    #     connect_mode: user
+    #     debug: ${{ inputs.debug }}
+    #     inline_script: |
+    #       set -euo pipefail
+    #       "$HOME/uactions/scripts/traefik/probe-traefik.sh" preflight
+
+    # - name: Check remote deploy scripts presence
+    #   id: rchk
+    #   if: ${{ steps.reach.outputs.reachable == 'true' }}
+    #   shell: bash
+    #   env:
+    #     SSH_HOST: ${{ inputs.ssh_host }}
+    #     SSH_USER: ${{ inputs.ssh_user }}
+    #     SSH_KEY: ${{ inputs.ssh_key }}
+    #     SSH_PORT: ${{ inputs.ssh_port }}
+    #   run: |
+    #     set -euo pipefail
+    #     KEY_FILE="$(mktemp)"; trap "rm -f '$KEY_FILE'" EXIT
+    #     if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+    #       printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
+    #     else
+    #       printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+    #     fi
+    #     chmod 600 "$KEY_FILE"
+    #     if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+    #       "test -x \"\$HOME/uactions/scripts/app/run-deployment.sh\" && test -x \"\$HOME/uactions/scripts/app/deploy-container.sh\""; then
+    #       echo "have_remote=true" >> "$GITHUB_OUTPUT"
+    #     else
+    #       echo "have_remote=false" >> "$GITHUB_OUTPUT"
+    #     fi
+
+    # - name: Stage deployment scripts for upload
+    #   id: stage_deploy_scripts
+    #   if: ${{ steps.reach.outputs.reachable == 'true' && (inputs.skip_upload != 'true' || steps.rchk.outputs.have_remote != 'true') }}
+    #   shell: bash
+    #   env:
+    #     ACTION_PATH: ${{ github.action_path }}
+    #     WORKSPACE: ${{ github.workspace }}
+    #   run: |
+    #     set -euo pipefail
+    #     mkdir -p "$WORKSPACE/.uactions_cache"
+    #     # Try to copy both scripts from the action's scripts folder
+    #     SRC1="../../scripts/app/run-deployment.sh"
+    #     SRC2="../../scripts/app/deploy-container.sh"
+    #     cp "$ACTION_PATH/$SRC1" "$WORKSPACE/.uactions_cache/run-deployment.sh" 2>/dev/null || true
+    #     cp "$ACTION_PATH/$SRC2" "$WORKSPACE/.uactions_cache/deploy-container.sh" 2>/dev/null || true
+    #     have=false
+    #     [ -f "$WORKSPACE/.uactions_cache/run-deployment.sh" ] && have=true
+    #     [ -f "$WORKSPACE/.uactions_cache/deploy-container.sh" ] && have=true
+    #     echo "have_scripts=$have" >> "$GITHUB_OUTPUT"
+
+    # - name: Upload deployment scripts
+    #   if: ${{ steps.reach.outputs.reachable == 'true' && steps.stage_deploy_scripts.outputs.have_scripts == 'true' && (inputs.skip_upload != 'true' || steps.rchk.outputs.have_remote != 'true') }}
+    #   uses: appleboy/scp-action@v0.1.7
+    #   with:
+    #     host: ${{ inputs.ssh_host }}
+    #     username: ${{ inputs.ssh_user }}
+    #     key: ${{ inputs.ssh_key }}
+    #     port: ${{ inputs.ssh_port }}
+    #     source: ".uactions_cache/*.sh"
+    #     target: "/tmp"
+    #     overwrite: true
+    #     strip_components: 1
+    #     timeout: 15s
+    #     command_timeout: 30s
+
+    - name: Deploy container # Start/replace container with Traefik or port mapping
       if: ${{ steps.reach.outputs.reachable == 'true' }}
-      uses: ./.github/actions/app/common/deploy-preflight
-      with:
-        ssh_host: ${{ inputs.ssh_host }} # Remote host
-        ssh_user: ${{ inputs.ssh_user }} # SSH user
-        ssh_key: ${{ inputs.ssh_key }} # SSH key for ssh_user
-        root_ssh_key: ${{ inputs.root_ssh_key }} # Optional root key
-        ssh_port: ${{ inputs.ssh_port }} # SSH port
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }} # Host key pin
-        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }} # Derived slug
-        prepare_host: ${{ steps.eff.outputs.prepare_host }} # Run host prep?
-        install_podman: ${{ inputs.install_podman }} # Install podman
-        install_traefik: ${{ inputs.install_traefik }} # Install Traefik
-        traefik_enable_acme: ${{ inputs.enable_acme }} # Whether to enable ACME in Traefik setup
-        traefik_email: ${{ inputs.traefik_email }} # Email for LE certs
-        traefik_domain: ${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }} # FQDN for Traefik
-        traefik_domain_apex: ${{ steps.dfl.outputs.domain_apex }} # Apex for fallback email
-        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || steps.dfl.outputs.env_dir_path }} # Env dir on host
-        additional_packages: ${{ inputs.additional_packages }} # Extra apt packages
-        ufw_allow_ports: ${{ inputs.ufw_allow_ports }} # Ports to allow via UFW
-        debug: ${{ inputs.debug }}
-        write_env_file: ${{ (inputs.write_env_file == 'true') || (inputs.env_b64 != '' || inputs.env_content != '' || steps.envsel.outputs.env_b64 != '') }} # Whether to write the .env
-        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }} # Env name
-        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }} # Base env path
-        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || steps.envsel.outputs.env_b64 }} # Base64 payload for .env
-        env_content: ${{ inputs.env_content }} # Raw payload for .env
-        registry: ${{ inputs.registry }} # Registry host
-        registry_username: ${{ inputs.registry_username }} # Registry user
-        registry_token: ${{ inputs.registry_token }} # Registry token
-        registry_login: ${{ inputs.registry_login }} # Login before pull
-        perform_pull: 'false'
-        image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }} # Image path
-        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }} # Tag
-
-    # Fast-path: Only reconcile Traefik when explicitly enabled and allowed by ensure_traefik
-    # setup-traefik itself probes first and skips work when up_to_date (no-op).
-    - name: Reconcile Traefik config (per-deploy)
-      if: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
-      uses: ./.github/actions/infra/setup-traefik
-      with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || steps.preflight.outputs.traefik_email }}
-        enable_acme: ${{ inputs.enable_acme }}
-        use_host_network: ${{ inputs.traefik_use_host_network }}
-        network_name: ${{ inputs.traefik_network_name }}
-        dns_servers: ${{ inputs.dns_servers }}
-        skip_upload: ${{ inputs.traefik_skip_upload }}
-        enable_dashboard: ${{ inputs.enable_dashboard }}
-        dashboard_publish_modes: ${{ inputs.dashboard_publish_modes }}
-        dashboard_host: ${{ inputs.dashboard_host }}
-        dashboard_password: ${{ inputs.dashboard_password }}
-        dashboard_users_b64: ${{ inputs.dashboard_users_b64 }}
-
-    # Guard preflight probe behind ensure_traefik to fully skip Traefik checks when requested
-    - name: Traefik preflight health (fail fast)
-      if: ${{ inputs.ensure_traefik == 'true' && inputs.enable_traefik == 'true' && steps.reach.outputs.reachable == 'true' }}
-      uses: ./.github/actions/podman/remote-podman-exec
-      with:
-        ssh_host: ${{ inputs.ssh_host }}
-        ssh_user: ${{ inputs.ssh_user }}
-        ssh_key: ${{ inputs.ssh_key }}
-        ssh_port: ${{ inputs.ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
-        connect_mode: user
-        debug: ${{ inputs.debug }}
-        inline_script: |
-          set -euo pipefail
-          "$HOME/uactions/scripts/traefik/probe-traefik.sh" preflight
-
-    - name: Check remote deploy scripts presence
-      id: rchk
-      if: ${{ steps.reach.outputs.reachable == 'true' }}
-      shell: bash
-      env:
-        SSH_HOST: ${{ inputs.ssh_host }}
-        SSH_USER: ${{ inputs.ssh_user }}
-        SSH_KEY: ${{ inputs.ssh_key }}
-        SSH_PORT: ${{ inputs.ssh_port }}
-      run: |
-        set -euo pipefail
-        KEY_FILE="$(mktemp)"; trap "rm -f '$KEY_FILE'" EXIT
-        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
-          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
-        else
-          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
-        fi
-        chmod 600 "$KEY_FILE"
-        if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-          "test -x \"\$HOME/uactions/scripts/app/run-deployment.sh\" && test -x \"\$HOME/uactions/scripts/app/deploy-container.sh\""; then
-          echo "have_remote=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "have_remote=false" >> "$GITHUB_OUTPUT"
-        fi
-
-    - name: Stage deployment scripts for upload
-      id: stage_deploy_scripts
-      if: ${{ steps.reach.outputs.reachable == 'true' && (inputs.skip_upload != 'true' || steps.rchk.outputs.have_remote != 'true') }}
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        WORKSPACE: ${{ github.workspace }}
-      run: |
-        set -euo pipefail
-        mkdir -p "$WORKSPACE/.uactions_cache"
-        # Try to copy both scripts from the action's scripts folder
-        SRC1="../../scripts/app/run-deployment.sh"
-        SRC2="../../scripts/app/deploy-container.sh"
-        cp "$ACTION_PATH/$SRC1" "$WORKSPACE/.uactions_cache/run-deployment.sh" 2>/dev/null || true
-        cp "$ACTION_PATH/$SRC2" "$WORKSPACE/.uactions_cache/deploy-container.sh" 2>/dev/null || true
-        have=false
-        [ -f "$WORKSPACE/.uactions_cache/run-deployment.sh" ] && have=true
-        [ -f "$WORKSPACE/.uactions_cache/deploy-container.sh" ] && have=true
-        echo "have_scripts=$have" >> "$GITHUB_OUTPUT"
-
-    - name: Upload deployment scripts
-      if: ${{ steps.reach.outputs.reachable == 'true' && steps.stage_deploy_scripts.outputs.have_scripts == 'true' && (inputs.skip_upload != 'true' || steps.rchk.outputs.have_remote != 'true') }}
-      uses: appleboy/scp-action@v0.1.7
+      uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ inputs.ssh_host }}
         username: ${{ inputs.ssh_user }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
-        source: ".uactions_cache/*.sh"
-        target: "/tmp"
-        overwrite: true
-        strip_components: 1
-        timeout: 15s
-        command_timeout: 30s
-
-    - name: Deploy container # Start/replace container with Traefik or port mapping
-      if: ${{ steps.reach.outputs.reachable == 'true' }}
-      uses: ./.github/actions/podman/remote-podman-exec
-      with:
-        ssh_host: ${{ inputs.ssh_host }} # Remote host
-        ssh_user: ${{ inputs.ssh_user }} # SSH user
-        ssh_key: ${{ inputs.ssh_key }} # SSH key
-        root_ssh_key: ${{ inputs.root_ssh_key }} # Optional root key
-        ssh_port: ${{ inputs.ssh_port }} # SSH port
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint }} # Host key pin
-        podman_user: ${{ inputs.ssh_user }} # Podman user
-        connect_mode: user # Connection mode
-        debug: ${{ inputs.debug }}
-        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }} # Slug
-        env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }} # Env
-        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }} # Base env path
-        source_env: ${{ inputs.source_env }} # Source env before script
-        fail_if_env_missing: ${{ inputs.fail_if_env_missing }} # Fail on missing env
-        inline_script: |
-          set -euo pipefail
-          # Ensure scripts directory and move uploaded scripts (user-writable)
-          mkdir -p "$HOME/uactions/scripts/app"
-          if [ -f /tmp/run-deployment.sh ]; then
-            mv -f /tmp/run-deployment.sh "$HOME/uactions/scripts/app/run-deployment.sh"
-            chmod +x "$HOME/uactions/scripts/app/run-deployment.sh"
-          fi
-          if [ -f /tmp/deploy-container.sh ]; then
-            mv -f /tmp/deploy-container.sh "$HOME/uactions/scripts/app/deploy-container.sh"
-            chmod +x "$HOME/uactions/scripts/app/deploy-container.sh"
-          fi
+        fingerprint: ${{ inputs.ssh_fingerprint }}
+        script: |
+          echo "Deploying container via SSH..."
 
           # Export deployment variables for run-deployment.sh
           export IMAGE_REGISTRY='${{ inputs.registry }}'
@@ -611,17 +574,88 @@ runs: # Composite action implementation
           export DOMAIN_HOSTS='${{ inputs.domain_hosts }}'
           export DEBUG='${{ inputs.debug }}'
 
-          # Execute deployment: prefer run-deployment.sh; fallback to deploy-container.sh
-          if [ -x "$HOME/uactions/scripts/app/run-deployment.sh" ]; then
-            "$HOME/uactions/scripts/app/run-deployment.sh"
-          elif [ -x "$HOME/uactions/scripts/app/deploy-container.sh" ]; then
-            echo '::warning::run-deployment.sh not found; falling back to deploy-container.sh'
-            "$HOME/uactions/scripts/app/deploy-container.sh"
-          else
-            echo '::error::No deployment scripts found under $HOME/uactions/scripts/app' >&2
-            ls -la "$HOME/uactions/scripts/app" || true
-            exit 1
-          fi
+          
+          "$HOME/uactions/scripts/app/run-deployment.sh"
+
+          
+    # - name: Deploy container # Start/replace container with Traefik or port mapping
+    #   if: ${{ steps.reach.outputs.reachable == 'true' }}
+    #   uses: ./.github/actions/podman/remote-podman-exec
+    #   with:
+    #     ssh_host: ${{ inputs.ssh_host }} # Remote host
+    #     ssh_user: ${{ inputs.ssh_user }} # SSH user
+    #     ssh_key: ${{ inputs.ssh_key }} # SSH key
+    #     root_ssh_key: ${{ inputs.root_ssh_key }} # Optional root key
+    #     ssh_port: ${{ inputs.ssh_port }} # SSH port
+    #     ssh_fingerprint: ${{ inputs.ssh_fingerprint }} # Host key pin
+    #     podman_user: ${{ inputs.ssh_user }} # Podman user
+    #     connect_mode: user # Connection mode
+    #     debug: ${{ inputs.debug }}
+    #     app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }} # Slug
+    #     env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }} # Env
+    #     env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || steps.dfl.outputs.env_file_path }} # Base env path
+    #     source_env: ${{ inputs.source_env }} # Source env before script
+    #     fail_if_env_missing: ${{ inputs.fail_if_env_missing }} # Fail on missing env
+    #     inline_script: |
+    #       set -euo pipefail
+    #       # Ensure scripts directory and move uploaded scripts (user-writable)
+    #       mkdir -p "$HOME/uactions/scripts/app"
+    #       if [ -f /tmp/run-deployment.sh ]; then
+    #         mv -f /tmp/run-deployment.sh "$HOME/uactions/scripts/app/run-deployment.sh"
+    #         chmod +x "$HOME/uactions/scripts/app/run-deployment.sh"
+    #       fi
+    #       if [ -f /tmp/deploy-container.sh ]; then
+    #         mv -f /tmp/deploy-container.sh "$HOME/uactions/scripts/app/deploy-container.sh"
+    #         chmod +x "$HOME/uactions/scripts/app/deploy-container.sh"
+    #       fi
+
+    #       # Export deployment variables for run-deployment.sh
+    #       export IMAGE_REGISTRY='${{ inputs.registry }}'
+    #       export IMAGE_NAME='${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}'
+    #       export IMAGE_TAG='${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}'
+    #       export REGISTRY_LOGIN='${{ inputs.registry_login }}'
+    #       if [ '${{ inputs.registry }}' = 'ghcr.io' ]; then
+    #         export REGISTRY_USERNAME='${{ inputs.registry_username != '' && inputs.registry_username || github.actor }}'
+    #         export REGISTRY_TOKEN='${{ inputs.registry_token != '' && inputs.registry_token || github.token }}'
+    #       else
+    #         export REGISTRY_USERNAME='${{ inputs.registry_username }}'
+    #         export REGISTRY_TOKEN='${{ inputs.registry_token }}'
+    #       fi
+    #       export APP_SLUG='${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}'
+    #       export ENV_NAME='${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}'
+    #       export CONTAINER_NAME_IN='${{ inputs.container_name }}'
+    #       if [ -n '${{ inputs.env_file_path }}' ]; then
+    #         export ENV_FILE_PATH_BASE='${{ inputs.env_file_path }}'
+    #       else
+    #         export ENV_FILE_PATH_BASE='${{ inputs.deployment_base_dir }}'
+    #       fi
+    #       export HOST_PORT_IN='${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}'
+    #       export CONTAINER_PORT_IN='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'
+    #       export EXTRA_RUN_ARGS='${{ inputs.extra_run_args }}'
+    #       export RESTART_POLICY='${{ inputs.restart_policy }}'
+    #       export MEMORY_LIMIT='${{ inputs.memory_limit }}'
+    #       export TRAEFIK_ENABLED='${{ inputs.enable_traefik }}'
+    #       export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
+    #       export TRAEFIK_NETWORK_NAME='${{ inputs.traefik_network_name }}'
+    #       export DOMAIN_INPUT='${{ inputs.domain }}'
+    #       export DOMAIN_DEFAULT='${{ steps.dfl.outputs.domain_default }}'
+    #       export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'
+    #       export DOMAIN_ALIASES='${{ inputs.domain_aliases }}'
+    #       export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
+    #       export DOMAIN_HOSTS='${{ inputs.domain_hosts }}'
+    #       export DEBUG='${{ inputs.debug }}'
+
+    #       # Execute deployment: prefer run-deployment.sh; fallback to deploy-container.sh
+    #       if [ -x "$HOME/uactions/scripts/app/run-deployment.sh" ]; then
+    #         "$HOME/uactions/scripts/app/run-deployment.sh"
+    #       elif [ -x "$HOME/uactions/scripts/app/deploy-container.sh" ]; then
+    #         echo '::warning::run-deployment.sh not found; falling back to deploy-container.sh'
+    #         "$HOME/uactions/scripts/app/deploy-container.sh"
+    #       else
+    #         echo '::error::No deployment scripts found under $HOME/uactions/scripts/app' >&2
+    #         ls -la "$HOME/uactions/scripts/app" || true
+    #         exit 1
+    #       fi
 
     # Skip post-deploy Traefik probe entirely when ensure_traefik=false (full fast-path skip)
     - name: Traefik post-deploy routing check

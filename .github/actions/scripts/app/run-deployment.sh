@@ -35,39 +35,77 @@
 # ----------------------------------------------------------------------------
 set -euo pipefail
 
-LOG_FILE="/tmp/uactions_diag_latest.log"
-{ printf '===== run-deployment.sh start %s =====\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"; } >> "$LOG_FILE"
-exec > >(tee -a "$LOG_FILE") 2>&1
-trap 'code=$?; printf "run-deployment.sh error exit %s at %s\n" "$code" "$(date -u "+%Y-%m-%d %H:%M:%S UTC")" >> "$LOG_FILE"; exit "$code"' ERR
-trap '{ printf "===== run-deployment.sh end %s =====\n" "$(date -u "+%Y-%m-%d %H:%M:%S UTC")"; }' EXIT
+
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Logging bootstrap: source shared helper so all scripts emit consistent
+# diagnostics. RUN_SCRIPT_NAME labels log entries for easier aggregation.
+RUN_SCRIPT_NAME="run-deployment.sh"
+# shellcheck source=../log/logging.sh
+source "${SCRIPT_DIR}/log/logging.sh"
+# shellcheck source=../util/normalize.sh
+source "${SCRIPT_DIR}/util/normalize.sh"
+
 if [ "${DEBUG:-false}" = "true" ]; then set -x; fi
 
 # --- Resolve inputs -----------------------------------------------------------------
 # Get all environment variables with defaults
-IMAGE_REGISTRY="${IMAGE_REGISTRY:-}"
-IMAGE_NAME="${IMAGE_NAME:-}"
+# --- Image & registry inputs --------------------------------------------------------
+IMAGE_REGISTRY_RAW="${IMAGE_REGISTRY:-}"
+IMAGE_REGISTRY=$(normalize_string "$IMAGE_REGISTRY_RAW" "image registry")
+IMAGE_NAME_RAW="${IMAGE_NAME:-}"
+IMAGE_NAME=$(normalize_string "$IMAGE_NAME_RAW" "image name")
 IMAGE_TAG="${IMAGE_TAG:-}"
+
+# --- Registry authentication --------------------------------------------------------
 REGISTRY_LOGIN="${REGISTRY_LOGIN:-false}"
 REGISTRY_USERNAME="${REGISTRY_USERNAME:-}"
 REGISTRY_TOKEN="${REGISTRY_TOKEN:-}"
-APP_SLUG="${APP_SLUG:-}"
-ENV_NAME="${ENV_NAME:-}"
+
+# --- Application & environment metadata --------------------------------------------
+APP_SLUG_RAW="${APP_SLUG:-}"
+APP_SLUG=$(normalize_string "$APP_SLUG_RAW" "app slug")
+ENV_NAME_RAW="${ENV_NAME:-}"
+ENV_NAME=$(normalize_string "$ENV_NAME_RAW" "env name")
+REF_NAME="${GITHUB_REF_NAME:-}"
+REPO_NAME_RAW="${GITHUB_REPOSITORY:-}"
 CONTAINER_NAME_IN="${CONTAINER_NAME_IN:-}"
 ENV_FILE_PATH_BASE="${ENV_FILE_PATH_BASE:-${HOME}/deployments}"
+
+# --- Runtime configuration ---------------------------------------------------------
 HOST_PORT_IN="${HOST_PORT_IN:-}"
-# NOTE: Project standard default container port is 8080. Override via
-#   - input `container_port`, or
-#   - remote .env: WEB_CONTAINER_PORT / TARGET_PORT / PORT
 CONTAINER_PORT_IN="${CONTAINER_PORT_IN:-8080}"
 EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
+
+# --- Traefik & domain routing ------------------------------------------------------
 TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
 TRAEFIK_ENABLE_ACME="${TRAEFIK_ENABLE_ACME:-false}"
 TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-}"
 DOMAIN_INPUT="${DOMAIN_INPUT:-}"
 DOMAIN_DEFAULT="${DOMAIN_DEFAULT:-}"
 ROUTER_NAME="${ROUTER_NAME:-}"
+
+# --- User context ------------------------------------------------------
+CURRENT_USER="${CURRENT_USER:-$(id -un)}"
+CURRENT_UID="${CURRENT_UID:-$(id -u)}"
+CURRENT_GROUPS="${CURRENT_GROUPS:-$(id -Gn)}"
+
+
+
+# --- Environment Setup ---------------------------------------------------------------
+echo "🔧 Setting up deployment environment..."
+if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  SUDO_STATUS="available"
+else
+  SUDO_STATUS="not available"
+fi
+if [ "${DEBUG:-false}" = "true" ]; then
+  echo "👤 Remote user: ${CURRENT_USER} (uid:${CURRENT_UID})"
+  echo "👥 Groups: ${CURRENT_GROUPS}"
+  echo "🔑 sudo: ${SUDO_STATUS}"
+fi
 
 # --- Image reference normalization ---------------------------------------------------
 # Some registries (including GHCR) require repository paths to be lowercase.
@@ -90,154 +128,32 @@ if [ -n "$IMAGE_NAME" ]; then
   fi
 fi
 
-# --- Environment Setup ---------------------------------------------------------------
-echo "🔧 Setting up deployment environment..."
 
-CURRENT_USER="$(id -un)"
-CURRENT_UID="$(id -u)"
-CURRENT_GROUPS="$(id -Gn)"
-if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  SUDO_STATUS="available"
-else
-  SUDO_STATUS="not available"
-fi
-if [ "${DEBUG:-false}" = "true" ]; then
-  echo "👤 Remote user: ${CURRENT_USER} (uid:${CURRENT_UID})"
-  echo "👥 Groups: ${CURRENT_GROUPS}"
-  echo "🔑 sudo: ${SUDO_STATUS}"
-fi
 
-# Determine environment name from GitHub ref if not provided
-if [ -z "$ENV_NAME" ]; then
-  REF_NAME="${GITHUB_REF_NAME:-}"
-  case "$REF_NAME" in
-    main|master|production) ENV_NAME='production' ;;
-    stage|staging) ENV_NAME='staging' ;;
-    dev|develop|development) ENV_NAME='development' ;;
-    refs/tags/*) ENV_NAME='production' ;;
-    *) ENV_NAME='development' ;;
-  esac
-fi
 
-# Normalize 'dev' to 'development'
-if [ "$ENV_NAME" = "dev" ]; then
-  ENV_NAME='development'
-fi
+# --- Execute Deployment ---------------------------------------------------------------
+echo "🚀 Executing Setup Environmental Variable Script..."
+echo "  Script: $HOME/uactions/scripts/app/setup-env-file.sh"
+echo "  App: $APP_SLUG"
 
-# Determine app slug from GitHub repository if not provided
-if [ -z "$APP_SLUG" ]; then
-  REPO_NAME_RAW="${GITHUB_REPOSITORY:-}"
-  if [ -n "$REPO_NAME_RAW" ]; then
-    REPO_NAME="${REPO_NAME_RAW##*/}"
-  else
-    REPO_NAME='app'
-  fi
-  APP_SLUG=$(printf '%s' "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-fi
-
-# Setup environment directories and files
-# Normalize base env path on REMOTE host to ensure user-owned location
-# - Expand ~ to $HOME
-# - Rebase /home/runner to $HOME (avoids leaking runner HOME to remote)
-ENV_ROOT_DEFAULT="${HOME}/deployments"
-ENV_BASE_IN="${ENV_FILE_PATH_BASE:-$ENV_ROOT_DEFAULT}"
-case "$ENV_BASE_IN" in
-  "~/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#~/}" ;;
-  "/home/runner/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#/home/runner/}" ;;
-  *) ENV_ROOT="$ENV_BASE_IN" ;;
-esac
-ENV_DIR="${ENV_ROOT}/${ENV_NAME}/${APP_SLUG}"
-
-if [ "${DEBUG:-false}" = "true" ]; then
-  echo "📁 Preparing environment directory"
-fi
-# If dir exists but is not writable, attempt to fix ownership once with sudo
-if [ -d "$ENV_DIR" ] && [ ! -w "$ENV_DIR" ]; then
-  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
-  fi
-fi
-# If still not writable, attempt to fix ownership with sudo; otherwise fail
-if [ ! -d "$ENV_DIR" ]; then
-  if ! mkdir -p "$ENV_DIR" 2>/dev/null; then
-    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-      sudo mkdir -p "$ENV_DIR" 2>/dev/null || true
-      sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
-    else
-      echo "::error::Unable to create environment directory" >&2
-      echo "Hint: ensure the SSH user owns the parent directory or use a user-writable location." >&2
-      exit 1
-    fi
-  fi
-fi
-# If still not writable, attempt to fix ownership with sudo; otherwise fail
-if [ ! -w "$ENV_DIR" ]; then
-  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
-  fi
-fi
-if [ ! -w "$ENV_DIR" ]; then
-  echo "::error::Environment directory $ENV_DIR is not writable by $CURRENT_USER" >&2
-  echo "Hint: run 'chown -R $CURRENT_USER $ENV_DIR' on the host or select a user-owned path." >&2
-  exit 1
-fi
-
-ENV_FILE="${ENV_DIR}/.env"
-if [ ! -f "$ENV_FILE" ]; then
-  if [ "${DEBUG:-false}" = "true" ]; then
-    echo "📄 Creating environment file"
-  fi
-  {
-    printf '# Generated by uactions package (run-deployment.sh).\n'
-    printf '# Populate with KEY=VALUE pairs required for your deployment.\n'
-  } > "$ENV_FILE"
-  chmod 600 "$ENV_FILE" >/dev/null 2>&1 || true
-else
-  if [ "${DEBUG:-false}" = "true" ]; then
-    echo "📄 Environment file already exists"
-  fi
-fi
-
-# Source environment variables if file exists
-if [ -f "$ENV_FILE" ]; then
-  if [ "${DEBUG:-false}" = "true" ]; then
-    echo "🔄 Sourcing environment variables"
-  fi
-  set -a
-  . "$ENV_FILE"
-  set +a
-else
-  echo "::warning::Environment file $ENV_FILE not found; continuing without sourcing"
-fi
 
 # Export environment variables for scripts
 export REMOTE_ENV_FILE="$ENV_FILE"
 export REMOTE_ENV_DIR="$ENV_DIR"
 
-# --- Podman Helper -------------------------------------------------------------------
-echo "🐳 Verifying podman availability..."
+# # --- Script Staging ------------------------------------------------------------------
+# echo "📦 Staging deployment scripts..."
+# cd /
 
-# Verify podman is available
-if ! command -v podman >/dev/null 2>&1; then
-  echo '::error::podman is not installed on the remote host'
-  echo 'Error: podman is not installed on the remote host.' >&2
-  echo 'Hint: enable host preparation in the calling action (prepare_host: true) or install podman manually.' >&2
-  exit 1
-fi
+# # Ensure scripts directory exists (user-writable location)
+# mkdir -p "$HOME/uactions/scripts/app"
 
-# --- Script Staging ------------------------------------------------------------------
-echo "📦 Staging deployment scripts..."
-cd /
-
-# Ensure scripts directory exists (user-writable location)
-mkdir -p "$HOME/uactions/scripts/app"
-
-# Move uploaded deploy script if it exists
-if [ -f /tmp/deploy-container.sh ]; then
-  echo "📋 Moving deploy-container.sh to $HOME/uactions/scripts/app/"
-  mv -f /tmp/deploy-container.sh "$HOME/uactions/scripts/app/deploy-container.sh"
-  chmod +x "$HOME/uactions/scripts/app/deploy-container.sh"
-fi
+# # Move uploaded deploy script if it exists
+# if [ -f /tmp/deploy-container.sh ]; then
+#   echo "📋 Moving deploy-container.sh to $HOME/uactions/scripts/app/"
+#   mv -f /tmp/deploy-container.sh "$HOME/uactions/scripts/app/deploy-container.sh"
+#   chmod +x "$HOME/uactions/scripts/app/deploy-container.sh"
+# fi
 
 # --- Export Deployment Variables -----------------------------------------------------
 echo "📤 Exporting deployment variables..."

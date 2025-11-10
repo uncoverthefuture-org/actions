@@ -18,37 +18,80 @@ inputs:
   ssh_fingerprint:
     description: 'SSH host key fingerprint'
     required: false
+  probe_reachable:
+    description: 'Optional reachability result (true|false) from common/ssh-probe.'
+    required: false
+    default: ''
+  probe_attempts:
+    description: 'Optional attempt count to surface in logs when probe fails.'
+    required: false
+    default: ''
+  probe_last_error:
+    description: 'Optional error message from the probe for better failure context.'
+    required: false
+    default: ''
+
+# ==========================================================================
+# OUTPUTS (Example usage)
+# --------------------------------------------------------------------------
+#   - name: Deploy shared scripts
+#     id: scripts
+#     uses: ./.github/actions/infra/deploy-server-scripts
+#     with:
+#       ssh_host: ${{ inputs.ssh_host }}
+#       ssh_user: ${{ inputs.ssh_user }}
+#       ssh_key: ${{ inputs.ssh_key }}
+#       probe_reachable: ${{ steps.probe.outputs.reachable }}
+#   - name: Skip follow-up when offline
+#     if: ${{ steps.scripts.outputs.status != 'deployed' }}
+#     run: echo "Server scripts unavailable"
+# ==========================================================================
+
+outputs:
+  reachable:
+    description: 'Normalized reachability result (defaults to true when no probe provided).'
+    value: ${{ steps.summary.outputs.reachable }}
+  has_bundle:
+    description: 'Whether a scripts tarball was staged locally for upload.'
+    value: ${{ steps.summary.outputs.has_bundle }}
+  upload_status:
+    description: "Outcome of the SCP upload step ('success', 'failure', or 'skipped')."
+    value: ${{ steps.summary.outputs.upload_status }}
+  install_status:
+    description: "Outcome of the remote install step ('success', 'failure', or 'skipped')."
+    value: ${{ steps.summary.outputs.install_status }}
+  status:
+    description: "High-level deployment status: deployed | upload_failed | install_failed | skipped_no_bundle | skipped_host_unreachable."
+    value: ${{ steps.summary.outputs.status }}
 
 runs:
   using: 'composite'
   steps:
-    # Probe: Check SSH reachability to avoid noisy timeouts
-    - name: Check SSH reachability
+    # Probe: We now rely on shared common/ssh-probe, so this action simply trusts probe_reachable.
+    # When probe_reachable is empty, default to 'true' to maintain backwards compatibility, meaning
+    # callers can omit the probe entirely if they still want the legacy behavior.
+    - name: Resolve probe result
       id: reach
       shell: bash
       env:
-        SSH_HOST: ${{ inputs.ssh_host }}
-        SSH_USER: ${{ inputs.ssh_user }}
-        SSH_KEY: ${{ inputs.ssh_key }}
-        SSH_PORT: ${{ inputs.ssh_port }}
+        PROBE_REACHABLE: ${{ inputs.probe_reachable }}
+        PROBE_ATTEMPTS: ${{ inputs.probe_attempts }}
+        PROBE_LAST_ERROR: ${{ inputs.probe_last_error }}
       run: |
         set -euo pipefail
-        KEY_FILE="$(mktemp)"
-        trap "rm -f '$KEY_FILE'" EXIT
-        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
-          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$KEY_FILE"
-        else
-          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+        reachable="${PROBE_REACHABLE:-}"
+        if [ -z "$reachable" ]; then
+          reachable=true
         fi
-        chmod 600 "$KEY_FILE"
-        ok=false
-        for i in 1 2 3; do
-          if ssh -i "$KEY_FILE" -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" true 2>/dev/null; then
-            ok=true; break
+        echo "reachable=$reachable" >> "$GITHUB_OUTPUT"
+        if [ "$reachable" != "true" ]; then
+          attempts="${PROBE_ATTEMPTS:-unknown}"
+          # Emit the last error message so users can debug without re-running the probe locally.
+          printf '::notice title=Server scripts skipped::SSH probe reported unreachable after %s attempt(s).\n' "$attempts"
+          if [ -n "$PROBE_LAST_ERROR" ]; then
+            printf 'Last SSH error:\n%s\n' "$PROBE_LAST_ERROR"
           fi
-          sleep 5
-        done
-        if $ok; then echo "reachable=true" >> "$GITHUB_OUTPUT"; else echo "reachable=false" >> "$GITHUB_OUTPUT"; fi
+        fi
     # Stage: Tar up the entire scripts directory into workspace cache
     - name: Stage scripts bundle
       id: stage
@@ -96,6 +139,7 @@ runs:
 
     # Execute: Extract into $HOME/uactions, set executable bits, stamp version
     - name: Install scripts on remote host
+      id: install
       if: ${{ steps.reach.outputs.reachable == 'true' && steps.stage.outputs.has_bundle == 'true' && steps.upload.outcome == 'success' }}
       uses: ./.github/actions/podman/remote-podman-exec
       with:
@@ -133,8 +177,73 @@ runs:
           date -u +'%Y-%m-%d %H:%M:%S UTC' > "$HOME/uactions/scripts/.deployed_at"
           echo '${{ github.sha }}' > "$HOME/uactions/scripts/.version"
 
-    - name: Skip notice (host unreachable)
+    # Summarize: Normalize outcomes into reusable outputs for callers.
+    - name: Record deployment status
+      id: summary
+      if: ${{ always() }}
+      shell: bash
+      env:
+        PROBE_REACHABLE: ${{ inputs.probe_reachable }}
+        REACHABLE: ${{ steps.reach.outputs.reachable }}
+        HAS_BUNDLE: ${{ steps.stage.outputs.has_bundle }}
+        UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        INSTALL_OUTCOME: ${{ steps.install.outcome }}
+      run: |
+        set -euo pipefail
+
+        reachable="${REACHABLE:-${PROBE_REACHABLE:-}}"
+        if [ -z "$reachable" ]; then
+          reachable=true
+        fi
+
+        has_bundle="${HAS_BUNDLE:-false}"
+        if [ -z "$has_bundle" ]; then
+          has_bundle=false
+        fi
+
+        upload_status="${UPLOAD_OUTCOME:-skipped}"
+        install_status="${INSTALL_OUTCOME:-skipped}"
+
+        status="skipped_host_unreachable"
+        if [ "$reachable" = "true" ]; then
+          status="skipped_no_bundle"
+          if [ "$has_bundle" = "true" ]; then
+            status="upload_failed"
+            if [ "$upload_status" = "success" ]; then
+              status="install_failed"
+              if [ "$install_status" = "success" ]; then
+                status="deployed"
+              fi
+            fi
+          fi
+        fi
+
+        {
+          printf 'reachable=%s\n' "$reachable"
+          printf 'has_bundle=%s\n' "$has_bundle"
+          printf 'upload_status=%s\n' "$upload_status"
+          printf 'install_status=%s\n' "$install_status"
+          printf 'status=%s\n' "$status"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Fail when host unreachable
       if: ${{ steps.reach.outputs.reachable != 'true' }}
       shell: bash
+      env:
+        PROBE_ATTEMPTS: ${{ inputs.probe_attempts }}
+        PROBE_LAST_ERROR: ${{ inputs.probe_last_error }}
+        SUMMARY_STATUS: ${{ steps.summary.outputs.status }}
       run: |
-        echo '::notice::SSH host not reachable; skipped deploying server scripts.'
+        set -euo pipefail
+        echo "::error title=Server scripts deployment blocked::SSH probe reported the host as unreachable, so infra/deploy-server-scripts cannot continue."
+        if [ -n "$PROBE_ATTEMPTS" ]; then
+          echo "::error::Probe attempts: $PROBE_ATTEMPTS"
+        fi
+        if [ -n "$PROBE_LAST_ERROR" ]; then
+          printf '::error::Last SSH error message::\n%s\n' "$PROBE_LAST_ERROR"
+        fi
+        if [ -n "$SUMMARY_STATUS" ]; then
+          echo "::error::Recorded status: $SUMMARY_STATUS"
+        fi
+        echo '::error::Unable to prepare host with managed scripts due to unreachable SSH host.'
+        exit 1

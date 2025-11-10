@@ -48,6 +48,13 @@ The actions are organized into categories. **Primary user-facing actions** are l
 - **Environment-based deployments**: Automatic `/var/deployments/<environment>/<app_slug>/.env` structure with branch-aware detection
 - **SSH-based execution**: Secure remote operations with user/key authentication
 - **Podman containerization**: Rootless container deployments
+- **Shared utility helpers**: Normalization, validation, and port utilities live under `.github/actions/scripts/util/`. For example:
+
+  ```bash
+  # Normalize image identifiers before passing to deployment scripts
+  source "${SCRIPT_DIR}/../util/normalize.sh"
+  IMAGE_NAME=$(normalize_string "$IMAGE_NAME" "image name")
+  ```
 - **Traefik reverse proxy**: Automatic router/service labels with Let's Encrypt certificates (Apache vhosts remain optional)
 - **Database support**: MySQL/PostgreSQL container deployment
 - **Service management**: Background workers and schedulers

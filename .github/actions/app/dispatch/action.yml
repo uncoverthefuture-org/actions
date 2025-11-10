@@ -248,22 +248,22 @@ runs:
         env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
         image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
 
-    - name: write-remote-env-file
-      if: ${{ inputs.subaction == 'write-remote-env-file' }}
-      uses: ./.github/actions/app/write-remote-env-file
-      with:
-        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
-        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.params.outputs.json).root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.params.outputs.json).ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.params.outputs.json).ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.params.outputs.json).podman_user }}
-        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.params.outputs.json).connect_mode }}
-        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
-        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
-        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
-        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
+    # - name: write-remote-env-file
+    #   if: ${{ inputs.subaction == 'write-remote-env-file' }}
+    #   uses: ./.github/actions/app/write-remote-env-file
+    #   with:
+    #     ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
+    #     ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
+    #     ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
+    #     root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.params.outputs.json).root_ssh_key }}
+    #     ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.params.outputs.json).ssh_port }}
+    #     ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.params.outputs.json).ssh_fingerprint }}
+    #     podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.params.outputs.json).podman_user }}
+    #     connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.params.outputs.json).connect_mode }}
+    #     env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
+    #     env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
+    #     env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
+    #     env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
 
     - name: ssh-django-api-deploy
       if: ${{ inputs.subaction == 'ssh-django-api-deploy' }}
@@ -460,6 +460,7 @@ runs:
         dashboard_users_b64: ${{ inputs.dashboard_users_b64 != '' && inputs.dashboard_users_b64 || fromJSON(steps.params.outputs.json).dashboard_users_b64 }}
         ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
         domain_hosts: ${{ inputs.domain_hosts != '' && inputs.domain_hosts || fromJSON(steps.params.outputs.json).domain_hosts }}
+    
     - name: ssh-react-deploy
       if: ${{ inputs.subaction == 'ssh-react-deploy' }}
       uses: ./.github/actions/app/ssh-react-deploy

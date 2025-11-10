@@ -33,213 +33,107 @@
 # ----------------------------------------------------------------------------
 set -euo pipefail
 
+# Shared helpers
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../util/ports.sh
+source "${SCRIPT_DIR}/../util/ports.sh"
+# shellcheck source=../util/validate.sh
+source "${SCRIPT_DIR}/../util/validate.sh"
+# shellcheck source=../util/normalize.sh
+source "${SCRIPT_DIR}/../util/normalize.sh"
+
 # --- Resolve inputs -----------------------------------------------------------------
-IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io}"
-IMAGE_NAME="${IMAGE_NAME:-}"          # required
+# --- Image & registry inputs --------------------------------------------------------
+IMAGE_REGISTRY_RAW="${IMAGE_REGISTRY:-ghcr.io}"
+IMAGE_REGISTRY=$(normalize_string "$IMAGE_REGISTRY_RAW" "image registry")
+IMAGE_NAME_RAW="${IMAGE_NAME:-}"
+IMAGE_NAME=$(normalize_string "$IMAGE_NAME_RAW" "image name")
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-APP_SLUG="${APP_SLUG:-}"              # required
-ENV_NAME="${ENV_NAME:-}"              # required
+
+# --- Application & environment metadata --------------------------------------------
+APP_SLUG_RAW="${APP_SLUG:-}"
+APP_SLUG=$(normalize_string "$APP_SLUG_RAW" "app slug")
+ENV_NAME_RAW="${ENV_NAME:-}"
+ENV_NAME=$(normalize_string "$ENV_NAME_RAW" "env name")
 CONTAINER_NAME_IN="${CONTAINER_NAME_IN:-}"
 ENV_FILE_PATH_BASE="${ENV_FILE_PATH_BASE:-${HOME}/deployments}"
+
+# --- Runtime configuration ---------------------------------------------------------
 HOST_PORT_IN="${HOST_PORT_IN:-}"
 CONTAINER_PORT_IN="${CONTAINER_PORT_IN:-}"
 EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
+
+# --- Traefik & domain routing ------------------------------------------------------
 TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
 DOMAIN_INPUT="${DOMAIN_INPUT:-}"
 DOMAIN_DEFAULT="${DOMAIN_DEFAULT:-}"
 ROUTER_NAME="${ROUTER_NAME:-app}"
 
-# --- Image reference normalization ---------------------------------------------------
-# Ensure registry host and image repository path are lowercase to satisfy registry
-# constraints (e.g., GHCR requires repository paths to be lowercase). Keep tag as-is.
-if [ -n "$IMAGE_REGISTRY" ]; then
-  _REG_ORIG="$IMAGE_REGISTRY"
-  IMAGE_REGISTRY="$(printf '%s' "$IMAGE_REGISTRY" | tr '[:upper:]' '[:lower:]')"
-  if [[ "${DEBUG:-false}" == "true" && "$_REG_ORIG" != "$IMAGE_REGISTRY" ]]; then
-    echo "🔤 Normalized registry to lowercase: $IMAGE_REGISTRY"
-  fi
-fi
-if [ -n "$IMAGE_NAME" ]; then
-  _NAME_ORIG="$IMAGE_NAME"
-  IMAGE_NAME="$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
-  if [[ "${DEBUG:-false}" == "true" && "$_NAME_ORIG" != "$IMAGE_NAME" ]]; then
-    echo "🔤 Normalized image name to lowercase: $IMAGE_NAME"
-  fi
-fi
+# Collect required fields and validate via shared helper (example: ensure
+# IMAGE_NAME, APP_SLUG, ENV_NAME are set before proceeding).
+# Example:
+#   declare -A cfg=([APP_SLUG]="demo" [ENV_NAME]="production");
+#   validate_required cfg APP_SLUG ENV_NAME
+declare -A config=(
+  [IMAGE_NAME]="${IMAGE_NAME:-}"
+  [APP_SLUG]="${APP_SLUG:-}"
+  [ENV_NAME]="${ENV_NAME:-}"
+)
 
-if [[ -z "$IMAGE_NAME" || -z "$APP_SLUG" || -z "$ENV_NAME" ]]; then
-  echo "Error: IMAGE_NAME, APP_SLUG, and ENV_NAME are required." >&2
-  exit 1
-fi
+# Validate required keys
+validate_required config IMAGE_NAME APP_SLUG ENV_NAME
 
 echo "🔧 Preparing deploy"
-
-CURRENT_USER="$(id -un)"
-CURRENT_UID="$(id -u)"
-CURRENT_GROUPS="$(id -Gn)"
-if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  SUDO_STATUS="available"
-else
-  SUDO_STATUS="not available"
-fi
-if [[ "${DEBUG:-false}" == "true" ]]; then
-  echo "👤 Remote user: ${CURRENT_USER} (uid:${CURRENT_UID})"
-  echo "👥 Groups: ${CURRENT_GROUPS}"
-  echo "🔑 sudo: ${SUDO_STATUS}"
-fi
-
 echo "  • App:        $APP_SLUG"
 echo "  • Env:        $ENV_NAME"
 echo "  • Image:      ${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 # --- Compute names and paths --------------------------------------------------------
+# Derive final container name: honor explicit input but fall back to
+# <app-slug>-<env> when unset so multiple environments coexist predictably.
 CONTAINER_NAME="$CONTAINER_NAME_IN"
 if [[ -z "$CONTAINER_NAME" ]]; then
   CONTAINER_NAME="${APP_SLUG}-${ENV_NAME}"
 fi
 
 if [[ "${DEBUG:-false}" == "true" ]]; then
+  # Example: DEBUG=true APP_SLUG=demo ENV_NAME=staging prints "demo-staging"
   echo "📛 Container name: $CONTAINER_NAME"
 fi
 
-# Resolve environment directory on the REMOTE host
-# Prefer normalized path exported by run-deployment.sh; otherwise compute and normalize
+# Environment directory and file are prepared by run-deployment/setup-env-file.
+# These exports ensure downstream scripts operate on the same resolved paths.
 ENV_DIR="${REMOTE_ENV_DIR:-}"
-if [[ -z "$ENV_DIR" ]]; then
-  # Normalize base path: expand ~ to $HOME and rebase /home/runner -> $HOME
-  ENV_BASE_IN="${ENV_FILE_PATH_BASE:-${HOME}/deployments}"
-  case "$ENV_BASE_IN" in
-    "~/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#~/}" ;;
-    "/home/runner/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#/home/runner/}" ;;
-    *) ENV_ROOT="$ENV_BASE_IN" ;;
-  esac
-  ENV_DIR="${ENV_ROOT%/}/${ENV_NAME}/${APP_SLUG}"
-fi
-
-if [[ "${DEBUG:-false}" == "true" ]]; then
-  echo "📁 Preparing environment directory"
-fi
-# Attempt to ensure directory exists; fallback to sudo mkdir + chown when needed
-if [ -d "$ENV_DIR" ] && [ ! -w "$ENV_DIR" ]; then
-  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
-  fi
-fi
-if [ ! -d "$ENV_DIR" ]; then
-  if ! mkdir -p "$ENV_DIR" 2>/dev/null; then
-    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-      sudo mkdir -p "$ENV_DIR" 2>/dev/null || true
-      sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
-    else
-      echo "::error::Unable to create env directory $ENV_DIR" >&2
-      echo "Hint: ensure the SSH user owns the parent directory or pick a user-writable location." >&2
-      exit 1
-    fi
-  fi
-fi
-if [ ! -w "$ENV_DIR" ]; then
-  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
-  fi
-fi
-if [ ! -w "$ENV_DIR" ]; then
-  echo "::error::Environment directory $ENV_DIR is not writable by $CURRENT_USER" >&2
-  echo "Hint: run 'chown -R $CURRENT_USER $ENV_DIR' on the host or choose a user-owned path." >&2
+ENV_FILE="${REMOTE_ENV_FILE:-}"
+if [[ -z "$ENV_DIR" || -z "$ENV_FILE" ]]; then
+  echo "::error::Deployment environment variables REMOTE_ENV_DIR/REMOTE_ENV_FILE not set." >&2
+  echo "Hint: ensure run-deployment.sh invoked setup-env-file before calling deploy-container." >&2
   exit 1
 fi
 
-ENV_FILE="${REMOTE_ENV_FILE:-${ENV_DIR}/.env}"
-
 if [[ "${DEBUG:-false}" == "true" ]]; then
-  echo "📄 Using env file"
+  # Confirm to operators which directory/file the script will mutate.
+  echo "� Using prepared environment directory: $ENV_DIR"
+  echo "📄 Using env file: $ENV_FILE"
 fi
 
-ENV_PARENT="$(dirname "$ENV_FILE")"
-if [ ! -d "$ENV_PARENT" ]; then
-  # Ensure parent directory; if blocked, fallback to sudo mkdir + chown
-  if ! mkdir -p "$ENV_PARENT" 2>/dev/null; then
-    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-      sudo mkdir -p "$ENV_PARENT" 2>/dev/null || true
-      sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_PARENT" 2>/dev/null || true
-    else
-      echo "::error::Unable to create env parent directory $ENV_PARENT" >&2
-      exit 1
-    fi
-  fi
-fi
-if [ ! -w "$ENV_PARENT" ]; then
-  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_PARENT" 2>/dev/null || true
-  fi
-fi
-if [ ! -w "$ENV_PARENT" ]; then
-  echo "::warning::Env parent directory is not writable by $CURRENT_USER" >&2
-  echo "Hint: adjust permissions or set ENV_FILE_PATH_BASE to a user-owned path." >&2
-  exit 1
-fi
-
+# Persisted host-port assignments live alongside the env file; track whether
+# the script auto-selects a port so we can emit guidance at the end.
 HOST_PORT_FILE="${ENV_DIR}/.host-port"
 AUTO_HOST_PORT_ASSIGNED=false
 
-validate_port_number() {
-  local port="$1"
-  if [[ ! "$port" =~ ^[0-9]+$ ]]; then
-    return 1
-  fi
-  if (( port < 1 || port > 65535 )); then
-    return 1
-  fi
-  return 0
-}
-
-port_in_use() {
-  local port="$1"
-  if ! validate_port_number "$port"; then
-    return 1
-  fi
-  if command -v ss >/dev/null 2>&1; then
-    if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -q -E "(:|^)$port$"; then
-      return 0
-    fi
-  fi
-  if command -v lsof >/dev/null 2>&1; then
-    if lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-      return 0
-    fi
-  fi
-  if command -v netstat >/dev/null 2>&1; then
-    if netstat -tln 2>/dev/null | awk '{print $4}' | grep -q -E "(:|^)$port$"; then
-      return 0
-    fi
-  fi
-  return 1
-}
-
-find_available_port() {
-  local start="$1"
-  local limit="${2:-100}"
-  local port="$start"
-  local attempts=0
-  while (( port <= 65535 && attempts <= limit )); do
-    if port_in_use "$port"; then
-      port=$(( port + 1 ))
-      attempts=$(( attempts + 1 ))
-      continue
-    fi
-    echo "$port"
-    return 0
-  done
-  return 1
-}
-
 # --- Helper: run_podman as current user ---------------------------------------------
+# Trim repetition: every podman invocation runs as the SSH user, so centralize
+# the call. Candidate for util/podman.sh if reused elsewhere.
 run_podman() {
   podman "$@"
 }
 
 # --- Inspect existing container for port reuse --------------------------------------
+# Check whether the target container already exists so we can harvest prior
+# port assignments and label data before replacing it.
 EXISTING=false
 if run_podman container exists "$CONTAINER_NAME" >/dev/null 2>&1; then
   EXISTING=true
@@ -249,9 +143,13 @@ fi
 # Prefer provided inputs; otherwise reuse from existing container; otherwise defaults
 
 # Container port resolution (labels for Traefik or env fallbacks)
+# Step 1: honor explicit container port inputs. If absent, try to glean the
+# port from an existing Traefik label, otherwise fall back to env defaults.
 CONTAINER_PORT="$CONTAINER_PORT_IN"
 if [[ -z "$CONTAINER_PORT" ]]; then
   if [[ "$TRAEFIK_ENABLED" == "true" && -n "$ROUTER_NAME" && "$EXISTING" == "true" ]]; then
+    # When Traefik is enabled, query existing container labels to maintain
+    # stable routing across redeployments.
     OLD_LABEL=$(run_podman inspect -f '{{ index .Config.Labels "traefik.http.services.'"$ROUTER_NAME"'.loadbalancer.server.port" }}' "$CONTAINER_NAME" 2>/dev/null || true)
     if [[ -n "$OLD_LABEL" ]]; then
       CONTAINER_PORT="$OLD_LABEL"
@@ -268,6 +166,9 @@ if ! validate_port_number "$CONTAINER_PORT"; then
 fi
 
 # Host port resolution (reuse prior mapping; persisted fallback; final default 8080)
+# Step 2: resolve host port using explicit input, existing container mapping,
+# persisted metadata, or defaults. This logic is a good candidate for a
+# future util (e.g., util/ports.sh::resolve_host_port) if other scripts need it.
 HOST_PORT_SOURCE="input"
 HOST_PORT="$HOST_PORT_IN"
 OLD_PORT_LINE=""
@@ -283,6 +184,7 @@ if [[ -z "$HOST_PORT" ]]; then
 fi
 
 if [[ -z "$HOST_PORT" && -f "$HOST_PORT_FILE" ]]; then
+  # Reuse a previously stored host port so external routing stays consistent.
   STORED_PORT="$(tr -d ' \t\r\n' < "$HOST_PORT_FILE" 2>/dev/null || true)"
   if [[ -n "$STORED_PORT" ]] && validate_port_number "$STORED_PORT"; then
     HOST_PORT="$STORED_PORT"
@@ -321,8 +223,10 @@ fi
 
 if port_in_use "$HOST_PORT"; then
   if [[ "$EXISTING" == "true" && "$EXISTING_PORT" = "$HOST_PORT" ]]; then
+    # Existing running container occupies the port; keep it so replacement is seamless.
     echo "ℹ️  Host port $HOST_PORT currently in use by existing container; will reuse after replacement."
   else
+    # Host port collision scenario—search for the next free port using util helper.
     echo "⚠️  Host port $HOST_PORT is already in use; searching for the next available port." >&2
     NEW_PORT="$(find_available_port "$HOST_PORT" 500)" || true
     if [[ -z "$NEW_PORT" ]]; then
@@ -344,6 +248,7 @@ if ! printf '%s\n' "$HOST_PORT" > "$HOST_PORT_FILE"; then
 fi
 
 if [[ "$AUTO_HOST_PORT_ASSIGNED" == "true" && "${DEBUG:-false}" == "true" ]]; then
+  # Document auto-selection to assist with future troubleshooting.
   echo "💾 Persisted host port assignment"
 fi
 
@@ -353,6 +258,8 @@ if [[ "${DEBUG:-false}" == "true" ]]; then
 fi
 
 # --- Prepare run args ---------------------------------------------------------------
+# Compose the full image reference and allocate arrays that will accumulate
+# `podman run` arguments derived from Traefik, port publishing, DNS, etc.
 IMAGE_REF="${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
 PORT_ARGS=()
 LABEL_ARGS=()
@@ -406,6 +313,8 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
       LABEL_ARGS+=(--label "traefik.docker.network=${TRAEFIK_NETWORK_NAME}")
     fi
   else
+    # Fallback path: script unavailable, so synthesize labels inline. Consider
+    # extracting this branch to a shared helper if other actions need the same fallback.
     LABEL_ARGS+=(--label "traefik.enable=true")
     
     # Build Host() list with precedence:
@@ -489,12 +398,15 @@ else
   echo "ℹ️  Traefik disabled; container will rely on host port mapping"
 fi
 
+# Determine port mapping strategy based on Traefik configuration.
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
+  # Traefik handles ingress; no need to publish host ports.
   if [[ "${DEBUG:-false}" == "true" ]]; then
     echo "🔒 Skipping host port publish (Traefik handles ingress on 80/443)"
   fi
   PORT_ARGS=()
 else
+  # Publish port mapping for direct access.
   if [[ "${DEBUG:-false}" == "true" ]]; then
     echo "🔓 Publishing port mapping"
   fi
@@ -502,6 +414,9 @@ else
 fi
 
 # --- Login and pull (optional login, always pull) -----------------------------------
+# Authenticate with the registry when credentials exist, then ensure the latest
+# image is available locally. Consider relocating this block into a shared
+# util/registry.sh for reuse by other deployment scripts.
 if [[ "${REGISTRY_LOGIN:-true}" == "true" ]]; then
   echo "🔐 Logging into registry (if credentials provided) ..."
   if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_TOKEN:-}" ]]; then
@@ -514,6 +429,8 @@ echo "📥 Pulling image: $IMAGE_REF"
 podman pull "$IMAGE_REF"
 
 # --- Stop/replace container ---------------------------------------------------------
+# Cleanly stop and remove the prior container instance so the new one can start
+# without conflicting names or port bindings.
 echo "🛑 Stopping existing container (if any): $CONTAINER_NAME"
 podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
 echo "🧹 Removing existing container (if any): $CONTAINER_NAME"
@@ -523,6 +440,8 @@ podman rm   "$CONTAINER_NAME" >/dev/null 2>&1 || true
 echo "🚀 Starting container: $CONTAINER_NAME"
 NETWORK_ARGS=()
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$TRAEFIK_NETWORK_NAME" ]]; then
+  # Guarantee the Traefik network exists, creating it on first deploy. Could be
+  # elevated into util/network.sh if additional scripts require shared logic.
   if ! podman network exists "$TRAEFIK_NETWORK_NAME" >/dev/null 2>&1; then
     if [[ "${DEBUG:-false}" == "true" ]]; then echo "🌐 Creating Traefik network $TRAEFIK_NETWORK_NAME"; fi
     podman network create "$TRAEFIK_NETWORK_NAME"
@@ -550,17 +469,36 @@ else
   DNS_ARGS+=( --dns 1.1.1.1 --dns 8.8.8.8 )
 fi
 
-podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE" \
-  "${PORT_ARGS[@]}" \
-  --restart="$RESTART_POLICY" \
-  --memory="$MEMORY_LIMIT" --memory-swap="$MEMORY_LIMIT" \
-  "${DNS_ARGS[@]}" \
-  "${NETWORK_ARGS[@]}" \
-  ${EXTRA_RUN_ARGS:+$EXTRA_RUN_ARGS} \
-  "${LABEL_ARGS[@]}" \
-  "$IMAGE_REF"
+
+# Bring everything together: build the full podman invocation so we can emit a
+# preview (when DEBUG=true) before running it for real.
+podman_run_cmd=(podman run -d --name "$CONTAINER_NAME" --env-file "$ENV_FILE")
+podman_run_cmd+=("${PORT_ARGS[@]}")
+podman_run_cmd+=(--restart="$RESTART_POLICY" --memory="$MEMORY_LIMIT" --memory-swap="$MEMORY_LIMIT")
+podman_run_cmd+=("${DNS_ARGS[@]}")
+podman_run_cmd+=("${NETWORK_ARGS[@]}")
+if [[ -n "${EXTRA_RUN_ARGS:-}" ]]; then
+  # Mimic original behaviour: allow callers to supply a whitespace-separated
+  # string of extra podman arguments (e.g., "--add-host foo:127.0.0.1").
+  # shellcheck disable=SC2206
+  EXTRA_RUN_ARGS_ARRAY=($EXTRA_RUN_ARGS)
+  podman_run_cmd+=("${EXTRA_RUN_ARGS_ARRAY[@]}")
+fi
+podman_run_cmd+=("${LABEL_ARGS[@]}")
+podman_run_cmd+=("$IMAGE_REF")
+
+if [[ "${DEBUG:-false}" == "true" ]]; then
+  echo "🐚 podman run command (preview):"
+  printf '  '
+  printf '%q ' "${podman_run_cmd[@]}"
+  printf '\n'
+fi
+
+"${podman_run_cmd[@]}"
 
 # --- Post status --------------------------------------------------------------------
+# Provide immediate feedback showing the container status table so operators can
+# verify the deployment succeeded without inspecting the remote host manually.
 echo " Started container: $CONTAINER_NAME (image: $IMAGE_REF)"
 echo ""
-podman ps --filter name="$CONTAINER_NAME" --format 'table {{.ID}}	{{.Status}}	{{.Image}}	{{.Names}}	{{.Ports}}'
+podman ps --filter name="$CONTAINER_NAME" --format 'table {{.ID}}\t{{.Status}}\t{{.Image}}\t{{.Names}}\t{{.Ports}}'

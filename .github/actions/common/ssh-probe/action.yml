@@ -1,0 +1,115 @@
+name: 'common: ssh reachability probe'
+description: 'Probes SSH connectivity once per job and surfaces outputs for downstream steps.'
+
+# ==========================================================================
+# ACTION: SSH Reachability Probe
+# --------------------------------------------------------------------------
+# PURPOSE:
+#   - Validate that the target host is reachable over SSH before expensive steps.
+#   - Emit reusable outputs so any workflow step can branch on reachability.
+#
+# HOW IT WORKS:
+#   1. Writes the provided SSH private key to a temp file.
+#   2. Attempts up to three SSH connections with an 8-second timeout each.
+#   3. Produces outputs:
+#        reachable ("true" | "false")
+#        attempts (number of tries)
+#        last_error (message when unreachable)
+#   4. Downstream callers rely on these outputs to skip optional steps when offline.
+#
+# EXAMPLE USAGE:
+#   - name: Probe SSH
+#     id: probe
+#     uses: ./.github/actions/common/ssh-probe
+#     with:
+#       ssh_host: ${{ inputs.ssh_host }}
+#       ssh_user: ${{ inputs.ssh_user }}
+#       ssh_key: ${{ inputs.ssh_key }}
+#   - name: Ensure scripts bundle is deployed
+#     if: ${{ steps.probe.outputs.reachable == 'true' }}
+#     uses: ./.github/actions/infra/deploy-server-scripts
+#
+# DOCUMENTATION:
+#   See docs/ACTION_FILES_GUIDE.md for a detailed description of common actions.
+# ==========================================================================
+
+inputs:
+  ssh_host:
+    description: 'Remote host (hostname or IP) to probe.'
+    required: true
+  ssh_user:
+    description: 'SSH username used for the connection test.'
+    required: true
+  ssh_key:
+    description: 'SSH private key (PEM string or literal).'
+    required: true
+  ssh_port:
+    description: 'Optional SSH port, defaults to 22 when omitted.'
+    required: false
+
+outputs:
+  reachable:
+    description: '"true" when the host accepted the SSH connection test.'
+    value: ${{ steps.probe.outputs.reachable }}
+  attempts:
+    description: 'Count of connection attempts performed.'
+    value: ${{ steps.probe.outputs.attempts }}
+  last_error:
+    description: 'Error message captured from the most recent SSH failure.'
+    value: ${{ steps.probe.outputs.last_error }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Probe SSH reachability
+      id: probe
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+      run: |
+        set -euo pipefail
+
+        TMP_KEY="$(mktemp)"
+        trap 'rm -f "$TMP_KEY"' EXIT
+
+        # Support both literal PEM keys and newline-escaped variants.
+        if printf '%s' "$SSH_KEY" | grep -q '\\n'; then
+          printf '%s\n' "$SSH_KEY" | sed 's/\\n/\n/g' > "$TMP_KEY"
+        else
+          printf '%s\n' "$SSH_KEY" > "$TMP_KEY"
+        fi
+        chmod 600 "$TMP_KEY"
+
+        reachable=false
+        attempts=0
+        last_error=""
+
+        for attempt in 1 2 3; do
+          attempts=$attempt
+          if ssh -i "$TMP_KEY" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=8 \
+            -p "${SSH_PORT:-22}" \
+            "$SSH_USER@$SSH_HOST" true 2>ssh_err.log; then
+            reachable=true
+            last_error=""
+            break
+          fi
+          last_error="$(cat ssh_err.log || true)"
+          sleep 5
+        done
+
+        {
+          echo "reachable=$reachable"
+          echo "attempts=$attempts"
+          printf 'last_error<<EOF\n%s\nEOF\n' "$last_error"
+        } >> "$GITHUB_OUTPUT"
+
+        # Also emit an ::notice:: for visibility when unreachable.
+        if [ "$reachable" != "true" ]; then
+          echo "::notice title=SSH probe failed::Host '$SSH_HOST' unreachable after $attempts attempt(s)."
+        fi
