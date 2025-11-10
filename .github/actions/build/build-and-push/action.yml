@@ -213,5 +213,6 @@ runs:
         secrets: ${{ steps.secrets_spec.outputs.spec }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        build-args: ${{ steps.prep_env.outputs.env_string }}
+        build-args: |
+          ${{ steps.prep_env.outputs.env_string }}
           

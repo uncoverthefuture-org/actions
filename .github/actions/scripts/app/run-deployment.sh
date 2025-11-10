@@ -45,6 +45,8 @@ RUN_SCRIPT_NAME="run-deployment.sh"
 source "${SCRIPT_DIR}/log/logging.sh"
 # shellcheck source=../util/normalize.sh
 source "${SCRIPT_DIR}/util/normalize.sh"
+# shellcheck source=../util/sudo.sh
+source "${SCRIPT_DIR}/util/sudo.sh"
 
 if [ "${DEBUG:-false}" = "true" ]; then set -x; fi
 
@@ -92,71 +94,36 @@ CURRENT_USER="${CURRENT_USER:-$(id -un)}"
 CURRENT_UID="${CURRENT_UID:-$(id -u)}"
 CURRENT_GROUPS="${CURRENT_GROUPS:-$(id -Gn)}"
 
+# Determine whether passwordless sudo is available using shared helper.
+# Example:
+#   SUDO_STATUS="$(detect_sudo_status "yes" "no")"
+SUDO_STATUS="$(detect_sudo_status)"
 
 
 # --- Environment Setup ---------------------------------------------------------------
 echo "🔧 Setting up deployment environment..."
-if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  SUDO_STATUS="available"
-else
-  SUDO_STATUS="not available"
-fi
+echo "================================================================"
 if [ "${DEBUG:-false}" = "true" ]; then
   echo "👤 Remote user: ${CURRENT_USER} (uid:${CURRENT_UID})"
   echo "👥 Groups: ${CURRENT_GROUPS}"
-  echo "🔑 sudo: ${SUDO_STATUS}"
+  echo "🔑 Sudo: ${SUDO_STATUS}"
 fi
-
-# --- Image reference normalization ---------------------------------------------------
-# Some registries (including GHCR) require repository paths to be lowercase.
-# Normalize the registry host and image repository path to lowercase while
-# preserving the tag as-is. Example:
-#   Input:  ghcr.io/AdmissionBOOX/MyApp:Dev-SHA
-#   Becomes: ghcr.io/admissionboox/myapp:Dev-SHA
-if [ -n "$IMAGE_REGISTRY" ]; then
-  REG_ORIG="$IMAGE_REGISTRY"
-  IMAGE_REGISTRY="$(printf '%s' "$IMAGE_REGISTRY" | tr '[:upper:]' '[:lower:]')"
-  if [ "${DEBUG:-false}" = "true" ] && [ "$REG_ORIG" != "$IMAGE_REGISTRY" ]; then
-    echo "🔤 Normalized registry to lowercase: $IMAGE_REGISTRY"
-  fi
-fi
-if [ -n "$IMAGE_NAME" ]; then
-  NAME_ORIG="$IMAGE_NAME"
-  IMAGE_NAME="$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
-  if [ "${DEBUG:-false}" = "true" ] && [ "$NAME_ORIG" != "$IMAGE_NAME" ]; then
-    echo "🔤 Normalized image name to lowercase: $IMAGE_NAME"
-  fi
-fi
-
-
 
 
 # --- Execute Deployment ---------------------------------------------------------------
 echo "🚀 Executing Setup Environmental Variable Script..."
+echo "================================================================"
 echo "  Script: $HOME/uactions/scripts/app/setup-env-file.sh"
 echo "  App: $APP_SLUG"
+echo "================================================================"
 
+# --- Export Deployment Variables -----------------------------------------------------
+echo "📤 Exporting deployment variables..."
+echo "================================================================"
 
 # Export environment variables for scripts
 export REMOTE_ENV_FILE="$ENV_FILE"
 export REMOTE_ENV_DIR="$ENV_DIR"
-
-# # --- Script Staging ------------------------------------------------------------------
-# echo "📦 Staging deployment scripts..."
-# cd /
-
-# # Ensure scripts directory exists (user-writable location)
-# mkdir -p "$HOME/uactions/scripts/app"
-
-# # Move uploaded deploy script if it exists
-# if [ -f /tmp/deploy-container.sh ]; then
-#   echo "📋 Moving deploy-container.sh to $HOME/uactions/scripts/app/"
-#   mv -f /tmp/deploy-container.sh "$HOME/uactions/scripts/app/deploy-container.sh"
-#   chmod +x "$HOME/uactions/scripts/app/deploy-container.sh"
-# fi
-
-# --- Export Deployment Variables -----------------------------------------------------
-echo "📤 Exporting deployment variables..."
 
 # Registry settings
 export IMAGE_REGISTRY
@@ -198,16 +165,21 @@ export TRAEFIK_NETWORK_NAME
 # Domain aliases for Traefik Host() rule (optional)
 export DOMAIN_ALIASES
 export INCLUDE_WWW_ALIAS
+echo "================================================================"
+
 
 # --- Execute Deployment ---------------------------------------------------------------
 echo "🚀 Executing deployment script..."
+echo "================================================================"
 echo "  Script: $HOME/uactions/scripts/app/deploy-container.sh"
 echo "  App: $APP_SLUG"
-if [ "${DEBUG:-false}" = "true" ]; then
-  echo "📄 Using env file"
-fi
 echo "  Image: $IMAGE_REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
 echo "  Traefik: $TRAEFIK_ENABLED"
+echo "  Sudo available: $SUDO_STATUS"
+if [ "${DEBUG:-false}" = "true" ]; then
+  echo "📄 Using env file: $REMOTE_ENV_FILE"
+fi
+echo "================================================================"
 
 "$HOME/uactions/scripts/app/deploy-container.sh"
 

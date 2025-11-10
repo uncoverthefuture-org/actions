@@ -93,15 +93,35 @@ else
   DNS_ARGS+=( --dns 1.1.1.1 --dns 8.8.8.8 )
 fi
 
-podman run -d --name "$SERVICE_NAME" \
-  ${ENV_FILE:+--env-file "$ENV_FILE"} \
-  "${PORT_ARGS[@]}" \
-  "${DNS_ARGS[@]}" \
-  "${VOL_ARGS[@]}" \
-  --restart="$RESTART_POLICY" \
-  --memory="$MEMORY_LIMIT" --memory-swap="$MEMORY_LIMIT" \
-  ${EXTRA_ARGS:+$EXTRA_ARGS} \
-  "$IMAGE" ${COMMAND:+$COMMAND}
+# Assemble command so we can emit a quoted preview when DEBUG=true and then run.
+cmd=(podman run -d --name "$SERVICE_NAME")
+if [[ -n "${ENV_FILE:-}" ]]; then
+  cmd+=(--env-file "$ENV_FILE")
+fi
+cmd+=("${PORT_ARGS[@]}")
+cmd+=("${DNS_ARGS[@]}")
+cmd+=("${VOL_ARGS[@]}")
+cmd+=(--restart="$RESTART_POLICY")
+cmd+=(--memory="$MEMORY_LIMIT" --memory-swap="$MEMORY_LIMIT")
+if [[ -n "${EXTRA_ARGS:-}" ]]; then
+  # shellcheck disable=SC2206
+  extra_arr=($EXTRA_ARGS)
+  cmd+=("${extra_arr[@]}")
+fi
+cmd+=("$IMAGE")
+if [[ -n "${COMMAND:-}" ]]; then
+  # shellcheck disable=SC2206
+  cmd+=($COMMAND)
+fi
+
+if [[ "${DEBUG:-false}" == "true" ]]; then
+  echo "🐚 podman run command (preview):"
+  printf '  '
+  printf '%q ' "${cmd[@]}"
+  printf '\n'
+fi
+
+"${cmd[@]}"
 
 echo " Service $SERVICE_NAME started"
 echo " Service details:"
