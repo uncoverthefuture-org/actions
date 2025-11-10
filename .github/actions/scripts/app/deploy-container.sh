@@ -94,7 +94,6 @@ echo "================================================================"
 echo "  • App:        $APP_SLUG"
 echo "  • Env:        $ENV_NAME"
 echo "  • Image:      ${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
-echo "================================================================"
 
 # --- Compute names and paths --------------------------------------------------------
 # Derive final container name: honor explicit input but fall back to
@@ -106,7 +105,9 @@ fi
 
 if [[ "${DEBUG:-false}" == "true" ]]; then
   # Example: DEBUG=true APP_SLUG=demo ENV_NAME=staging prints "demo-staging"
+  echo "================================================================"
   echo "📛 Container name: $CONTAINER_NAME"
+  echo "================================================================"
 fi
 
 # Environment directory and file are prepared by run-deployment/setup-env-file.
@@ -114,9 +115,13 @@ fi
 ENV_DIR="${REMOTE_ENV_DIR:-}"
 ENV_FILE="${REMOTE_ENV_FILE:-}"
 if [[ -z "$ENV_DIR" || -z "$ENV_FILE" ]]; then
-  echo "::error::Deployment environment variables REMOTE_ENV_DIR/REMOTE_ENV_FILE not set." >&2
-  echo "Hint: ensure run-deployment.sh invoked setup-env-file before calling deploy-container." >&2
-  exit 1
+  echo "================================================================" >&2
+  echo "::warning::Remote environment payload missing" >&2
+  echo "  • REMOTE_ENV_DIR='${REMOTE_ENV_DIR:-}'" >&2
+  echo "  • REMOTE_ENV_FILE='${REMOTE_ENV_FILE:-}'" >&2
+  echo "  • ENV_B64='${ENV_B64:-<empty>}' / ENV_CONTENT='${ENV_CONTENT:-<empty>}'" >&2
+  echo "  → Skipping env-dependent operations; run-deployment.sh should invoke setup-env-file before deploy-container." >&2
+  echo "================================================================" >&2
 fi
 
 if [[ "${DEBUG:-false}" == "true" ]]; then
