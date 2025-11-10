@@ -114,9 +114,13 @@ outputs:
   secret_found:
     description: "'true' when the secret existed and was non-empty"
     value: ${{ steps.secret.outputs.found }}
+  env_string:
+    description: 'The decoded environment variables as a string'
+    value: ${{ steps.write.outputs.env_string }}
   env_file:
     description: 'Absolute path to the decoded env file (empty when secret missing and not required)'
     value: ${{ steps.write.outputs.env_file }}
+  
 
 runs:
   using: 'composite'
@@ -156,8 +160,12 @@ runs:
         DEST_PATH: ${{ inputs.env_file }}
         EXPORT_TO_ENV: ${{ inputs.export_to_github_env }}
       run: |
+        # Set strict error handling, fail on unset variables, and fail on error 
+        # in pipelines or subshells
         set -euo pipefail
 
+        # If the secret is empty, handle the case where the secret is 
+        # optional and exit gracefully
         if [ -z "${SECRET_B64}" ]; then
           if [ "${REQUIRED}" = "true" ]; then
             echo "::error::Secret payload is empty but required" >&2
@@ -167,17 +175,30 @@ runs:
           exit 0
         fi
 
+        # Determine the path to write the env file to. If no path is provided,
+        # use the default .env
         dest="${DEST_PATH}"
         if [ -z "$dest" ]; then
-          dest='.env.production'
+          dest='.env'
         fi
 
+        # Create the directory where the env file will be written
         mkdir -p "$(dirname "$dest")"
+        
+        # Decode the base64 secret and write it to the env file
         printf '%s' "${SECRET_B64}" | base64 --decode >"$dest"
+        
+        # Read the env file content and set it as an output
+        # This is done by reading the file, replacing newlines with semicolons,
+        # removing the trailing semicolon, and setting it as an output variable
+        env_string=$(cat "$dest" | tr '\n' ';' | sed 's/;$//')
+        printf 'env_string=%s\n' "$env_string" >> "$GITHUB_OUTPUT"
 
+        # If the EXPORT_TO_ENV flag is set to true, append the decoded file
+        # so future steps inherit the variables
         if [ "${EXPORT_TO_ENV}" = "true" ]; then
-          # Append the decoded file so future steps inherit the variables
           cat "$dest" >>"$GITHUB_ENV"
         fi
 
+        # Set the absolute path to the env file as an output variable
         printf 'env_file=%s\n' "$(cd "$(dirname "$dest")" && pwd)/$(basename "$dest")" >>"$GITHUB_OUTPUT"
