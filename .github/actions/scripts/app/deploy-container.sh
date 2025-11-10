@@ -43,12 +43,8 @@ source "${SCRIPT_DIR}/../util/validate.sh"
 source "${SCRIPT_DIR}/../util/normalize.sh"
 # shellcheck source=../util/traefik.sh
 source "${SCRIPT_DIR}/../util/traefik.sh"
-# shellcheck source=../util/dns.sh
-source "${SCRIPT_DIR}/../util/dns.sh"
-# shellcheck source=../util/registry.sh
-source "${SCRIPT_DIR}/../util/registry.sh"
-# shellcheck source=../util/podman_run.sh
-source "${SCRIPT_DIR}/../util/podman_run.sh"
+# shellcheck source=../util/podman.sh
+source "${SCRIPT_DIR}/../util/podman.sh"
 
 # --- Resolve inputs -----------------------------------------------------------------
 # --- Image & registry inputs --------------------------------------------------------
@@ -154,10 +150,10 @@ fi
 
 # Container port resolution (labels for Traefik or env fallbacks)
 # Step 1: reuse shared resolver to keep behavior consistent across scripts.
-CONTAINER_PORT="$(resolve_container_port "$CONTAINER_PORT_IN" "$TRAEFIK_ENABLED" "$ROUTER_NAME" "$CONTAINER_NAME" "${DEBUG:-false}")" || exit 1
+CONTAINER_PORT="$(podman_resolve_container_port "$CONTAINER_PORT_IN" "$TRAEFIK_ENABLED" "$ROUTER_NAME" "$CONTAINER_NAME" "${DEBUG:-false}")" || exit 1
 
 # Host port resolution (reuse prior mapping; persisted fallback; final default 8080)
-read HOST_PORT HOST_PORT_SOURCE AUTO_HOST_PORT_ASSIGNED <<<"$(resolve_host_port "$HOST_PORT_IN" "$CONTAINER_NAME" "$CONTAINER_PORT" "$HOST_PORT_FILE" "${DEBUG:-false}")" || exit 1
+read HOST_PORT HOST_PORT_SOURCE AUTO_HOST_PORT_ASSIGNED <<<"$(podman_resolve_host_port "$HOST_PORT_IN" "$CONTAINER_NAME" "$CONTAINER_PORT" "$HOST_PORT_FILE" "${DEBUG:-false}")" || exit 1
 
 if [[ "${DEBUG:-false}" == "true" ]]; then
   echo "🌐 Service target port (container): $CONTAINER_PORT"
@@ -248,9 +244,9 @@ fi
 # image is available locally. Consider relocating this block into a shared
 # util/registry.sh for reuse by other deployment scripts.
 if [[ "${REGISTRY_LOGIN:-true}" == "true" ]]; then
-  login_if_credentials "$IMAGE_REGISTRY" "${REGISTRY_USERNAME:-}" "${REGISTRY_TOKEN:-}"
+  podman_login_if_credentials "$IMAGE_REGISTRY" "${REGISTRY_USERNAME:-}" "${REGISTRY_TOKEN:-}"
 fi
-pull_image "$IMAGE_REF"
+podman_pull_image "$IMAGE_REF"
 
 # --- Stop/replace container ---------------------------------------------------------
 # Cleanly stop and remove the prior container instance so the new one can start
@@ -274,11 +270,11 @@ fi
 # Example:
 #   - Mount: -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro
 #   - Fallback: --dns 1.1.1.1 --dns 8.8.8.8
-mapfile -t DNS_ARGS < <(build_dns_args "${DEBUG:-false}")
+mapfile -t DNS_ARGS < <(podman_build_dns_args "${DEBUG:-false}")
 
 
 # Assemble and execute podman run with a DEBUG preview via shared helper.
-run_with_preview "$CONTAINER_NAME" "$ENV_FILE" "$RESTART_POLICY" "$MEMORY_LIMIT" "$IMAGE_REF" "${EXTRA_RUN_ARGS:-}" "${DEBUG:-false}" \
+podman_run_with_preview "$CONTAINER_NAME" "$ENV_FILE" "$RESTART_POLICY" "$MEMORY_LIMIT" "$IMAGE_REF" "${EXTRA_RUN_ARGS:-}" "${DEBUG:-false}" \
   PORT_ARGS[@] DNS_ARGS[@] NETWORK_ARGS[@] LABEL_ARGS[@]
 
 # --- Post status --------------------------------------------------------------------

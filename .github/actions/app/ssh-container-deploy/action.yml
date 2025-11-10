@@ -539,6 +539,9 @@ runs: # Composite action implementation
           echo "Deploying container via SSH..."
 
           # Export deployment variables for run-deployment.sh
+          # Env payload (optional): prefer explicit inputs, else resolved secret
+          export ENV_B64='${{ inputs.env_b64 != '' && inputs.env_b64 || steps.envsel.outputs.env_b64 }}'
+          export ENV_CONTENT='${{ inputs.env_content }}'
           export IMAGE_REGISTRY='${{ inputs.registry }}'
           export IMAGE_NAME='${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}'
           export IMAGE_TAG='${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}'
@@ -552,7 +555,7 @@ runs: # Composite action implementation
           fi
           export APP_SLUG='${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}'
           export ENV_NAME='${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}'
-          export CONTAINER_NAME_IN='${{ inputs.container_name }}'
+          export CONTAINER_NAME_IN="${{ inputs.container_name }}"
           if [ -n '${{ inputs.env_file_path }}' ]; then
             export ENV_FILE_PATH_BASE='${{ inputs.env_file_path }}'
           else
@@ -574,7 +577,6 @@ runs: # Composite action implementation
           export DOMAIN_HOSTS='${{ inputs.domain_hosts }}'
           export DEBUG='${{ inputs.debug }}'
 
-          
           "$HOME/uactions/scripts/app/run-deployment.sh"
 
           

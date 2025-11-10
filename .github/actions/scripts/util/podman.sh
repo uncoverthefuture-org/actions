@@ -20,7 +20,7 @@
 #   3) Environment fallbacks: WEB_CONTAINER_PORT, TARGET_PORT, PORT (default 8080)
 #   Emits the resolved port to stdout and exits non-zero if invalid.
 #   Example:
-#     CONTAINER_PORT="$(resolve_container_port "$CONTAINER_PORT_IN" "$TRAEFIK_ENABLED" "$ROUTER_NAME" "$CONTAINER_NAME" "${DEBUG:-false}")"
+#     CONTAINER_PORT="$(podman_resolve_container_port "$CONTAINER_PORT_IN" "$TRAEFIK_ENABLED" "$ROUTER_NAME" "$CONTAINER_NAME" "${DEBUG:-false}")"
 podman_resolve_container_port() {
   local in_port="$1"; shift
   local traefik_enabled="$1"; shift
@@ -62,7 +62,7 @@ podman_resolve_container_port() {
 #   Persists non-input selections to <host_port_file>.
 #   Outputs three space-separated fields: "<host_port> <source> <auto_assigned(true/false)>".
 #   Example:
-#     read HOST_PORT HOST_PORT_SOURCE AUTO_ASSIGNED <<<"$(resolve_host_port "$HOST_PORT_IN" "$CONTAINER_NAME" "$CONTAINER_PORT" "$HOST_PORT_FILE" "${DEBUG:-false}")"
+#     read HOST_PORT HOST_PORT_SOURCE AUTO_ASSIGNED <<<"$(podman_resolve_host_port "$HOST_PORT_IN" "$CONTAINER_NAME" "$CONTAINER_PORT" "$HOST_PORT_FILE" "${DEBUG:-false}")"
 podman_resolve_host_port() {
   local in_port="$1"; shift
   local container_name="$1"; shift
@@ -155,7 +155,7 @@ podman_resolve_host_port() {
 #     read-only at /etc/resolv.conf
 #   - Otherwise, supply public resolvers via --dns flags
 #   Example:
-#     mapfile -t DNS_ARGS < <(build_dns_args "${DEBUG:-false}")
+#     mapfile -t DNS_ARGS < <(podman_build_dns_args "${DEBUG:-false}")
 #     podman run "${DNS_ARGS[@]}" ...
 podman_build_dns_args() {
   local debug="${1:-false}"
@@ -228,10 +228,10 @@ podman_run_with_preview() {
 
 # login_if_credentials <registry> <username> <token>
 #   Logs into the container registry only when both username and token are
-#   provided. Prints a short status message and returns success even when
-#   credentials are absent (so callers can unconditionally invoke it).
+#   provided. Prints a short status message and sets PODMAN_LOGIN_STATUS to one of:
+#     logged_in | login_failed | skipped
 #   Example:
-#     login_if_credentials "$IMAGE_REGISTRY" "$REGISTRY_USERNAME" "$REGISTRY_TOKEN"
+#     podman_login_if_credentials "$IMAGE_REGISTRY" "$REGISTRY_USERNAME" "$REGISTRY_TOKEN"
 podman_login_if_credentials() {
   local registry="$1"
   local username="$2"
@@ -239,18 +239,37 @@ podman_login_if_credentials() {
 
   if [[ -n "$username" && -n "$token" ]]; then
     echo "🔐 Logging into registry $registry ..."
-    printf '%s' "$token" | podman login "$registry" -u "$username" --password-stdin
+    if printf '%s' "$token" | podman login "$registry" -u "$username" --password-stdin; then
+      PODMAN_LOGIN_STATUS="logged_in"
+    else
+      PODMAN_LOGIN_STATUS="login_failed"
+      export PODMAN_LOGIN_STATUS
+      return 1
+    fi
   else
     echo "ℹ️  No explicit credentials provided; skipping login"
+    PODMAN_LOGIN_STATUS="skipped"
   fi
+
+  export PODMAN_LOGIN_STATUS
+  return 0
 }
 
 # pull_image <image_ref>
 #   Pulls the specified image. Outputs a concise status line prior to pulling.
+#   Sets PODMAN_PULL_STATUS to: pulled | pull_failed
 #   Example:
-#     pull_image "ghcr.io/org/app:tag"
+#     podman_pull_image "ghcr.io/org/app:tag"
 podman_pull_image() {
   local image_ref="$1"
   echo "📥 Pulling image: $image_ref"
-  podman pull "$image_ref"
+  if podman pull "$image_ref"; then
+    PODMAN_PULL_STATUS="pulled"
+  else
+    PODMAN_PULL_STATUS="pull_failed"
+    export PODMAN_PULL_STATUS
+    return 1
+  fi
+  export PODMAN_PULL_STATUS
+  return 0
 }
