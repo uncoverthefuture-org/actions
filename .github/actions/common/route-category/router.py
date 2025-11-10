@@ -57,7 +57,7 @@ def main() -> None:
             emit_error("Unsupported subaction", f"Unsupported subaction '{sa}'")
 
     # Print feedback for GitHub log readability (first consumer is summary step).
-    output_line = f"Router Category={category}"
+    output_line = f"category={category}"
     print(output_line)
 
     # Also append to GITHUB_OUTPUT so downstream steps can read the category via outputs.
