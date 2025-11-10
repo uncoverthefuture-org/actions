@@ -75,7 +75,7 @@ jobs:
       # This action handles the entire build and push process.
       # ====================================================================
       - id: build
-        uses: uncoverthefuture-org/actions@v1.0.132
+        uses: uncoverthefuture-org/actions@v1.0.133
         with:
           subaction: build-and-push
 
@@ -108,7 +108,7 @@ jobs:
       # ====================================================================
       - name: Deploy Django App
         if: ${{ steps.build.outputs.deploy_enabled == 'true' }}
-        uses: uncoverthefuture-org/actions@v1.0.132
+        uses: uncoverthefuture-org/actions@v1.0.133
         with:
           subaction: ssh-django-deploy
           params_json: |
@@ -139,7 +139,7 @@ jobs:
       #
       # REFERENCE: See GETTING_STARTED.md for detailed setup instructions
       # ====================================================================
-      # - uses: uncoverthefuture-org/actions@v1.0.132
+      # - uses: uncoverthefuture-org/actions@v1.0.133
       #   with:
       #     subaction: write-remote-env-file
       #     params_json: |
@@ -181,7 +181,7 @@ jobs:
       #     secret_prefix: 'WORKER_ENV_B64_'
       #     required: 'false'
       #
-      # - uses: uncoverthefuture-org/actions@v1.0.132
+      # - uses: uncoverthefuture-org/actions@v1.0.133
       #   with:
       #     subaction: write-remote-env-file
       #     params_json: |
