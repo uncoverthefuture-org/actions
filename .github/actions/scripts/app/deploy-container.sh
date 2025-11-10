@@ -249,6 +249,7 @@ podman_pull_image "$IMAGE_REF"
 # --- Stop/replace container ---------------------------------------------------------
 # Cleanly stop and remove the prior container instance so the new one can start
 # without conflicting names or port bindings.
+echo "================================================================" >&2
 echo "🛑 Stopping existing container (if any): $CONTAINER_NAME"
 podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
 echo "🧹 Removing existing container (if any): $CONTAINER_NAME"
@@ -256,11 +257,17 @@ podman rm   "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 # --- Run container -----------------------------------------------------------------
 echo "🚀 Starting container: $CONTAINER_NAME"
+echo "================================================================" >&2
+
+echo "Ensuring traefik-network is settup!";
 NETWORK_ARGS=()
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$TRAEFIK_NETWORK_NAME" ]]; then
+  echo "Creating/ensuring Traefik network: $TRAEFIK_NETWORK_NAME"
   arg=$(ensure_traefik_network "$TRAEFIK_NETWORK_NAME" "${DEBUG:-false}")
   [[ -n "$arg" ]] && NETWORK_ARGS+=($arg)
 fi
+echo "================================================================" >&2
+
 
 # --- DNS/Resolver handling --------------------------------------------------------
 # Prefer mounting the host's real resolv.conf (systemd-resolved) so the container
@@ -269,12 +276,16 @@ fi
 #   - Mount: -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro
 #   - Fallback: --dns 1.1.1.1 --dns 8.8.8.8
 mapfile -t DNS_ARGS < <(podman_build_dns_args "${DEBUG:-false}")
-
+echo "Port args: ${PORT_ARGS[*]}"
+echo "DNS args: ${DNS_ARGS}"
+echo "Network args: ${NETWORK_ARGS[*]}"
+echo "Label args: ${LABEL_ARGS[*]}"
+echo "================================================================" >&2
 
 # Assemble and execute podman run with a DEBUG preview via shared helper.
 podman_run_with_preview "$CONTAINER_NAME" "$ENV_FILE" "$RESTART_POLICY" "$MEMORY_LIMIT" "$IMAGE_REF" "${EXTRA_RUN_ARGS:-}" "${DEBUG:-false}" \
   PORT_ARGS[@] DNS_ARGS[@] NETWORK_ARGS[@] LABEL_ARGS[@]
-
+echo "================================================================" >&2
 # --- Post status --------------------------------------------------------------------
 # Provide immediate feedback showing the container status table so operators can
 # verify the deployment succeeded without inspecting the remote host manually.
