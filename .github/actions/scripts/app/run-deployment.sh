@@ -121,8 +121,8 @@ echo "📤 Exporting deployment variables..."
 echo "================================================================"
 
 # Export environment variables for scripts
-export REMOTE_ENV_FILE="$ENV_FILE"
-export REMOTE_ENV_DIR="$ENV_DIR"
+export REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-}"
+export REMOTE_ENV_DIR="${REMOTE_ENV_DIR:-}"
 
 # Registry settings
 export IMAGE_REGISTRY
