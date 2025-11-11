@@ -76,10 +76,10 @@ podman_build_dns_args() {
   local src="/run/systemd/resolve/resolv.conf"
   if [[ -s "$src" ]]; then
     [[ "$debug" == "true" ]] && echo "🧭 DNS: mounting $src" >&2
-    echo "-v" "$src:/etc/resolv.conf:ro"
+    echo "-v=$src:/etc/resolv.conf:ro"
   else
     [[ "$debug" == "true" ]] && echo "🧭 DNS: using public resolvers" >&2
-    echo "--dns" "1.1.1.1" "--dns" "8.8.8.8"
+    echo "--dns=1.1.1.1" "--dns=8.8.8.8"
   fi
 }
 
