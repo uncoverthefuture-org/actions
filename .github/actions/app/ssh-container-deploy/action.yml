@@ -570,7 +570,7 @@ runs: # Composite action implementation
           export TRAEFIK_ENABLED='${{ inputs.enable_traefik }}'
           export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
           export TRAEFIK_NETWORK_NAME='${{ inputs.traefik_network_name }}'
-          export DOMAIN_INPUT='${{ inputs.domain }}'
+          export DOMAIN_INPUT='${{ inputs.base_domain || inputs.domain }}'
           export DOMAIN_DEFAULT='${{ steps.dfl.outputs.domain_default }}'
           export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'
           export DOMAIN_ALIASES='${{ inputs.domain_aliases }}'

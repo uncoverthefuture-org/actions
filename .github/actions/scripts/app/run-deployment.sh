@@ -168,6 +168,7 @@ export TRAEFIK_NETWORK_NAME
 # Domain aliases for Traefik Host() rule (optional)
 export DOMAIN_ALIASES
 export INCLUDE_WWW_ALIAS
+export SUDO_STATUS
 echo "================================================================"
 
 
