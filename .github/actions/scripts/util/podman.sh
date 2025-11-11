@@ -203,7 +203,10 @@ podman_run_with_preview() {
   label_args=("${!label_ref}")
 
   # Build command
-  local -a cmd=(podman run -d --name "$name" --env-file "$env_file")
+  local -a cmd=(podman run -d --name "$name")
+  if  [ -r "$env_file" ] && [ -s "$env_file" ]; then
+    cmd+=("--env-file" "$env_file")
+  fi
   cmd+=("${port_args[@]}")
   cmd+=(--restart="$restart_policy" --memory="$memory_limit" --memory-swap="$memory_limit")
   cmd+=("${dns_args[@]}")

@@ -194,6 +194,12 @@ inputs:
     required: false
     default: ''
 
+  # Logging / Debugging
+  debug:
+    description: 'Enable verbose logging, including env paths and user info (default: false)'
+    required: false
+    default: 'true'
+
 runs:
   using: 'composite'
   steps:
@@ -465,6 +471,7 @@ runs:
       if: ${{ inputs.subaction == 'ssh-react-deploy' }}
       uses: ./.github/actions/app/ssh-react-deploy
       with:
+        debug: ${{ inputs.debug != '' && inputs.debug || fromJSON(steps.params.outputs.json).debug }}
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
         ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
