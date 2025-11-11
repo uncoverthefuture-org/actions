@@ -48,149 +48,200 @@ inputs:
 
   # Common SSH / remote
   ssh_host:
+    description: "Hostname or IP address of the target server running Podman/Traefik (example: deploy.example.com)."
     required: false
   ssh_user:
+    description: "Primary SSH user that will execute remote scripts (example: deploy)."
     required: false
   ssh_key:
+    description: "Private SSH key (PEM) for ssh_user in plain text or secret reference (example: ${{ secrets.DEPLOY_KEY }})."
     required: false
   root_ssh_key:
+    description: "Optional SSH key with root access used for privileged host preparation (example: ${{ secrets.ROOT_KEY }})."
     required: false
   ssh_port:
+    description: "SSH port exposed by the remote host (example: 22)."
     required: false
     default: '22'
   ssh_fingerprint:
+    description: "Known host fingerprint used to pin SSH connections and avoid MITM warnings (example: 'ssh-ed25519 AAAAC3Nza...')."
     required: false
   podman_user:
+    description: "Explicit Podman user (rootless) when different from ssh_user (example: podman)."
     required: false
     default: ''
   connect_mode:
+    description: "Connection strategy: auto (prefer rootless), user, or root escalation via sudo (example: auto)."
     required: false
     default: 'auto'
 
   # Orchestration flags
   prepare_host:
+    description: "When true, run infra/prepare-ubuntu-host before deploying containers (example: true)."
     required: false
     default: 'false'
 
   # Host prep
   env_dir_path:
+    description: "Remote directory where environment files and deployment metadata are stored (example: /opt/uactions/env)."
     required: false
   install_podman:
+    description: "Install Podman during host preparation if missing (example: true)."
     required: false
     default: 'true'
   additional_packages:
+    description: "Space-separated apt packages to install alongside Podman (example: 'jq curl ca-certificates')."
     required: false
     default: 'jq curl ca-certificates'
   create_podman_user:
+    description: "Create Podman user during host prep when the remote user does not exist yet (example: false)."
     required: false
     default: 'false'
   install_traefik:
+    description: "Install or reconcile Traefik reverse proxy during host preparation (example: true)."
     required: false
     default: 'true'
   traefik_email:
+    description: "Email address Traefik should register with Let's Encrypt for ACME certificates (example: ops@example.com)."
     required: false
     default: ''
 
   # Env
   env_name:
+    description: "Logical environment name such as production, staging, or development (example: production)."
     required: false
   auto_detect_env:
+    description: "When true, derive env_name from branch or tag using compute-defaults (example: true)."
     required: false
     default: 'true'
   env_file_path:
+    description: "Absolute or home-relative path to the remote .env file location (example: /opt/uactions/envs/app.env)."
     required: false
   env_b64:
+    description: "Base64-encoded .env payload that will be written to the remote host (example: ${{ secrets.APP_ENV_B64 }})."
     required: false
   env_content:
+    description: "Plain text .env payload (discouraged for secrets; prefer env_b64) (example: 'KEY=value')."
     required: false
 
   # Registry & image
   registry:
+    description: "Container registry host used for pulls (example: ghcr.io)."
     required: false
     default: 'ghcr.io'
   image_name:
+    description: "Repository/name portion of the container image without tag (example: org/app)."
     required: false
   image_tag:
+    description: "Container image tag to deploy (example: v1.2.3)."
     required: false
   registry_login:
+    description: "Attempt Podman login before pulling the image when credentials exist (example: true)."
     required: false
     default: 'true'
   registry_username:
+    description: "Username for authenticated registry pulls when registry_login is true (example: ${{ github.actor }})."
     required: false
   registry_token:
+    description: "Password or token for the registry account (example: ${{ secrets.GHCR_TOKEN }})."
     required: false
 
   # Runtime
   app_slug:
+    description: "Short identifier for the application, used in container names and logs (example: checkout)."
     required: false
   container_name:
+    description: "Explicit container name override; defaults to <app_slug>-<env> (example: checkout-prod)."
     required: false
   host_port:
+    description: "External host port to publish when Traefik is disabled (example: 8080)."
     required: false
   container_port:
+    description: "Internal container service port used for Traefik or port mappings (example: 3000)."
     required: false
   restart_policy:
+    description: "Podman restart policy such as no, on-failure, or unless-stopped (example: unless-stopped)."
     required: false
     default: 'unless-stopped'
   migrate:
+    description: "For legacy app deployers: run database migrations after deploy (example: true)."
     required: false
     default: 'true'
   migrate_cmd:
+    description: "Command issued to perform migrations when migrate=true (example: python manage.py migrate --noinput)."
     required: false
     default: 'python manage.py migrate --noinput'
   extra_run_args:
+    description: "Additional flags appended to podman run, provided as a quoted shell string (example: '--cap-add NET_ADMIN')."
     required: false
   memory_limit:
+    description: "Limit enforced via --memory/--memory-swap during podman run (example: 512m)."
     required: false
     default: '512m'
 
   # Traefik / networking
   enable_traefik:
+    description: "When true, Traefik labels/networking are configured for ingress (example: true)."
     required: false
     default: ''
   enable_acme:
+    description: "Toggle Traefik ACME certificate automation for the service (example: true)."
     required: false
     default: ''
   dns_servers:
+    description: "Comma- or space-separated DNS servers to pass to host preparation scripts (example: '1.1.1.1 8.8.8.8')."
     required: false
     default: ''
   ufw_allow_ports:
+    description: "Ports opened via UFW during host prep (space-separated list, example: '80 443')."
     required: false
     default: ''
 
   # VHost
   manage_vhost:
+    description: "Legacy Apache/Nginx vhost management flag (example: false)."
     required: false
     default: 'false'
   domain:
+    description: "Explicit fully-qualified domain to route the deployment through (example: api.example.com)."
     required: false
   base_domain:
+    description: "Apex domain used with per-environment prefixes (example: example.com)."
     required: false
   domain_prefix_prod:
+    description: "Subdomain prefix applied to production when base_domain is set (example: '')."
     required: false
     default: ''
   domain_prefix_staging:
+    description: "Subdomain prefix applied to staging environment (example: staging)."
     required: false
     default: ''
   domain_prefix_dev:
+    description: "Subdomain prefix applied to development environment (example: dev)."
     required: false
     default: ''
   require_dns_match:
+    description: "Reserved flag to enforce DNS validation before applying changes (example: true)."
     required: false
     default: 'true'
   enable_dashboard:
+    description: "Expose the Traefik dashboard when true (ensure credentials are set, example: false)."
     required: false
     default: 'false'
   dashboard_publish_modes:
+    description: "Comma-separated publish modes for the Traefik dashboard (example: 'https,internal')."
     required: false
     default: ''
   dashboard_host:
+    description: "Hostname assigned to the Traefik dashboard router (example: traefik.example.com)."
     required: false
     default: ''
   dashboard_password:
+    description: "Plain password used to seed Traefik dashboard basic auth (hashed remotely, example: change-me)."
     required: false
     default: ''
   dashboard_users_b64:
+    description: "Base64-encoded htpasswd entries for the Traefik dashboard (pre-hashed users, example: ${{ secrets.TRAEFIK_USERS_B64 }})."
     required: false
     default: ''
 
@@ -254,26 +305,9 @@ runs:
         env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
         image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
 
-    # - name: write-remote-env-file
-    #   if: ${{ inputs.subaction == 'write-remote-env-file' }}
-    #   uses: ./.github/actions/app/write-remote-env-file
-    #   with:
-    #     ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
-    #     ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
-    #     ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
-    #     root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.params.outputs.json).root_ssh_key }}
-    #     ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.params.outputs.json).ssh_port }}
-    #     ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.params.outputs.json).ssh_fingerprint }}
-    #     podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.params.outputs.json).podman_user }}
-    #     connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.params.outputs.json).connect_mode }}
-    #     env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
-    #     env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
-    #     env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
-    #     env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
-
-    - name: ssh-django-api-deploy
-      if: ${{ inputs.subaction == 'ssh-django-api-deploy' }}
-      uses: ./.github/actions/app/ssh-django-api-deploy
+    - name: write-remote-env-file
+      if: ${{ inputs.subaction == 'write-remote-env-file' }}
+      uses: ./.github/actions/app/write-remote-env-file
       with:
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
@@ -283,139 +317,12 @@ runs:
         ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.params.outputs.json).ssh_fingerprint }}
         podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.params.outputs.json).podman_user }}
         connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.params.outputs.json).connect_mode }}
-        prepare_host: ${{ inputs.prepare_host != '' && inputs.prepare_host || fromJSON(steps.params.outputs.json).prepare_host }}
-        install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.params.outputs.json).install_podman }}
-        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.params.outputs.json).create_podman_user }}
-        install_traefik: ${{ inputs.install_traefik != '' && inputs.install_traefik || fromJSON(steps.params.outputs.json).install_traefik || 'true' }}
-        traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || fromJSON(steps.params.outputs.json).traefik_email }}
-        enable_traefik: ${{ inputs.enable_traefik != '' && inputs.enable_traefik || fromJSON(steps.params.outputs.json).enable_traefik || 'true' }}
-        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}
-        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.params.outputs.json).additional_packages }}
         env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
         env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
-        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.params.outputs.json).write_env_file }}
         env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
         env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
-        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.params.outputs.json).registry }}
-        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.params.outputs.json).registry_username }}
-        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.params.outputs.json).registry_token }}
-        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
-        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
-        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag }}
-        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
-        container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.params.outputs.json).container_name }}
-        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
-        container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.params.outputs.json).container_port }}
-        restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.params.outputs.json).restart_policy }}
-        migrate: ${{ inputs.migrate != '' && inputs.migrate || fromJSON(steps.params.outputs.json).migrate }}
-        migrate_cmd: ${{ inputs.migrate_cmd != '' && inputs.migrate_cmd || fromJSON(steps.params.outputs.json).migrate_cmd }}
-        extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
-        memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit }}
-        manage_vhost: ${{ inputs.manage_vhost != '' && inputs.manage_vhost || fromJSON(steps.params.outputs.json).manage_vhost || 'false' }}
-        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain || steps.defaults.outputs.domain_default }}
-        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
-        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod || steps.defaults.outputs.domain_prefix_prod }}
-        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging || steps.defaults.outputs.domain_prefix_staging }}
-        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
-        require_dns_match: ${{ inputs.require_dns_match != '' && inputs.require_dns_match || fromJSON(steps.params.outputs.json).require_dns_match || 'true' }}
 
-    - name: ssh-django-deploy
-      if: ${{ inputs.subaction == 'ssh-django-deploy' }}
-      uses: ./.github/actions/app/ssh-django-deploy
-      with:
-        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
-        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.params.outputs.json).root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.params.outputs.json).ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.params.outputs.json).ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.params.outputs.json).podman_user }}
-        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.params.outputs.json).connect_mode }}
-        prepare_host: ${{ inputs.prepare_host != '' && inputs.prepare_host || fromJSON(steps.params.outputs.json).prepare_host }}
-        install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.params.outputs.json).install_podman }}
-        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.params.outputs.json).create_podman_user }}
-        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}
-        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.params.outputs.json).additional_packages }}
-        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
-        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
-        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.params.outputs.json).write_env_file }}
-        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
-        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
-        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.params.outputs.json).registry }}
-        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.params.outputs.json).registry_username }}
-        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.params.outputs.json).registry_token }}
-        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
-        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
-        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag }}
-        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
-        container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.params.outputs.json).container_name }}
-        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
-        container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.params.outputs.json).container_port }}
-        restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.params.outputs.json).restart_policy }}
-        migrate: ${{ inputs.migrate != '' && inputs.migrate || fromJSON(steps.params.outputs.json).migrate }}
-        migrate_cmd: ${{ inputs.migrate_cmd != '' && inputs.migrate_cmd || fromJSON(steps.params.outputs.json).migrate_cmd }}
-        extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
-        memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit }}
-        manage_vhost: ${{ inputs.manage_vhost != '' && inputs.manage_vhost || fromJSON(steps.params.outputs.json).manage_vhost }}
-        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
-        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
-        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
-        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
-        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
-
-    - name: ssh-nextjs-deploy
-      if: ${{ inputs.subaction == 'ssh-nextjs-deploy' }}
-      uses: ./.github/actions/app/ssh-nextjs-deploy
-      with:
-        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
-        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.params.outputs.json).root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.params.outputs.json).ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.params.outputs.json).ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.params.outputs.json).podman_user }}
-        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.params.outputs.json).connect_mode }}
-        prepare_host: ${{ inputs.prepare_host != '' && inputs.prepare_host || fromJSON(steps.params.outputs.json).prepare_host }}
-        install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.params.outputs.json).install_podman }}
-        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.params.outputs.json).create_podman_user }}
-        install_traefik: ${{ inputs.install_traefik != '' && inputs.install_traefik || fromJSON(steps.params.outputs.json).install_traefik || 'true' }}
-        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}
-        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.params.outputs.json).additional_packages }}
-        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
-        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
-        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.params.outputs.json).write_env_file }}
-        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
-        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
-        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.params.outputs.json).registry }}
-        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.params.outputs.json).registry_username }}
-        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.params.outputs.json).registry_token }}
-        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
-        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
-        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag }}
-        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
-        container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.params.outputs.json).container_name }}
-        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
-        container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.params.outputs.json).container_port }}
-        restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.params.outputs.json).restart_policy }}
-        extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
-        memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit }}
-        manage_vhost: ${{ inputs.manage_vhost != '' && inputs.manage_vhost || fromJSON(steps.params.outputs.json).manage_vhost }}
-        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
-        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
-        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
-        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
-        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
-        enable_traefik: ${{ inputs.enable_traefik != '' && inputs.enable_traefik || fromJSON(steps.params.outputs.json).enable_traefik || 'true' }}
-        enable_acme: ${{ inputs.enable_acme != '' && inputs.enable_acme || fromJSON(steps.params.outputs.json).enable_acme }}
-        traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || fromJSON(steps.params.outputs.json).traefik_email }}
-        dns_servers: ${{ inputs.dns_servers != '' && inputs.dns_servers || fromJSON(steps.params.outputs.json).dns_servers }}
-        ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
-        enable_dashboard: ${{ inputs.enable_dashboard != '' && inputs.enable_dashboard || fromJSON(steps.params.outputs.json).enable_dashboard }}
-        dashboard_publish_modes: ${{ inputs.dashboard_publish_modes != '' && inputs.dashboard_publish_modes || fromJSON(steps.params.outputs.json).dashboard_publish_modes }}
-        dashboard_host: ${{ inputs.dashboard_host != '' && inputs.dashboard_host || fromJSON(steps.params.outputs.json).dashboard_host }}
-        dashboard_password: ${{ inputs.dashboard_password != '' && inputs.dashboard_password || fromJSON(steps.params.outputs.json).dashboard_password }}
-        dashboard_users_b64: ${{ inputs.dashboard_users_b64 != '' && inputs.dashboard_users_b64 || fromJSON(steps.params.outputs.json).dashboard_users_b64 }}
-
+   
     - name: ssh-container-deploy
       if: ${{ inputs.subaction == 'ssh-container-deploy' }}
       uses: ./.github/actions/app/ssh-container-deploy
@@ -467,89 +374,3 @@ runs:
         ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
         domain_hosts: ${{ inputs.domain_hosts != '' && inputs.domain_hosts || fromJSON(steps.params.outputs.json).domain_hosts }}
     
-    - name: ssh-react-deploy
-      if: ${{ inputs.subaction == 'ssh-react-deploy' }}
-      uses: ./.github/actions/app/ssh-react-deploy
-      with:
-        debug: ${{ inputs.debug != '' && inputs.debug || fromJSON(steps.params.outputs.json).debug }}
-        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
-        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.params.outputs.json).root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.params.outputs.json).ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.params.outputs.json).ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.params.outputs.json).podman_user }}
-        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.params.outputs.json).connect_mode }}
-        prepare_host: ${{ inputs.prepare_host != '' && inputs.prepare_host || fromJSON(steps.params.outputs.json).prepare_host }}
-        install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.params.outputs.json).install_podman }}
-        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.params.outputs.json).create_podman_user }}
-        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}
-        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.params.outputs.json).additional_packages }}
-        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
-        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
-        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.params.outputs.json).write_env_file }}
-        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
-        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
-        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.params.outputs.json).registry }}
-        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.params.outputs.json).registry_username }}
-        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.params.outputs.json).registry_token }}
-        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
-        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
-        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag }}
-        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
-        container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.params.outputs.json).container_name }}
-        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
-        container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.params.outputs.json).container_port }}
-        restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.params.outputs.json).restart_policy }}
-        extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
-        memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit }}
-        manage_vhost: ${{ inputs.manage_vhost != '' && inputs.manage_vhost || fromJSON(steps.params.outputs.json).manage_vhost }}
-        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
-        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
-        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
-        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
-        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
-
-    - name: ssh-laravel-deploy
-      if: ${{ inputs.subaction == 'ssh-laravel-deploy' }}
-      uses: ./.github/actions/app/ssh-laravel-deploy
-      with:
-        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
-        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
-        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
-        root_ssh_key: ${{ inputs.root_ssh_key != '' && inputs.root_ssh_key || fromJSON(steps.params.outputs.json).root_ssh_key }}
-        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.params.outputs.json).ssh_port }}
-        ssh_fingerprint: ${{ inputs.ssh_fingerprint != '' && inputs.ssh_fingerprint || fromJSON(steps.params.outputs.json).ssh_fingerprint }}
-        podman_user: ${{ inputs.podman_user != '' && inputs.podman_user || fromJSON(steps.params.outputs.json).podman_user }}
-        connect_mode: ${{ inputs.connect_mode != '' && inputs.connect_mode || fromJSON(steps.params.outputs.json).connect_mode }}
-        prepare_host: ${{ inputs.prepare_host != '' && inputs.prepare_host || fromJSON(steps.params.outputs.json).prepare_host }}
-        install_podman: ${{ inputs.install_podman != '' && inputs.install_podman || fromJSON(steps.params.outputs.json).install_podman }}
-        create_podman_user: ${{ inputs.create_podman_user != '' && inputs.create_podman_user || fromJSON(steps.params.outputs.json).create_podman_user }}
-        env_dir_path: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}
-        additional_packages: ${{ inputs.additional_packages != '' && inputs.additional_packages || fromJSON(steps.params.outputs.json).additional_packages }}
-        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name || steps.defaults.outputs.env_name }}
-        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
-        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.params.outputs.json).write_env_file }}
-        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
-        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
-        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.params.outputs.json).registry }}
-        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.params.outputs.json).registry_username }}
-        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.params.outputs.json).registry_token }}
-        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
-        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
-        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag || steps.defaults.outputs.image_tag }}
-        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
-        container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.params.outputs.json).container_name }}
-        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
-        container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.params.outputs.json).container_port }}
-        restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.params.outputs.json).restart_policy }}
-        migrate: ${{ inputs.migrate != '' && inputs.migrate || fromJSON(steps.params.outputs.json).migrate }}
-        migrate_cmd: ${{ inputs.migrate_cmd != '' && inputs.migrate_cmd || fromJSON(steps.params.outputs.json).migrate_cmd }}
-        extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
-        memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit || steps.defaults.outputs.memory_limit }}
-        manage_vhost: 'false'
-        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain || steps.defaults.outputs.domain_default }}
-        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
-        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod || steps.defaults.outputs.domain_prefix_prod }}
-        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging || steps.defaults.outputs.domain_prefix_staging }}
-        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}

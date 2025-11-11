@@ -119,26 +119,34 @@ inputs: # All parameters accepted by this action
     default: '_ENV_B64'
 
   # Host prep
-  prepare_host: # If true, prepare a fresh Ubuntu host (podman, users, dirs)
+  prepare_host:
+    description: "When true, prepare a fresh Ubuntu host (install Podman, create directories, manage users)."
     required: false
     default: 'true'
-  install_podman: # Install Podman during host prep
+  install_podman:
+    description: "Install Podman during host preparation when not already available (example: true)."
     required: false
     default: 'true'
-  create_podman_user: # Create the podman_user if missing
+  create_podman_user:
+    description: "Create the podman_user account during host prep when it does not exist (example: false)."
     required: false
     default: 'false'
-  install_traefik: # Install Traefik reverse proxy during host prep
+  install_traefik:
+    description: "Install or reconcile the Traefik reverse proxy during host preparation (example: true)."
     required: false
     default: 'true'
-  traefik_email: # Email for Let's Encrypt (used by Traefik)
+  traefik_email:
+    description: "Email passed to Traefik's ACME integration for certificate registration (example: ops@example.com)."
     required: false
-  env_dir_path: # Base dir on host for env files and app data (e.g., /var/deployments)
+  env_dir_path:
+    description: "Base directory on the host where environment files and app metadata are stored (example: /opt/uactions/envs)."
     required: false
-  additional_packages: # Extra apt packages to install on host prep
+  additional_packages:
+    description: "Extra apt packages installed during host preparation (space separated, example: 'jq curl ca-certificates')."
     required: false
     default: 'jq curl ca-certificates'
-  ufw_allow_ports: # Space-separated ports to open in UFW during prep
+  ufw_allow_ports:
+    description: "Space-separated list of ports opened in UFW during host prep (example: '80 443')."
     required: false
     default: ''
   show_root_install_hints:
@@ -147,52 +155,71 @@ inputs: # All parameters accepted by this action
     default: 'true'
 
   # Env file
-  env_name: # Environment: production|staging|development (auto if omitted)
+  env_name:
+    description: "Logical environment name (production, staging, development). Auto-derived when omitted."
     required: false
-  auto_detect_env: # When true, derive env from branch/tag
+  auto_detect_env:
+    description: "When true, derive env_name from branch or tag using compute-defaults (example: true)."
     required: false
     default: 'true'
-  env_file_path: # Remote base path for env files (default derived)
+  env_file_path:
+    description: "Remote base path where the .env file should be written (example: /opt/uactions/envs/app.env)."
     required: false
-  write_env_file: # Write env to host before deploy (true when env payload present)
+  write_env_file:
+    description: "When true, write env_b64 or env_content to the remote server before deployment (example: true)."
     required: false
     default: 'false'
-  env_b64: # Base64-encoded .env content to write
+  env_b64:
+    description: "Base64-encoded .env payload to materialize on the host (example: ${{ secrets.APP_ENV_B64 }})."
     required: false
-  env_content: # Raw .env content (use env_b64 when possible)
+  env_content:
+    description: "Raw .env content for the host. Prefer env_b64 for secrets (example: 'KEY=value')."
     required: false
 
   # Registry & image
-  registry: # Registry hostname (e.g., ghcr.io, docker.io)
+  registry:
+    description: "Container registry hostname used for image pulls (example: ghcr.io)."
     required: false
     default: 'ghcr.io'
-  image_name: # Image path (org/repo)
+  image_name:
+    description: "Repository and image path without tag (example: org/app)."
     required: false
-  image_tag: # Image tag (e.g., v1.2.3 or env-sha)
+  image_tag:
+    description: "Image tag to deploy (example: v1.2.3 or production-abcdef)."
     required: false
-  registry_username: # Registry username (needed for non-GHCR private)
+  registry_username:
+    description: "Registry username for authenticated pulls (example: ${{ github.actor }})."
     required: false
-  registry_token: # Registry token/password
+  registry_token:
+    description: "Registry password or token with pull permissions (example: ${{ secrets.GHCR_TOKEN }})."
     required: false
-  registry_login: # Perform login before pull
+  registry_login:
+    description: "Attempt Podman login before pulling when credentials exist (example: true)."
     required: false
     default: 'true'
 
   # Runtime
-  app_slug: # Slug for app; defaults from repo name
+  app_slug:
+    description: "Human-readable slug for the application; defaults from the repo name (example: checkout)."
     required: false
-  container_name: # Override container name (<app>-<env> if omitted)
+  container_name:
+    description: "Container name override; defaults to <app_slug>-<env> (example: checkout-prod)."
     required: false
-  host_port: # Host port to publish (when not using Traefik)
+  host_port:
+    description: "Host port to publish when Traefik is disabled (example: 8080)."
     required: false
-  container_port: # Container port to expose (service port for Traefik or mapping)
+  container_port:
+    description: "Container service port used by Traefik labels or host port mapping (example: 3000)."
     required: false
-  restart_policy: # Podman restart policy
+  restart_policy:
+    description: "Podman restart policy applied to the container (example: unless-stopped)."
     required: false
     default: 'unless-stopped'
-  extra_run_args: # Extra args for podman run
+  extra_run_args:
+    description: "Additional flags appended to podman run, provided as a quoted string (example: '--cap-add NET_ADMIN')."
     required: false
-  memory_limit: # Memory limit (and swap) for the container
+  memory_limit:
+    description: "Memory limit (and swap) applied to the container (example: 512m)."
     required: false
     default: '512m'
 
@@ -209,46 +236,58 @@ inputs: # All parameters accepted by this action
     default: 'full'
 
   # Env sourcing for deployment
-  source_env: # Source the .env on remote before running deploy script
+  source_env:
+    description: "When true, source the remote .env before executing deployment scripts so exports are available (example: true)."
     required: false
     default: 'true'
-  fail_if_env_missing: # Fail if .env missing and source_env=true
+  fail_if_env_missing:
+    description: "If source_env=true, halt the deployment when the .env file cannot be sourced; set false to proceed without env exports (example: true)."
     required: false
     default: 'true'
 
   # Domain / Traefik
-  enable_traefik: # When true and domain present, attach Traefik labels
+  enable_traefik:
+    description: "When true, attach Traefik labels and network when a domain is provided (example: true)."
     required: false
     default: 'true'
   ensure_traefik:
     description: 'Run infra/setup-traefik to reconcile Traefik (probe-first fast-path). Set false to skip entirely.'
     required: false
     default: 'true'
-  domain: # Explicit FQDN to use for routing (optional)
+  domain:
+    description: "Explicit domain to route the deployment (example: api.example.com)."
     required: false
-  base_domain: # Apex domain; we derive per-env subdomain when set
+  base_domain:
+    description: "Base apex domain used to compute per-environment hostnames (example: example.com)."
     required: false
-  domain_prefix_prod: # Prefix for prod subdomain ('' for apex)
+  domain_prefix_prod:
+    description: "Prefix to prepend for production environments when base_domain is used (example: '')."
     required: false
     default: ''
-  domain_prefix_staging: # Prefix for staging subdomain
+  domain_prefix_staging:
+    description: "Prefix applied to the staging environment when base_domain is set (example: staging)."
     required: false
-  domain_prefix_dev: # Prefix for dev subdomain
+  domain_prefix_dev:
+    description: "Prefix applied to the development environment when base_domain is set (example: dev)."
     required: false
-  require_dns_match: # (Reserved) Gate changes behind DNS match
+  require_dns_match:
+    description: "Reserved flag to gate changes behind DNS validation (example: true)."
     required: false
     default: 'true'
-  domain_aliases: # Optional comma or space-separated aliases (e.g., www.example.com, api.example.com)
+  domain_aliases:
+    description: "Optional comma or space-separated aliases routed to the service (example: 'www.example.com api.example.com')."
     required: false
     default: ''
-  include_www_alias: # When true and domain is set, also include www.<domain> as alias
+  include_www_alias:
+    description: "When true and domain is set, also include www.<domain> as an alias (example: false)."
     required: false
     default: 'false'
   domain_hosts:
     description: 'CSV of hostnames to route (preferred). Overrides aliases when provided.'
     required: false
     default: ''
-  probe_path: # Path to probe on the domain (e.g., /health). Defaults to '/'
+  probe_path:
+    description: "Path used by Traefik probe to validate deployment readiness (example: /health)."
     required: false
     default: '/'
 
@@ -333,38 +372,6 @@ runs: # Composite action implementation
     #     fi
     #     echo "  EFFECTIVE: '$EFFECTIVE'"
     #     printf 'prepare_host=%s\n' "$EFFECTIVE" >> "$GITHUB_OUTPUT"
-
-    # - name: Fail fast if podman missing and not preparing host
-    #   if: ${{ steps.reach.outputs.reachable == 'true' }}
-    #   uses: appleboy/ssh-action@v1.0.3
-    #   with:
-    #     host: ${{ inputs.ssh_host }}
-    #     username: ${{ inputs.ssh_user }}
-    #     key: ${{ inputs.ssh_key }}
-    #     port: ${{ inputs.ssh_port }}
-    #     fingerprint: ${{ inputs.ssh_fingerprint }}
-    #     script: |
-    #       set -euo pipefail
-    #       # If host prep will run, let install-podman handle the privilege check and messaging
-    #       if [ '${{ steps.eff.outputs.prepare_host }}' = 'true' ]; then
-    #         exit 0
-    #       fi
-    #       # If podman exists, continue
-    #       if command -v podman >/dev/null 2>&1; then
-    #         exit 0
-    #       fi
-    #       # Otherwise, fail fast with explicit instructions
-    #       SUDO_AVAIL=no
-    #       if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then SUDO_AVAIL=yes; fi
-    #       echo '::error::Podman is required on the remote host to deploy containers, but it is not installed and prepare_host=false.' >&2
-    #       if [ '${{ inputs.show_root_install_hints }}' = 'true' ]; then
-    #         echo "Detected: user=$(id -un); sudo(non-interactive)=${SUDO_AVAIL}" >&2
-    #         echo 'Install manually as root then re-run:' >&2
-    #         echo '  sudo apt-get update -y' >&2
-    #         echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
-    #         echo 'Or re-run this action with prepare_host: true and root privileges.' >&2
-    #       fi
-    #       exit 1
 
     - name: Resolve env secret (optional)
       id: envsel
@@ -570,7 +577,7 @@ runs: # Composite action implementation
           export TRAEFIK_ENABLED='${{ inputs.enable_traefik }}'
           export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
           export TRAEFIK_NETWORK_NAME='${{ inputs.traefik_network_name }}'
-          export DOMAIN_INPUT='${{ inputs.base_domain || inputs.domain }}'
+          export DOMAIN_INPUT='${{ inputs.domain }}'
           export DOMAIN_DEFAULT='${{ steps.dfl.outputs.domain_default }}'
           export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'
           export DOMAIN_ALIASES='${{ inputs.domain_aliases }}'
@@ -606,8 +613,32 @@ runs: # Composite action implementation
           date -u +'%Y-%m-%d %H:%M:%S UTC' > "$HOME/uactions/scripts/.deployed_at"
           echo '${{ github.sha }}' > "$HOME/uactions/scripts/.version"
           echo "================================================================"
-
+          echo "Running deployment script..."
+          echo "  Script: $HOME/uactions/scripts/app/run-deployment.sh"
+          echo "  App: $APP_SLUG"
+          echo "  Image: $IMAGE_REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
+          echo "  Traefik: $TRAEFIK_ENABLED"
           "$HOME/uactions/scripts/app/run-deployment.sh"
+          echo "================================================================"
+          ROUTER='${{ steps.dfl.outputs.traefik_router }}'
+          DOMAIN_EFFECTIVE='${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }}'
+          SERVICE_PORT='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'
+          PROBE_PATH='${{ inputs.probe_path }}'
+          echo "================================================================"
+          echo "Router: $ROUTER"
+          echo "Domain: $DOMAIN_EFFECTIVE"
+          echo "Service Port: $SERVICE_PORT"
+          echo "Probe Path: $PROBE_PATH"
+          echo "================================================================"
+          # Probe tuning: enable HTTP fallback and slightly extend timeout for slow DNS/ACME
+          export PROBE_HTTP_FALLBACK=true
+          export PROBE_TIMEOUT=12
+          export PROBE_TRIES=12
+          export PROBE_DELAY=5
+          echo "================================================================"
+          echo "Running Traefik probe..."
+          echo "================================================================"
+          "$HOME/uactions/scripts/traefik/probe-traefik.sh" post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT" "$PROBE_PATH"
 
           
     # - name: Deploy container # Start/replace container with Traefik or port mapping

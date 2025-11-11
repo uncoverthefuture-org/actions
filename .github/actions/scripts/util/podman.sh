@@ -144,3 +144,23 @@ podman_pull_image() {
 run_podman() {
   podman "$@"
 }
+
+# Detect Traefik availability using systemd and podman checks
+podman_detect_traefik() {
+  local present=false
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet traefik; then
+    present=true
+  elif command -v podman >/dev/null 2>&1 && podman ps -a --format '{{.Names}}' | grep -Fxq traefik; then
+    present=true
+  elif command -v podman >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1 && sudo -n podman ps -a --format '{{.Names}}' 2>/dev/null | grep -Fxq traefik; then
+    present=true
+  fi
+
+  if [[ "$present" == "true" ]]; then
+    echo "✅ Traefik endpoint detected"
+  else
+    echo "⚠️  Traefik service not detected; deployment will rely on host port mapping unless ensured elsewhere"
+  fi
+
+  [[ "$present" == "true" ]]
+}

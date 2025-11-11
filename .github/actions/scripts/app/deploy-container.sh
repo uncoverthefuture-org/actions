@@ -156,6 +156,7 @@ else
     echo '  sudo apt-get update -y' >&2
     echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
     echo 'Or re-run this action with prepare_host: true and root privileges.' >&2
+    exit 1
   else
     echo "   Running (sudo apt-get update -y)"
     if sudo apt-get update -y; then
@@ -174,6 +175,27 @@ else
     fi
   fi
 fi
+
+echo "================================================================"
+echo "🔌 Ensuring podman socket is active"
+echo "================================================================"
+if [[ "${SUDO_STATUS:-available}" == "unavailable" ]]; then
+  echo "::error::sudo privileges required to enable podman.socket" >&2
+  exit 1
+fi
+
+if sudo systemctl enable --now podman.socket >/dev/null 2>&1; then
+  echo "✅ podman.socket enabled"
+else
+  echo "::error::Unable to enable podman.socket" >&2
+  exit 1
+fi
+
+# --- Detect Traefik availability -----------------------------------------------------
+echo "================================================================"
+echo "🛰  Probing for Traefik runtime"
+echo "================================================================"
+TRAEFIK_PRESENT=$(podman_detect_traefik && echo true || echo false)
 
 # --- Inspect existing container for port reuse --------------------------------------
 # Check whether the target container already exists so we can harvest prior
