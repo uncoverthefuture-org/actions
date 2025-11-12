@@ -52,6 +52,7 @@ mkdir -p "$(dirname "$CONFIG_PATH")" "$(dirname "$ACME_PATH")"
 
 CONFIG_TMP="$(mktemp -t traefik-config.XXXXXX)"
 ACME_TMP=""
+LOG_LEVEL="${TRAEFIK_LOG_LEVEL:-DEBUG}"
 
 cleanup_tmp() {
   rm -f "$CONFIG_TMP" "$CONFIG_TMP.bak"
@@ -59,23 +60,27 @@ cleanup_tmp() {
 }
 trap cleanup_tmp EXIT
 
-CONFIG_SOURCE="template"
-if [ -r "$SYS_CONFIG" ]; then
-  cp "$SYS_CONFIG" "$CONFIG_TMP" 2>/dev/null && CONFIG_SOURCE="system"
-elif [ -n "$SUDO" ] && $SUDO test -r "$SYS_CONFIG" 2>/dev/null; then
-  if $SUDO cat "$SYS_CONFIG" >"$CONFIG_TMP"; then
-    CONFIG_SOURCE="system"
-  fi
+generate_traefik_static_config "$CONFIG_TMP" "${TRAEFIK_EMAIL:-}" "$LOG_LEVEL" "${TRAEFIK_UTIL_DEBUG:-}"
+if [ -z "${TRAEFIK_EMAIL:-}" ]; then
+  echo "::warning::TRAEFIK_EMAIL not provided; leaving placeholder ${TRAEFIK_EMAIL} in traefik.yml." >&2
+else
+  echo "📝 Generated Traefik config template with email ${TRAEFIK_EMAIL}"
 fi
 
-if [ "$CONFIG_SOURCE" = "system" ]; then
-  echo "📄 Copied system Traefik config into user scope workspace"
-else
-  generate_traefik_static_config "$CONFIG_TMP" "${TRAEFIK_EMAIL:-}"
-  if [ -z "${TRAEFIK_EMAIL:-}" ]; then
-    echo "::warning::TRAEFIK_EMAIL not provided; leaving placeholder ${TRAEFIK_EMAIL} in traefik.yml." >&2
+# Attempt to keep the system config in sync when sudo is available.
+if [ -n "$SUDO" ]; then
+  if ! $SUDO test -d "$(dirname "$SYS_CONFIG")"; then
+    $SUDO mkdir -p "$(dirname "$SYS_CONFIG")"
+  fi
+  if ! $SUDO test -f "$SYS_CONFIG" || ! cmp -s "$CONFIG_TMP" "$SYS_CONFIG"; then
+    $SUDO install -m 0644 "$CONFIG_TMP" "$SYS_CONFIG"
+    echo "🔧 Installed canonical Traefik config to $SYS_CONFIG"
   else
-    echo "📝 Generated Traefik config template with email ${TRAEFIK_EMAIL}"
+    echo "✅ System Traefik config already matches template"
+  fi
+else
+  if [ -r "$SYS_CONFIG" ] && ! cmp -s "$CONFIG_TMP" "$SYS_CONFIG"; then
+    echo "::warning::System config differs from template but sudo is unavailable. Run install-traefik.sh as root to resync." >&2
   fi
 fi
 

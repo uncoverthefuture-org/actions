@@ -12,6 +12,7 @@
 #   PODMAN_USER         - Linux user that runs containers (default: current user)
 #   DASHBOARD_USER      - Optional username for Traefik dashboard basic auth (default: admin)
 #   DASHBOARD_PASS_BCRYPT - Optional bcrypt hash (htpasswd -nB) for dashboard user; if absent a placeholder file is created
+#   TRAEFIK_LOG_LEVEL   - Optional Traefik log level (default: DEBUG)
 #
 # Exit codes:
 #   0 - Success
@@ -28,6 +29,7 @@ TRAEFIK_EMAIL="${TRAEFIK_EMAIL:-}"
 PODMAN_USER="${PODMAN_USER:-$(id -un)}"
 DASHBOARD_USER="${DASHBOARD_USER:-admin}"
 DASHBOARD_PASS_BCRYPT="${DASHBOARD_PASS_BCRYPT:-}"
+TRAEFIK_LOG_LEVEL="${TRAEFIK_LOG_LEVEL:-DEBUG}"
 
 # Validate required inputs
 if [[ -z "$TRAEFIK_EMAIL" ]]; then
@@ -90,7 +92,7 @@ fi
 echo "📝 Writing Traefik config to /etc/traefik/traefik.yml ..."
 CONFIG_TMP="$(mktemp)"
 trap 'rm -f "$CONFIG_TMP"' EXIT
-generate_traefik_static_config "$CONFIG_TMP" "$TRAEFIK_EMAIL"
+generate_traefik_static_config "$CONFIG_TMP" "$TRAEFIK_EMAIL" "$TRAEFIK_LOG_LEVEL" "${TRAEFIK_UTIL_DEBUG:-}"
 
 if command -v sha256sum >/dev/null 2>&1; then
   NEW_SHA=$(sha256sum "$CONFIG_TMP" | awk '{print $1}')
