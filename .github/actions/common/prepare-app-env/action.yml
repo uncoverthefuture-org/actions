@@ -200,5 +200,11 @@ runs:
           cat "$dest" >>"$GITHUB_ENV"
         fi
 
-        # Set the absolute path to the env file as an output variable
-        printf 'env_file=%s\n' "$(cd "$(dirname "$dest")" && pwd)/$(basename "$dest")" >>"$GITHUB_OUTPUT"
+        # Resolve absolute path to the env file
+        env_file_path="$(cd "$(dirname "$dest")" && pwd)/$(basename "$dest")"
+
+        # Export variables from the .env file to GitHub Actions environment
+        grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$env_file_path" | sed 's/\r$//' >> "$GITHUB_ENV"
+
+        # Output the resolved env file path to GITHUB_OUTPUT
+        printf 'env_file=%s\n' "$env_file_path" >> "$GITHUB_OUTPUT"

@@ -24,7 +24,7 @@ if [ "$IS_ROOT" = "no" ] && [ -z "$SUDO" ]; then
 fi
 export DEBIAN_FRONTEND=noninteractive
 echo "📥 Updating apt cache and installing prerequisites ..."
-$SUDO apt-get update -y -o Dpkg::Use-Pty=0
+$SUDO apt-get update -y -o Dpkg::Use-Pty=0 || true
 $SUDO apt-get install -y -o Dpkg::Use-Pty=0 gnupg wget curl ca-certificates apt-transport-https software-properties-common || true
 
 # Idempotence: detect already-installed packages and avoid reinstall
@@ -38,12 +38,9 @@ if dpkg -s usermin >/dev/null 2>&1; then
 fi
 
 ensure_webmin_repo() {
-  # If repo already configured, skip script setup
-  if [ -f /etc/apt/sources.list.d/webmin.list ] || grep -Rqs "download.webmin.com" /etc/apt/sources.list.d /etc/apt/sources.list 2>/dev/null; then
-    echo "🧭 Webmin repository already configured"
-    return 0
-  fi
   echo "🔑 Setting up Webmin repository via vendor script ..."
+  # Use vendor setup script to configure repo and keys
+  # Fetch the vendor repo setup script
   TMP_SETUP="$(mktemp -t webmin-setup.XXXXXX.sh)"
   # Prefer curl, fallback to wget
   if command -v curl >/dev/null 2>&1; then
@@ -70,18 +67,96 @@ ensure_webmin_repo() {
 if [ "$INSTALL_WEBMIN" = "true" ] || [ "$INSTALL_USERMIN" = "true" ]; then
   ensure_webmin_repo
   echo "📥 Updating apt cache for Webmin repo ..."
-  $SUDO apt-get update -y -o Dpkg::Use-Pty=0 || true
+  UPDATE_OUT="$($SUDO apt-get update -y -o Dpkg::Use-Pty=0 2>&1)" || UPDATE_RC=$?
+  : "${UPDATE_RC:=0}"
+  if [ "$UPDATE_RC" -ne 0 ]; then
+    if printf '%s' "$UPDATE_OUT" | grep -qiE 'untrusted public key algorithm: dsa|repository .* is not signed|NO_PUBKEY|GPG error'; then
+      echo "::error::Apt update failed due to Webmin repository signature issues" >&2
+      echo "================================================================" >&2
+      echo "Manual fix (run on the server as a user with sudo):" >&2
+      echo "================================================================" >&2
+      echo "sudo rm -f /etc/apt/sources.list.d/webmin.list /etc/apt/sources.list.d/webmin.list.disabled /usr/share/keyrings/webmin.gpg /etc/apt/keyrings/webmin.gpg" >&2
+      echo "curl -fsSL -o webmin-setup-repo.sh https://raw.githubusercontent.com/webmin/webmin/master/webmin-setup-repo.sh" >&2
+      echo "sudo sh webmin-setup-repo.sh" >&2
+      echo "sudo apt-get update -y" >&2
+      echo "sudo apt-get install -y webmin${INSTALL_USERMIN:+ usermin}" >&2
+      echo "================================================================" >&2
+      echo "If that still fails and you accept the risk, you can use this fallback:" >&2
+      echo "echo 'deb [trusted=yes] https://download.webmin.com/download/repository sarge contrib' | sudo tee /etc/apt/sources.list.d/webmin.list" >&2
+      echo "sudo apt-get update -y -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true" >&2
+      echo "sudo apt-get install -y webmin${INSTALL_USERMIN:+ usermin}" >&2
+      echo "================================================================" >&2
+    else
+      echo "::error::Apt update failed while preparing Webmin repository" >&2
+      printf '%s\n' "$UPDATE_OUT" | tail -n 80 >&2 || true
+    fi
+    exit 1
+  fi
 fi
 
 if [ "$INSTALL_WEBMIN" = "true" ]; then
   echo "📦 Installing Webmin ..."
-  $SUDO apt-get install -y --install-recommends -o Dpkg::Use-Pty=0 webmin || true
+  if ! INSTALL_OUT="$($SUDO apt-get install -y --install-recommends -o Dpkg::Use-Pty=0 webmin 2>&1)"; then
+    if printf '%s' "$INSTALL_OUT" | grep -qiE 'untrusted public key algorithm: dsa|repository .* is not signed|NO_PUBKEY|GPG error'; then
+      echo "::error::Webmin installation failed due to repository signature issues" >&2
+      echo "================================================================" >&2
+      echo "Manual fix (run on the server as a user with sudo):" >&2
+      echo "================================================================" >&2
+      echo "sudo rm -f /etc/apt/sources.list.d/webmin.list /etc/apt/sources.list.d/webmin.list.disabled /usr/share/keyrings/webmin.gpg /etc/apt/keyrings/webmin.gpg" >&2
+      echo "curl -fsSL -o webmin-setup-repo.sh https://raw.githubusercontent.com/webmin/webmin/master/webmin-setup-repo.sh" >&2
+      echo "sudo sh webmin-setup-repo.sh" >&2
+      echo "sudo apt-get update -y" >&2
+      echo "sudo apt-get install -y webmin${INSTALL_USERMIN:+ usermin}" >&2
+      echo "================================================================" >&2
+      echo "If that still fails and you accept the risk, you can use this fallback:" >&2
+      echo "echo 'deb [trusted=yes] https://download.webmin.com/download/repository sarge contrib' | sudo tee /etc/apt/sources.list.d/webmin.list" >&2
+      echo "sudo apt-get update -y -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true" >&2
+      echo "sudo apt-get install -y webmin${INSTALL_USERMIN:+ usermin}" >&2
+      echo "================================================================" >&2
+    else
+      echo "::error::apt-get install webmin failed" >&2
+      printf '%s\n' "$INSTALL_OUT" | tail -n 80 >&2 || true
+    fi
+    echo "::error::apt-get install webmin failed" >&2
+    exit 1
+  fi
+  if ! dpkg -s webmin >/dev/null 2>&1; then
+    echo "::error::Webmin installation verification failed (dpkg -s webmin)" >&2
+    exit 1
+  fi
   echo "✅ Webmin installed"
 fi
 
 if [ "$INSTALL_USERMIN" = "true" ]; then
   echo "📦 Installing Usermin ..."
-  $SUDO apt-get install -y -o Dpkg::Use-Pty=0 usermin || true
+  if ! INSTALL_OUT2="$($SUDO apt-get install -y -o Dpkg::Use-Pty=0 usermin 2>&1)"; then
+    if printf '%s' "$INSTALL_OUT2" | grep -qiE 'untrusted public key algorithm: dsa|repository .* is not signed|NO_PUBKEY|GPG error'; then
+      echo "::error::Usermin installation failed due to repository signature issues" >&2
+      echo "================================================================" >&2
+      echo "Manual fix (run on the server as a user with sudo):" >&2
+      echo "================================================================" >&2
+      echo "sudo rm -f /etc/apt/sources.list.d/webmin.list /etc/apt/sources.list.d/webmin.list.disabled /usr/share/keyrings/webmin.gpg /etc/apt/keyrings/webmin.gpg" >&2
+      echo "curl -fsSL -o webmin-setup-repo.sh https://raw.githubusercontent.com/webmin/webmin/master/webmin-setup-repo.sh" >&2
+      echo "sudo sh webmin-setup-repo.sh" >&2
+      echo "sudo apt-get update -y" >&2
+      echo "sudo apt-get install -y usermin" >&2
+      echo "================================================================" >&2
+      echo "If that still fails and you accept the risk, you can use this fallback:" >&2
+      echo "echo 'deb [trusted=yes] https://download.webmin.com/download/repository sarge contrib' | sudo tee /etc/apt/sources.list.d/webmin.list" >&2
+      echo "sudo apt-get update -y -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true" >&2
+      echo "sudo apt-get install -y usermin" >&2
+      echo "================================================================" >&2
+    else
+      echo "::error::apt-get install usermin failed" >&2
+      printf '%s\n' "$INSTALL_OUT2" | tail -n 80 >&2 || true
+    fi
+    echo "::error::apt-get install usermin failed" >&2
+    exit 1
+  fi
+  if ! dpkg -s usermin >/dev/null 2>&1; then
+    echo "::error::Usermin installation verification failed (dpkg -s usermin)" >&2
+    exit 1
+  fi
   echo "🟢 Enabling and restarting usermin service ..."
   $SUDO systemctl enable usermin || true
   $SUDO systemctl restart usermin || true

@@ -169,6 +169,24 @@ export TRAEFIK_NETWORK_NAME
 export DOMAIN_ALIASES
 export INCLUDE_WWW_ALIAS
 export SUDO_STATUS
+# Additional Traefik setup variables (export if present in environment)
+export TRAEFIK_EMAIL
+export TRAEFIK_VERSION
+export TRAEFIK_PING_ENABLED
+export TRAEFIK_DASHBOARD
+export DASHBOARD_PUBLISH_MODES
+export DASHBOARD_HOST
+export DASHBOARD_USER
+export DASHBOARD_PASS_BCRYPT
+export DASHBOARD_PASSWORD
+export DASHBOARD_USERS_B64
+export TRAEFIK_USE_HOST_NETWORK
+export TRAEFIK_ENABLE_METRICS
+export TRAEFIK_METRICS_ENTRYPOINT
+export TRAEFIK_METRICS_ADDRESS
+export TRAEFIK_ACME_DNS_PROVIDER
+export TRAEFIK_ACME_DNS_RESOLVERS
+export TRAEFIK_DNS_SERVERS
 echo "================================================================"
 
 
@@ -232,6 +250,19 @@ if [ "${INSTALL_WEBMIN:-false}" = "true" ] || [ "${INSTALL_USERMIN:-false}" = "t
     fi
   else
     echo "::warning::install-webmin.sh not found; skipping Webmin/Usermin installation"
+  fi
+fi
+
+# --- Ensure Traefik is ready (idempotent) -------------------------------------------
+if [ "${TRAEFIK_ENABLED:-false}" = "true" ]; then
+  echo "================================================================"
+  echo "🧪 Ensuring Traefik is ready ..."
+  echo "================================================================"
+  if [ -x "$HOME/uactions/scripts/traefik/ensure-traefik-ready.sh" ]; then
+    export ENSURE_TRAEFIK="${ENSURE_TRAEFIK:-true}"
+    "$HOME/uactions/scripts/traefik/ensure-traefik-ready.sh"
+  else
+    echo "::warning::ensure-traefik-ready.sh not found; skipping Traefik ensure step"
   fi
 fi
 
