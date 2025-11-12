@@ -157,26 +157,26 @@ if [[ "${DEBUG:-false}" == "true" ]]; then
 fi
 
 
-if [ -z "$ENV_B64" ] && [ -z "$ENV_CONTENT" ]; then
-  echo "Error: Either ENV_B64 or ENV_CONTENT must be provided" >&2
-  exit 1
-fi
-
-echo " Preparing to write env file"
-echo "================================================================"
-echo "  • Target: $ENV_FILE_PATH"
-if [ -n "$ENV_B64" ]; then
-  echo "  • Source: base64 payload (content will not be printed)"
+if [ -n "$ENV_B64" ] || [ -n "$ENV_CONTENT" ]; then
+  echo " Preparing to write env file"
+  echo "================================================================"
+  echo "  • Target: $ENV_FILE"
+  if [ -n "$ENV_B64" ]; then
+    echo "  • Source: base64 payload (content will not be printed)"
+    printf '%s' "$ENV_B64" | base64 -d > "$ENV_FILE"
+  else
+    echo "  • Source: raw content (content will not be printed)"
+    printf '%s' "$ENV_CONTENT" > "$ENV_FILE"
+  fi
+  chmod 600 "$ENV_FILE" >/dev/null 2>&1 || true
+  echo "  • Environment file written to $ENV_FILE (600)"
+  echo "================================================================"
+  echo ""
 else
-  echo "  • Source: raw content (content will not be printed)"
+  if [ "${DEBUG:-false}" = "true" ]; then
+    echo "ℹ️  No ENV_B64/ENV_CONTENT provided; leaving existing $ENV_FILE as-is"
+  fi
 fi
-
-# Ensure directory exists and is writable by current user
-
-echo "  • Environment file written to $ENV_FILE_PATH (600)"
-echo "================================================================"
-echo "" 
-ls -lh "$ENV_DIR"
 
 
 # Export variables for downstream scripts
