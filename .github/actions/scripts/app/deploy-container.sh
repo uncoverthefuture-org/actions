@@ -235,6 +235,22 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -z "$TRAEFIK_NETWORK_NAME" ]]; then
   TRAEFIK_NETWORK_NAME="traefik-network"
 fi
 
+# When routing to an apex (base) domain like example.com, auto-include
+# the www alias so both example.com and www.example.com route to the
+# same container and ACME can validate both, unless the caller provided
+# explicit DOMAIN_HOSTS (which takes precedence).
+INCLUDE_WWW_ALIAS_EFF="${INCLUDE_WWW_ALIAS:-false}"
+if [[ -z "${DOMAIN_HOSTS:-}" ]]; then
+  dom_lower="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')"
+  IFS='.' read -r -a parts <<<"$dom_lower"; count=${#parts[@]}
+  if (( count >= 2 )); then
+    apex="${parts[count-2]}.${parts[count-1]}"
+    if [[ "$dom_lower" = "$apex" ]]; then
+      INCLUDE_WWW_ALIAS_EFF="true"
+    fi
+  fi
+fi
+
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
   if [[ "${DEBUG:-false}" == "true" ]]; then
     echo "🔀 Traefik mode for domain (router: $ROUTER_NAME)"
@@ -250,7 +266,7 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
       ENABLE_ACME="$TRAEFIK_ENABLE_ACME_EFF" \
       DOMAIN_HOSTS="${DOMAIN_HOSTS:-}" \
       DOMAIN_ALIASES="${DOMAIN_ALIASES:-${ALIASES:-}}" \
-      INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}" \
+      INCLUDE_WWW_ALIAS="$INCLUDE_WWW_ALIAS_EFF" \
       "$HOME/uactions/scripts/app/build-traefik-labels.sh"
     )
     RULE_LABEL=""
@@ -277,7 +293,7 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
     fi
   else
     # Fallback path: build labels via shared helper for consistency
-    mapfile -t FALLBACK_LABELS < <(build_traefik_labels_fallback "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME_EFF}" "${DOMAIN_HOSTS:-}" "${DOMAIN_ALIASES:-${ALIASES:-}}" "${INCLUDE_WWW_ALIAS:-false}" "${TRAEFIK_NETWORK_NAME:-}")
+    mapfile -t FALLBACK_LABELS < <(build_traefik_labels_fallback "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME_EFF}" "${DOMAIN_HOSTS:-}" "${DOMAIN_ALIASES:-${ALIASES:-}}" "$INCLUDE_WWW_ALIAS_EFF" "${TRAEFIK_NETWORK_NAME:-}")
     LABEL_ARGS+=("${FALLBACK_LABELS[@]}")
   fi
 else
