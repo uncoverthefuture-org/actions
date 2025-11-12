@@ -73,7 +73,14 @@ EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
 DEPLOY_DIR_VOLUME_ENABLED="${DEPLOY_DIR_VOLUME_ENABLED:-true}"
-DEPLOY_DIR_CONTAINER_PATH="${DEPLOY_DIR_CONTAINER_PATH:-/}"
+DEPLOY_DIR_CONTAINER_PATH="${DEPLOY_DIR_CONTAINER_PATH:-/var/www}"
+if [[ "$DEPLOY_DIR_CONTAINER_PATH" == "/" ]]; then
+  # Inline doc: Podman (especially rootless) refuses mounting directories at container
+  # root. Example: set DEPLOY_DIR_CONTAINER_PATH=/srv/app to expose the deployment at
+  # /srv/app inside the container instead of attempting to mount to '/'.
+  echo "::warning::DEPLOY_DIR_CONTAINER_PATH='/' is not supported; defaulting to /var/www" >&2
+  DEPLOY_DIR_CONTAINER_PATH="/var/www"
+fi
 DEPLOY_DIR_HOST_PATH="${DEPLOY_DIR_HOST_PATH:-}"
 
 # --- Traefik & domain routing ------------------------------------------------------
