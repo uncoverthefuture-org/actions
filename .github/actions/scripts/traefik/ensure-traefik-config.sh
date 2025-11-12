@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # ----------------------------------------------------------------------------
-# ensure-traefik-config.sh - Validate Traefik static config and ACME storage
+# ensure-traefik-config.sh - Rebuild Traefik static config and ACME storage
 # ----------------------------------------------------------------------------
 # Purpose:
-#   Ensures required Traefik configuration files exist and are readable before
-#   the user-level setup script attempts to start the Traefik container.
-#   Emits explicit messaging when existing configuration is detected so that
-#   callers know the files are being reused instead of recreated.
+#   Regenerates the user-scoped traefik.yml from the canonical install template
+#   (or system copy) each run so we never miss critical sections like ping.
+#   Keeps acme.json readable with 0600 permissions, reusing existing cert data.
 #
 # Behavior:
 #   - Verifies /etc/traefik/traefik.yml exists and is readable
@@ -17,97 +16,92 @@
 # ----------------------------------------------------------------------------
 set -euo pipefail
 
-CONFIG_PATH="$HOME/.config/traefik/traefik.yml"
-ACME_PATH="$HOME/.local/share/traefik/acme.json"
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../util/traefik.sh"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SYS_CONFIG="/etc/traefik/traefik.yml"
 SYS_ACME="/var/lib/traefik/acme.json"
+CONFIG_PATH="$HOME/.config/traefik/traefik.yml"
+ACME_PATH="$HOME/.local/share/traefik/acme.json"
+SUDO=""
+if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  SUDO="sudo -n"
+fi
+
+# Helper: install content with correct ownership/perms even when target is root-owned.
+# Example: install_user_file "$TMP" "$CONFIG_PATH" 640 "Traefik user config"
+install_user_file() {
+  local src="$1"
+  local dest="$2"
+  local mode="$3"
+  local desc="$4"
+  if install -m "$mode" "$src" "$dest" 2>/dev/null; then
+    return 0
+  fi
+  if [ -n "$SUDO" ]; then
+    if $SUDO install -m "$mode" -o "$(id -u)" -g "$(id -g)" "$src" "$dest" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  echo "::error::Cannot write ${desc} to $dest (permission denied)." >&2
+  exit 1
+}
 
 mkdir -p "$(dirname "$CONFIG_PATH")" "$(dirname "$ACME_PATH")"
 
-if [[ -f "$CONFIG_PATH" ]]; then
-  if [[ -r "$CONFIG_PATH" ]]; then
-    echo "📄 Reusing existing Traefik config: $CONFIG_PATH"
-  else
-    echo "❌ ERROR: Traefik config exists at $CONFIG_PATH but is not readable by $(id -un)." >&2
-    exit 1
+CONFIG_TMP="$(mktemp -t traefik-config.XXXXXX)"
+ACME_TMP=""
+
+cleanup_tmp() {
+  rm -f "$CONFIG_TMP" "$CONFIG_TMP.bak"
+  if [ -n "$ACME_TMP" ]; then rm -f "$ACME_TMP"; fi
+}
+trap cleanup_tmp EXIT
+
+CONFIG_SOURCE="template"
+if [ -r "$SYS_CONFIG" ]; then
+  cp "$SYS_CONFIG" "$CONFIG_TMP" 2>/dev/null && CONFIG_SOURCE="system"
+elif [ -n "$SUDO" ] && $SUDO test -r "$SYS_CONFIG" 2>/dev/null; then
+  if $SUDO cat "$SYS_CONFIG" >"$CONFIG_TMP"; then
+    CONFIG_SOURCE="system"
   fi
+fi
+
+if [ "$CONFIG_SOURCE" = "system" ]; then
+  echo "📄 Copied system Traefik config into user scope workspace"
 else
-  if [[ -r "$SYS_CONFIG" ]]; then
-    cp "$SYS_CONFIG" "$CONFIG_PATH"
-    echo "📄 Copied system config to user scope: $CONFIG_PATH"
+  generate_traefik_static_config "$CONFIG_TMP" "${TRAEFIK_EMAIL:-}"
+  if [ -z "${TRAEFIK_EMAIL:-}" ]; then
+    echo "::warning::TRAEFIK_EMAIL not provided; leaving placeholder ${TRAEFIK_EMAIL} in traefik.yml." >&2
   else
-    cat >"$CONFIG_PATH" <<'YAML'
-entryPoints:
-  web:
-    address: ":80"
-  websecure:
-    address: ":443"
-
-providers:
-  docker:
-    endpoint: "unix:///var/run/docker.sock"
-    exposedByDefault: false
-
-api: {}
-accessLog: {}
-YAML
-    echo "🆕 Created minimal Traefik config at $CONFIG_PATH"
+    echo "📝 Generated Traefik config template with email ${TRAEFIK_EMAIL}"
   fi
 fi
 
-if [[ -f "$ACME_PATH" ]]; then
-  if [[ -r "$ACME_PATH" ]]; then
-    PERMS=$(stat -c '%a' "$ACME_PATH" 2>/dev/null || echo "unknown")
-    if [[ "$PERMS" != "600" ]]; then
-      echo "⚠️  Warning: $ACME_PATH permissions are $PERMS (expected 600)." >&2
-      chmod 600 "$ACME_PATH" >/dev/null 2>&1 || true
-    fi
-    echo "🔐 Reusing existing ACME storage: $ACME_PATH"
+# Install the regenerated config with predictable permissions (0640 keeps it user-readable).
+install_user_file "$CONFIG_TMP" "$CONFIG_PATH" 0640 "Traefik user config"
+echo "✅ Ensured Traefik static config at $CONFIG_PATH"
+
+if [ -f "$ACME_PATH" ]; then
+  if [ -n "$SUDO" ]; then
+    $SUDO chmod 600 "$ACME_PATH" >/dev/null 2>&1 || true
   else
-    echo "❌ ERROR: Traefik ACME storage exists at $ACME_PATH but is not readable by $(id -un)." >&2
-    exit 1
+    chmod 600 "$ACME_PATH" >/dev/null 2>&1 || true
   fi
+  echo "🔐 Reusing existing ACME storage: $ACME_PATH"
 else
-  if [[ -r "$SYS_ACME" ]]; then
-    cp "$SYS_ACME" "$ACME_PATH"
-    chmod 600 "$ACME_PATH" >/dev/null 2>&1 || true
-    echo "🔐 Copied system ACME storage to user scope: $ACME_PATH"
+  ACME_TMP="$(mktemp -t traefik-acme.XXXXXX)"
+  if [ -r "$SYS_ACME" ]; then
+    cp "$SYS_ACME" "$ACME_TMP" 2>/dev/null || true
+    echo "🔐 Copied system ACME storage into user scope"
+  elif [ -n "$SUDO" ] && $SUDO test -r "$SYS_ACME" 2>/dev/null; then
+    $SUDO cat "$SYS_ACME" >"$ACME_TMP"
+    echo "🔐 Copied system ACME storage into user scope"
   else
-    printf '{}' > "$ACME_PATH"
-    chmod 600 "$ACME_PATH" >/dev/null 2>&1 || true
-    echo "🆕 Created new ACME storage at $ACME_PATH (600)"
+    printf '{}' >"$ACME_TMP"
+    echo "🆕 Created empty ACME storage template ({})"
   fi
+  install_user_file "$ACME_TMP" "$ACME_PATH" 0600 "Traefik ACME storage"
+  echo "✅ Ensured ACME storage at $ACME_PATH"
 fi
-
-# Ensure certificatesResolvers.letsencrypt exists in user config with a concrete email value
-EMAIL="${TRAEFIK_EMAIL:-}"
-if [ -n "$EMAIL" ] && [ -f "$CONFIG_PATH" ]; then
-  if ! grep -q "certificatesResolvers:" "$CONFIG_PATH"; then
-    cat >>"$CONFIG_PATH" <<EOF
-certificatesResolvers:
-  letsencrypt:
-    acme:
-      email: "$EMAIL"
-      storage: /letsencrypt/acme.json
-      httpChallenge:
-        entryPoint: web
-EOF
-  else
-    if grep -q "email:.*\${TRAEFIK_EMAIL" "$CONFIG_PATH"; then
-      if command -v sed >/dev/null 2>&1; then
-        sed -i.bak -E "s#email:[[:space:]]*\"?\\\${TRAEFIK_EMAIL[^\"}]*\"?#email: \"$EMAIL\"#" "$CONFIG_PATH" || true
-      fi
-    fi
-  fi
-fi
-
-if [ "${TRAEFIK_PING_ENABLED:-true}" = "true" ]; then
-  if ! grep -q 'ping:' "$CONFIG_PATH"; then
-    cat >>"$CONFIG_PATH" <<'YAML'
-ping:
-  entryPoint: web
-YAML
-  fi
-fi
-
-

@@ -27,6 +27,94 @@ ensure_traefik_network() {
   printf '%s' "--network $network_name"
 }
 
+# generate_traefik_static_config <dest_path> [email]
+#   Writes the canonical Traefik static configuration (matching install-traefik)
+#   to <dest_path>. When an email is provided, replaces the ACME placeholder with
+#   that value. Example:
+#     generate_traefik_static_config "$TMP" "ops@example.com"
+generate_traefik_static_config() {
+  local dest="$1"
+  local email="${2:-}"
+
+  if [[ -z "$dest" ]]; then
+    echo "::error::generate_traefik_static_config requires a destination path" >&2
+    return 1
+  fi
+
+  {
+    echo 'entryPoints:'
+    echo '  web:'
+    echo '    address: ":80"'
+    echo '  websecure:'
+    echo '    address: ":443"'
+    echo '  dashboard:'
+    echo '    address: ":8080"'
+    echo '  metrics:'
+    echo '    address: ":8082"'
+    echo ''
+    echo 'providers:'
+    echo '  docker:'
+    echo '    endpoint: "unix:///var/run/docker.sock"'
+    echo '    exposedByDefault: false'
+    echo ''
+    echo 'api:'
+    echo '  dashboard: true'
+    echo '  insecure: false'
+    echo ''
+    echo 'accessLog: {}'
+    echo ''
+    echo 'ping:'
+    echo '  entryPoint: web'
+    echo ''
+    echo 'metrics:'
+    echo '  prometheus:'
+    echo '    entryPoint: "metrics"'
+    echo '    addRoutersLabels: true'
+    echo '    addServicesLabels: true'
+    echo ''
+    echo 'certificatesResolvers:'
+    echo '  letsencrypt:'
+    echo '    acme:'
+    echo '      email: "${TRAEFIK_EMAIL}"'
+    echo '      storage: /letsencrypt/acme.json'
+    echo '      httpChallenge:'
+    echo '        entryPoint: web'
+    echo ''
+    echo 'http:'
+    echo '  middlewares:'
+    echo '    internal-dashboard-auth:'
+    echo '      basicAuth:'
+    echo '        usersFile: "/etc/traefik/dashboard-users"'
+    echo '  routers:'
+    echo '    internal-dashboard:'
+    echo '      entryPoints:'
+    echo '        - dashboard'
+    echo '      rule: "PathPrefix(`/`)"'
+    echo '      middlewares:'
+    echo '        - internal-dashboard-auth'
+    echo '      service: "api@internal"'
+    echo '      tls:'
+    echo '        certResolver: letsencrypt'
+    echo '  services:'
+    echo '    noop:'
+    echo '      loadBalancer:'
+    echo '        servers:'
+    echo '          - url: "http://127.0.0.1"'
+  } >"$dest"
+
+  if [[ -n "$email" ]]; then
+    python3 <<'PY' "$dest" "$email"
+import re, sys
+path, email = sys.argv[1:]
+with open(path, encoding="utf-8") as fh:
+    content = fh.read()
+content = re.sub(r'email:\s*"?\$\{TRAEFIK_EMAIL[^"}]*"?', f'email: "{email}"', content)
+with open(path, "w", encoding="utf-8") as fh:
+    fh.write(content)
+PY
+  fi
+}
+
 # build_traefik_labels_fallback \
 #   <router_name> <domain> <container_port> <enable_acme> \
 #   <domain_hosts> <domain_aliases> <include_www_alias> <network_name>

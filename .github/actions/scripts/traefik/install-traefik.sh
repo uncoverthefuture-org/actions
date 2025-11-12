@@ -19,6 +19,9 @@
 # ----------------------------------------------------------------------------
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../util/traefik.sh"
+
 # --- Resolve inputs -----------------------------------------------------------------
 # Get required environment variables with defaults
 TRAEFIK_EMAIL="${TRAEFIK_EMAIL:-}"
@@ -87,71 +90,7 @@ fi
 echo "📝 Writing Traefik config to /etc/traefik/traefik.yml ..."
 CONFIG_TMP="$(mktemp)"
 trap 'rm -f "$CONFIG_TMP"' EXIT
-cat >"$CONFIG_TMP" <<'EOF'
-entryPoints:
-  web:
-    address: ":80"
-  websecure:
-    address: ":443"
-  dashboard:
-    address: ":8080"
-  metrics:
-    address: ":8082"
-
-providers:
-  docker:
-    endpoint: "unix:///var/run/docker.sock"
-    exposedByDefault: false
-
-api:
-  dashboard: true
-  insecure: false
-
-accessLog: {}
-
-ping:
-  entryPoint: web
-
-metrics:
-  prometheus:
-    entryPoint: "metrics"
-    addRoutersLabels: true
-    addServicesLabels: true
-
-certificatesResolvers:
-  letsencrypt:
-    acme:
-      email: "${TRAEFIK_EMAIL}"
-      storage: /letsencrypt/acme.json
-      httpChallenge:
-        entryPoint: web
-
-http:
-  middlewares:
-    internal-dashboard-auth:
-      basicAuth:
-        usersFile: "/etc/traefik/dashboard-users"
-
-  routers:
-    internal-dashboard:
-      entryPoints:
-        - dashboard
-      rule: "PathPrefix(`/`)"
-      middlewares:
-        - internal-dashboard-auth
-      service: "api@internal"
-      tls: {}
-
-  services: {}
-EOF
-
-# Replace the literal placeholder with the concrete email value before hashing
-if [ -n "$TRAEFIK_EMAIL" ]; then
-  if command -v sed >/dev/null 2>&1; then
-    sed -i.bak -E 's#email:[[:space:]]*"\$\{TRAEFIK_EMAIL\}"#email: "'"$TRAEFIK_EMAIL"'"#' "$CONFIG_TMP" || true
-    rm -f "$CONFIG_TMP.bak" 2>/dev/null || true
-  fi
-fi
+generate_traefik_static_config "$CONFIG_TMP" "$TRAEFIK_EMAIL"
 
 if command -v sha256sum >/dev/null 2>&1; then
   NEW_SHA=$(sha256sum "$CONFIG_TMP" | awk '{print $1}')
