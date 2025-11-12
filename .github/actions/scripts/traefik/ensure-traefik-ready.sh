@@ -25,6 +25,11 @@ if [ "${DEBUG:-false}" = "true" ]; then set -x; fi
 ENSURE_TRAEFIK="${ENSURE_TRAEFIK:-true}"
 TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
 
+# Track whether the ping endpoint responds so we can reconcile when legacy
+# deployments reused without the ping flag enabled still return HTTP 404.
+PING_REACHABILITY="unknown"
+PING_RESTART_ATTEMPTED="false"
+
 if [ "$TRAEFIK_ENABLED" != "true" ] || [ "${ENSURE_TRAEFIK}" != "true" ]; then
   echo "::notice::Traefik ensure skipped (TRAEFIK_ENABLED=$TRAEFIK_ENABLED, ENSURE_TRAEFIK=$ENSURE_TRAEFIK)"
   exit 0
@@ -58,11 +63,14 @@ check_local_reachability() {
   # - Dashboard/API on http://127.0.0.1:8080 if published locally
   if command -v curl >/dev/null 2>&1; then
     if [ "${TRAEFIK_PING_ENABLED:-true}" = "true" ]; then
+      PING_REACHABILITY="fail"
       code=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "http://127.0.0.1/ping" || echo "000")
       if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
         notice "Traefik ping reachable on http://127.0.0.1/ping (HTTP $code)"
+        PING_REACHABILITY="ok"
       else
         notice "Traefik ping not reachable on http://127.0.0.1/ping (HTTP $code)"
+        PING_REACHABILITY="fail:$code"
       fi
     fi
 
@@ -123,6 +131,18 @@ if probe_preflight; then
   # Verify again after potential reconciliation
   probe_preflight || true
   check_local_reachability || true
+  if [ "${TRAEFIK_PING_ENABLED:-true}" = "true" ] && [[ "$PING_REACHABILITY" != ok ]]; then
+    if [ "$PING_RESTART_ATTEMPTED" != "true" ]; then
+      notice "Traefik ping endpoint still missing; forcing one-time restart to apply ping settings."
+      PING_RESTART_ATTEMPTED="true"
+      TRAEFIK_FORCE_RESTART=true "$SETUP" || true
+      probe_preflight || true
+      check_local_reachability || true
+    fi
+    if [[ "$PING_REACHABILITY" != ok ]]; then
+      echo "::warning::Traefik ping endpoint remains unreachable after forced restart; continuing with deployment." >&2
+    fi
+  fi
   check_ip_reachability || true
   exit 0
 fi
