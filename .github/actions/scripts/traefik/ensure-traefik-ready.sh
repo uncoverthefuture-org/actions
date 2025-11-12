@@ -30,6 +30,15 @@ TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
 PING_REACHABILITY="unknown"
 PING_RESTART_ATTEMPTED="false"
 
+dump_traefik_logs() {
+  if command -v podman >/dev/null 2>&1; then
+    echo "🔎 podman ps --filter name=traefik"
+    podman ps --filter name=traefik || true
+    echo "📜 podman logs --tail=120 traefik"
+    podman logs --tail=120 traefik 2>/dev/null || true
+  fi
+}
+
 if [ "$TRAEFIK_ENABLED" != "true" ] || [ "${ENSURE_TRAEFIK}" != "true" ]; then
   echo "::notice::Traefik ensure skipped (TRAEFIK_ENABLED=$TRAEFIK_ENABLED, ENSURE_TRAEFIK=$ENSURE_TRAEFIK)"
   exit 0
@@ -127,20 +136,38 @@ if probe_preflight; then
   echo "✅ Traefik preflight OK (listeners on 80/443)"
   # Reconcile configuration even when healthy; setup-traefik.sh performs a fast
   # path when confighash matches and avoids unnecessary restarts.
-  "$SETUP" || true
+  if ! "$SETUP"; then
+    echo "::error::Traefik setup reconciliation failed; see logs above." >&2
+    dump_traefik_logs
+    exit 1
+  fi
   # Verify again after potential reconciliation
-  probe_preflight || true
+  if ! probe_preflight; then
+    echo "::error::Traefik preflight failed immediately after reconciliation." >&2
+    dump_traefik_logs
+    exit 1
+  fi
   check_local_reachability || true
   if [ "${TRAEFIK_PING_ENABLED:-true}" = "true" ] && [[ "$PING_REACHABILITY" != ok ]]; then
     if [ "$PING_RESTART_ATTEMPTED" != "true" ]; then
       notice "Traefik ping endpoint still missing; forcing one-time restart to apply ping settings."
       PING_RESTART_ATTEMPTED="true"
-      TRAEFIK_FORCE_RESTART=true "$SETUP" || true
-      probe_preflight || true
+      if ! TRAEFIK_FORCE_RESTART=true "$SETUP"; then
+        echo "::error::Traefik forced restart failed; see logs above." >&2
+        dump_traefik_logs
+        exit 1
+      fi
+      if ! probe_preflight; then
+        echo "::error::Traefik preflight failed after forced restart." >&2
+        dump_traefik_logs
+        exit 1
+      fi
       check_local_reachability || true
     fi
     if [[ "$PING_REACHABILITY" != ok ]]; then
-      echo "::warning::Traefik ping endpoint remains unreachable after forced restart; continuing with deployment." >&2
+      echo "::error::Traefik ping endpoint remains unreachable after forced restart." >&2
+      dump_traefik_logs
+      exit 1
     fi
   fi
   check_ip_reachability || true

@@ -109,6 +109,9 @@ api:
 
 accessLog: {}
 
+ping:
+  entryPoint: web
+
 metrics:
   prometheus:
     entryPoint: "metrics"

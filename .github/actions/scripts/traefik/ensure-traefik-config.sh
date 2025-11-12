@@ -100,3 +100,14 @@ EOF
     fi
   fi
 fi
+
+if [ "${TRAEFIK_PING_ENABLED:-true}" = "true" ]; then
+  if ! grep -q 'ping:' "$CONFIG_PATH"; then
+    cat >>"$CONFIG_PATH" <<'YAML'
+ping:
+  entryPoint: web
+YAML
+  fi
+fi
+
+
