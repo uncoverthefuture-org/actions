@@ -79,6 +79,10 @@ case "$ENV_BASE_IN" in
   *) ENV_ROOT="$ENV_BASE_IN" ;;
 esac
 ENV_DIR="${ENV_ROOT}/${ENV_NAME}/${APP_SLUG}"
+# Canonical deployment directory used by other scripts for volume mounts.
+if [ -z "${REMOTE_DEPLOYMENT_DIR:-}" ]; then
+  REMOTE_DEPLOYMENT_DIR="$ENV_DIR"
+fi
 
 if [ "${DEBUG:-false}" = "true" ]; then
   echo "📁 Preparing environment directory"
@@ -182,3 +186,4 @@ fi
 # Export variables for downstream scripts
 export REMOTE_ENV_DIR="$ENV_DIR"
 export REMOTE_ENV_FILE="$ENV_FILE"
+export REMOTE_DEPLOYMENT_DIR

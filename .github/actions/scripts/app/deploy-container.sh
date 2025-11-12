@@ -17,6 +17,8 @@
 #   HOST_PORT_IN          - Optional host port (when Traefik disabled)
 #   CONTAINER_PORT_IN     - Optional container port (service port for Traefik or mapping)
 #   EXTRA_RUN_ARGS        - Extra args appended to podman run
+#   DEPLOY_DIR_VOLUME_ENABLED - Toggle automatic mount of deployment dir (default: true)
+#   DEPLOY_DIR_CONTAINER_PATH - Target path inside container for deployment dir (default: /var/www)
 #   RESTART_POLICY        - Podman restart policy (default: unless-stopped)
 #   MEMORY_LIMIT          - Memory and swap (default: 512m)
 #   TRAEFIK_ENABLED       - 'true' to attach labels (requires DOMAIN)
@@ -70,6 +72,9 @@ CONTAINER_PORT_IN="${CONTAINER_PORT_IN:-}"
 EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
+DEPLOY_DIR_VOLUME_ENABLED="${DEPLOY_DIR_VOLUME_ENABLED:-true}"
+DEPLOY_DIR_CONTAINER_PATH="${DEPLOY_DIR_CONTAINER_PATH:-/}"
+DEPLOY_DIR_HOST_PATH="${DEPLOY_DIR_HOST_PATH:-}"
 
 # --- Traefik & domain routing ------------------------------------------------------
 TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
@@ -226,6 +231,7 @@ fi
 IMAGE_REF="${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
 PORT_ARGS=()
 LABEL_ARGS=()
+VOLUME_ARGS=()
 
 DOMAIN="$DOMAIN_INPUT"
 if [[ -z "$DOMAIN" ]]; then DOMAIN="$DOMAIN_DEFAULT"; fi
@@ -315,8 +321,32 @@ else
   PORT_ARGS=(-p "${HOST_PORT}:${CONTAINER_PORT}")
 fi
 
+# Automatically mount the deployment directory into the container unless disabled.
+# Default host path is the prepared REMOTE_ENV_DIR; callers can override with
+# DEPLOY_DIR_HOST_PATH or set DEPLOY_DIR_VOLUME_ENABLED=false to skip.
+if [[ "${DEPLOY_DIR_VOLUME_ENABLED,,}" == "true" ]]; then
+  DEPLOY_DIR_SOURCE="$DEPLOY_DIR_HOST_PATH"
+  if [[ -z "$DEPLOY_DIR_SOURCE" ]]; then
+    DEPLOY_DIR_SOURCE="${REMOTE_DEPLOYMENT_DIR:-${ENV_DIR}}"
+  elif [[ "$DEPLOY_DIR_SOURCE" != /* ]]; then
+    DEPLOY_DIR_SOURCE="${REMOTE_DEPLOYMENT_DIR:-${ENV_DIR}}/${DEPLOY_DIR_SOURCE}"
+  fi
 
-
+  if [[ -z "$DEPLOY_DIR_SOURCE" ]]; then
+    echo "::warning::Deployment directory mount enabled but no source path available; skipping." >&2
+  elif [[ -d "$DEPLOY_DIR_SOURCE" ]]; then
+    VOLUME_ARGS+=(-v "${DEPLOY_DIR_SOURCE}:${DEPLOY_DIR_CONTAINER_PATH}")
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+      echo "🗂️  Mounting deployment directory ${DEPLOY_DIR_SOURCE} -> ${DEPLOY_DIR_CONTAINER_PATH}"
+    fi
+  else
+    echo "::warning::Deployment directory ${DEPLOY_DIR_SOURCE} not found; skipping volume mount." >&2
+  fi
+else
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "🗂️  Deployment directory mount disabled by DEPLOY_DIR_VOLUME_ENABLED=$DEPLOY_DIR_VOLUME_ENABLED"
+  fi
+fi
 
 # --- Login and pull (optional login, always pull) -----------------------------------
 # Authenticate with the registry when credentials exist, then ensure the latest
@@ -361,12 +391,13 @@ echo "Port args: ${PORT_ARGS[*]}"
 echo "DNS args: ${DNS_ARGS}"
 echo "Network args: ${NETWORK_ARGS[*]}"
 echo "Label args: ${LABEL_ARGS[*]}"
+echo "Volume args: ${VOLUME_ARGS[*]}"
 echo "Env file: $ENV_FILE"
 echo "================================================================" >&2
 
 # Assemble and execute podman run with a DEBUG preview via shared helper.
 podman_run_with_preview "$CONTAINER_NAME" "$ENV_FILE" "$RESTART_POLICY" "$MEMORY_LIMIT" "$IMAGE_REF" "${EXTRA_RUN_ARGS:-}" "${DEBUG:-false}" \
-  PORT_ARGS[@] DNS_ARGS[@] NETWORK_ARGS[@] LABEL_ARGS[@]
+  PORT_ARGS[@] DNS_ARGS[@] NETWORK_ARGS[@] LABEL_ARGS[@] VOLUME_ARGS[@]
 echo "================================================================" >&2
 # --- Post status --------------------------------------------------------------------
 # Provide immediate feedback showing the container status table so operators can

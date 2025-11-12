@@ -447,6 +447,17 @@ runs: # Composite action implementation
             export ENV_FILE_PATH_BASE='${{ inputs.deployment_base_dir }}'
           fi
 
+          DEPLOYMENT_ROOT="$ENV_FILE_PATH_BASE"
+          if [ -z "$DEPLOYMENT_ROOT" ]; then
+            DEPLOYMENT_ROOT="$HOME/deployments"
+          fi
+          case "$DEPLOYMENT_ROOT" in
+            "~/"*) DEPLOYMENT_ROOT="$HOME/${DEPLOYMENT_ROOT#~/}" ;;
+            "/home/runner/"*) DEPLOYMENT_ROOT="$HOME/${DEPLOYMENT_ROOT#/home/runner/}" ;;
+          esac
+          DEPLOYMENT_ROOT="${DEPLOYMENT_ROOT%/}"
+          export REMOTE_DEPLOYMENT_DIR="${DEPLOYMENT_ROOT}/${ENV_NAME}/${APP_SLUG}"
+
           # Ports & runtime
           export HOST_PORT_IN='${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}'
           export CONTAINER_PORT_IN='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'

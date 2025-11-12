@@ -87,15 +87,51 @@ podman_build_dns_args() {
 podman_run_with_preview() {
   local name="$1" env_file="$2" restart_policy="$3" memory_limit="$4" image_ref="$5"
   local extra_run_args="$6" debug="$7"
-  local port_ref="$8" dns_ref="$9" net_ref="${10}" label_ref="${11}"
+  local port_ref_name="$8" dns_ref_name="$9" net_ref_name="${10}" label_ref_name="${11}" volume_ref_name="${12:-}"
 
-  local -a port_args=("${!port_ref}") dns_args=("${!dns_ref}")
-  local -a network_args=("${!net_ref}") label_args=("${!label_ref}")
+  local -a port_args dns_args network_args label_args volume_args
+
+  if [[ -n "$port_ref_name" ]]; then
+    local -n _port_ref="$port_ref_name"
+    port_args=("${_port_ref[@]}")
+  else
+    port_args=()
+  fi
+
+  if [[ -n "$dns_ref_name" ]]; then
+    local -n _dns_ref="$dns_ref_name"
+    dns_args=("${_dns_ref[@]}")
+  else
+    dns_args=()
+  fi
+
+  if [[ -n "$net_ref_name" ]]; then
+    local -n _net_ref="$net_ref_name"
+    network_args=("${_net_ref[@]}")
+  else
+    network_args=()
+  fi
+
+  if [[ -n "$label_ref_name" ]]; then
+    local -n _label_ref="$label_ref_name"
+    label_args=("${_label_ref[@]}")
+  else
+    label_args=()
+  fi
+
+  if [[ -n "$volume_ref_name" ]]; then
+    local -n _volume_ref="$volume_ref_name"
+    volume_args=("${_volume_ref[@]}")
+  else
+    volume_args=()
+  fi
+
   local -a cmd=(podman run -d --name "$name")
 
   [[ -s "$env_file" ]] && cmd+=("--env-file" "$env_file")
   cmd+=("${port_args[@]}" --restart="$restart_policy" --memory="$memory_limit" --memory-swap="$memory_limit")
   cmd+=("${dns_args[@]}" "${network_args[@]}")
+  [[ ${#volume_args[@]} -gt 0 ]] && cmd+=("${volume_args[@]}")
 
   if [[ -n "$extra_run_args" ]]; then
     read -ra extra <<<"$extra_run_args"
