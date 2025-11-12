@@ -373,4 +373,5 @@ runs:
         dashboard_users_b64: ${{ inputs.dashboard_users_b64 != '' && inputs.dashboard_users_b64 || fromJSON(steps.params.outputs.json).dashboard_users_b64 }}
         ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
         domain_hosts: ${{ inputs.domain_hosts != '' && inputs.domain_hosts || fromJSON(steps.params.outputs.json).domain_hosts }}
+        traefik_email: ${{ inputs.traefik_email != '' && inputs.traefik_email || fromJSON(steps.params.outputs.json).traefik_email}}
     
