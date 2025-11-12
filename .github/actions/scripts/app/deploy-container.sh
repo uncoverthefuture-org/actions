@@ -396,8 +396,10 @@ echo "Env file: $ENV_FILE"
 echo "================================================================" >&2
 
 # Assemble and execute podman run with a DEBUG preview via shared helper.
+# Pass array *names* so the helper can dereference them (example: PORT_ARGS →
+# publishes "-p 8080:3000" while an empty array stays omitted).
 podman_run_with_preview "$CONTAINER_NAME" "$ENV_FILE" "$RESTART_POLICY" "$MEMORY_LIMIT" "$IMAGE_REF" "${EXTRA_RUN_ARGS:-}" "${DEBUG:-false}" \
-  PORT_ARGS[@] DNS_ARGS[@] NETWORK_ARGS[@] LABEL_ARGS[@] VOLUME_ARGS[@]
+  PORT_ARGS DNS_ARGS NETWORK_ARGS LABEL_ARGS VOLUME_ARGS
 echo "================================================================" >&2
 # --- Post status --------------------------------------------------------------------
 # Provide immediate feedback showing the container status table so operators can
