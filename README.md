@@ -166,7 +166,9 @@ Each action has its own detailed README with inputs, outputs, and examples. Star
   - **Traefik on/off switch**:
     - Pass a `domain` or `base_domain` to enable Traefik routing with automatic TLS. Optionally set `enable_traefik: true` (default) to attach labels. When Traefik mode is active, any supplied `host_port` is ignored and a notice is emitted because Traefik terminates traffic on ports 80/443.
     - Omit `domain`/`base_domain` (or set `enable_traefik: false`) to publish `-p host:container` instead. This avoids port 80/443 and lets multiple branches run side-by-side.
+    - When a domain is available and no explicit toggle is provided, `ssh-container-deploy` now defaults `enable_traefik: true` and `enable_acme: true` so HTTPS is provisioned automatically.
     - When using `prepare_host: true`, Traefik can be provisioned with `install_traefik: true` and `traefik_email` (Let's Encrypt). To open firewall ports during preparation, set `ufw_allow_ports` (e.g., "22 80 443 3000 3001").
+    - If `traefik_email` is omitted, the action derives `traefik@<domain-apex>` (for example, `traefik@example.com`) so Let's Encrypt always receives a contact address.
     - Dashboard exposure modes:
       - Prefer `dashboard_publish_modes`: CSV values `http8080`, `https8080`, `subdomain` (alias `both` = `https8080,subdomain`).
       - For `subdomain`, set `dashboard_host` (e.g., `traefik.example.com`).

@@ -78,6 +78,9 @@ outputs:
   traefik_router:
     description: 'Slug safe router/service identifier for Traefik labels.'
     value: ${{ steps.defaults.outputs.traefik_router }}
+  traefik_email_default:
+    description: 'Fallback ACME email derived from domain apex (traefik@<apex> when available).'
+    value: ${{ steps.defaults.outputs.traefik_email_default }}
 
 runs:
   using: 'composite'
@@ -214,6 +217,12 @@ runs:
         TRAEFIK_ROUTER=$(slugify "${APP_SLUG}-${ENV_NAME}")
         [ -n "$TRAEFIK_ROUTER" ] || TRAEFIK_ROUTER='app'
 
+        TRAEFIK_EMAIL_DEFAULT=""
+        if [ -n "$DOMAIN_APEX" ]; then
+          # Use traefik@<apex> so Let's Encrypt has a contact email when callers omit one.
+          TRAEFIK_EMAIL_DEFAULT="traefik@${DOMAIN_APEX}"
+        fi
+
         {
           echo "app_slug=$APP_SLUG"
           echo "env_dir_path=$ENV_DIR"
@@ -224,4 +233,5 @@ runs:
           echo "domain_default=$DOMAIN_DEFAULT"
           echo "domain_apex=$DOMAIN_APEX"
           echo "traefik_router=$TRAEFIK_ROUTER"
+          echo "traefik_email_default=$TRAEFIK_EMAIL_DEFAULT"
         } >> "$GITHUB_OUTPUT"
