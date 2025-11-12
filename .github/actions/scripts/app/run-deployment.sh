@@ -118,15 +118,23 @@ echo "================================================================"
 echo "  Script: $HOME/uactions/scripts/app/setup-env-file.sh"
 echo "  App: $APP_SLUG"
 
+# Source the setup script so its exported variables persist in this shell
+if [ -f "$HOME/uactions/scripts/app/setup-env-file.sh" ]; then
+  # shellcheck source=app/setup-env-file.sh
+  . "$HOME/uactions/scripts/app/setup-env-file.sh"
+else
+  echo "::error::setup-env-file.sh not found on remote host" >&2
+  exit 1
+fi
 
 # --- Export Deployment Variables -----------------------------------------------------
 echo "================================================================"
 echo "📤 Exporting deployment variables..."
 echo "================================================================"
 
-# Export environment variables for scripts
-export REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-$ENV_B64}"
-export REMOTE_ENV_DIR="${REMOTE_ENV_DIR:-$ENV_FILE_PATH_BASE}"
+# Export environment variables for scripts using values created by setup-env-file.sh
+export REMOTE_ENV_DIR="${REMOTE_ENV_DIR:-$ENV_DIR}"
+export REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-$ENV_FILE}"
 
 # Registry settings
 export IMAGE_REGISTRY

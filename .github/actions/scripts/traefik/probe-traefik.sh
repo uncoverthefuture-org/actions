@@ -192,6 +192,17 @@ post() {
   fi
 
   local tries="$PROBE_TRIES" delay="$PROBE_DELAY" timeout="$PROBE_TIMEOUT" i=1 code=""
+
+  # First, attempt a strict TLS request without -k to catch cert errors early
+  if [ "${CERT_VALIDATE:-true}" = "true" ]; then
+    if ! curl -fsS -o /dev/null --max-time "$timeout" "https://$domain$path" 2>/dev/null; then
+      notice "TLS validation failed for https://$domain$path (certificate not trusted yet)."
+      notice "Hints: ensure TRAEFIK_ENABLE_ACME=true and TRAEFIK_EMAIL is set; include both apex and www hosts; wait up to a minute for issuance."
+    else
+      notice "TLS validation OK for https://$domain$path"
+    fi
+  fi
+
   notice "Probing https://$domain$path via Traefik (up to $tries tries) ..."
   while [ $i -le $tries ]; do
     code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time "$timeout" "https://$domain$path" || echo "000")

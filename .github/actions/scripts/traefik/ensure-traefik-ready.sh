@@ -30,6 +30,12 @@ if [ "$TRAEFIK_ENABLED" != "true" ] || [ "${ENSURE_TRAEFIK}" != "true" ]; then
   exit 0
 fi
 
+# Guidance when ACME is requested without an email (common cause of TLS issues)
+if [ "${TRAEFIK_ENABLE_ACME:-true}" = "true" ] && [ -z "${TRAEFIK_EMAIL:-}" ]; then
+  echo "::warning::TRAEFIK_ENABLE_ACME=true but TRAEFIK_EMAIL is empty."
+  echo "           Set TRAEFIK_EMAIL to a valid address to allow Let's Encrypt issuance."
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROBE="$SCRIPT_DIR/probe-traefik.sh"
 SETUP="$SCRIPT_DIR/setup-traefik.sh"
@@ -111,6 +117,11 @@ echo "🔍 Traefik preflight"
 echo "================================================================"
 if probe_preflight; then
   echo "✅ Traefik preflight OK (listeners on 80/443)"
+  # Reconcile configuration even when healthy; setup-traefik.sh performs a fast
+  # path when confighash matches and avoids unnecessary restarts.
+  "$SETUP" || true
+  # Verify again after potential reconciliation
+  probe_preflight || true
   check_local_reachability || true
   check_ip_reachability || true
   exit 0

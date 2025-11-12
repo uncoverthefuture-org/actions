@@ -457,6 +457,7 @@ runs: # Composite action implementation
           # Traefik & domain routing
           export TRAEFIK_ENABLED='${{ inputs.enable_traefik }}'
           export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
+          export TRAEFIK_EMAIL='${{ inputs.traefik_email }}'
           export TRAEFIK_NETWORK_NAME='${{ inputs.traefik_network_name }}'
           export DOMAIN_INPUT='${{ inputs.domain }}'
           export DOMAIN_DEFAULT='${{ steps.dfl.outputs.domain_default }}'

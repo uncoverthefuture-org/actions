@@ -75,6 +75,14 @@ else
       fi
       ;;
   esac
+  # If DOMAIN is already a www.<apex>, auto-add the apex variant for TLS coverage
+  # and routing symmetry when callers provided a single host. Skip when DOMAIN_HOSTS
+  # was explicitly provided.
+  dom_lower=$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')
+  if [[ "$dom_lower" == www.* ]]; then
+    apex_candidate="${dom_lower#www.}"
+    if [[ -n "$apex_candidate" ]]; then HOSTS+=("${apex_candidate}"); fi
+  fi
 fi
 
 # De-duplicate while preserving order

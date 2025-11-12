@@ -54,13 +54,13 @@ detect_podman_iface() {
   echo "$piface"
 }
 
-echo "🔒 Ensuring SSH access is allowed (OpenSSH or 22/tcp) ..."
+if [ "${DEBUG:-false}" = "true" ]; then echo "🔒 Ensuring SSH access is allowed (OpenSSH or 22/tcp) ..."; fi
 rule_exists "OpenSSH" || $SUDO ufw allow OpenSSH >/dev/null 2>&1 || true
 rule_exists "22/tcp" || $SUDO ufw allow 22/tcp >/dev/null 2>&1 || true
 # If a non-standard SSH port is used, allow it explicitly as well
 if [ -n "$SSH_PORT" ] && [ "$SSH_PORT" != "22" ]; then
   if ! rule_exists "$SSH_PORT/tcp"; then
-    echo "🔓 Allowing SSH port $SSH_PORT/tcp"
+    [ "${DEBUG:-false}" = "true" ] && echo "🔓 Allowing SSH port $SSH_PORT/tcp"
     $SUDO ufw allow "$SSH_PORT/tcp" >/dev/null 2>&1 || true
   fi
 fi
@@ -71,12 +71,12 @@ if ! $SUDO ufw status | grep -qi "Status: active"; then
   $SUDO ufw --force enable || true
 fi
 
-echo "➡️ Ports requested to allow: ${UFW_ALLOW_PORTS:-<none>}"
+if [ "${DEBUG:-false}" = "true" ]; then echo "➡️ Ports requested to allow: ${UFW_ALLOW_PORTS:-<none>}"; fi
 if [ -n "$UFW_ALLOW_PORTS" ]; then
   for port in $UFW_ALLOW_PORTS; do
     [ -z "$port" ] && continue
     if ! rule_exists "$port"; then
-      echo "🔓 Allowing port $port"
+      [ "${DEBUG:-false}" = "true" ] && echo "🔓 Allowing port $port"
       $SUDO ufw allow "$port" || true
     fi
   done
@@ -98,7 +98,7 @@ if [ "${ENABLE_PODMAN_FORWARD}" = "true" ]; then
   PODMAN_IFACE_USE="$PODMAN_IFACE_IN"
   [ -z "$WAN_IFACE_USE" ] && WAN_IFACE_USE="$(detect_wan_iface)"
   [ -z "$PODMAN_IFACE_USE" ] && PODMAN_IFACE_USE="$(detect_podman_iface)"
-  echo "🌉 Forwarding in on ${WAN_IFACE_USE} -> out on ${PODMAN_IFACE_USE} for ports: ${ROUTE_PORTS}"
+  if [ "${DEBUG:-false}" = "true" ]; then echo "🌉 Forwarding in on ${WAN_IFACE_USE} -> out on ${PODMAN_IFACE_USE} for ports: ${ROUTE_PORTS}"; fi
   for p in $ROUTE_PORTS; do
     [ -z "$p" ] && continue
     # best-effort idempotence check
@@ -109,9 +109,11 @@ if [ "${ENABLE_PODMAN_FORWARD}" = "true" ]; then
     fi
   done
   # Reload to ensure route rules are active
-  $SUDO ufw reload || true
+  $SUDO ufw reload >/dev/null 2>&1 || true
 fi
 
 echo "✅ UFW configured"
-echo "🔎 ufw status"
-$SUDO ufw status
+if [ "${DEBUG:-false}" = "true" ]; then
+  echo "🔎 ufw status"
+  $SUDO ufw status
+fi
