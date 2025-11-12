@@ -54,10 +54,10 @@ inputs:
     description: "Primary SSH user that will execute remote scripts (example: deploy)."
     required: false
   ssh_key:
-    description: "Private SSH key (PEM) for ssh_user in plain text or secret reference (example: ${{ secrets.DEPLOY_KEY }})."
+    description: "Private SSH key (PEM) for ssh_user in plain text or secret reference (example: a repository secret)."
     required: false
   root_ssh_key:
-    description: "Optional SSH key with root access used for privileged host preparation (example: ${{ secrets.ROOT_KEY }})."
+    description: "Optional SSH key with root access used for privileged host preparation (example: a repository secret)."
     required: false
   ssh_port:
     description: "SSH port exposed by the remote host (example: 22)."
@@ -118,7 +118,7 @@ inputs:
     description: "Absolute or home-relative path to the remote .env file location (example: /opt/uactions/envs/app.env)."
     required: false
   env_b64:
-    description: "Base64-encoded .env payload that will be written to the remote host (example: ${{ secrets.APP_ENV_B64 }})."
+    description: "Base64-encoded .env payload that will be written to the remote host (example: a repository/organization secret)."
     required: false
   env_content:
     description: "Plain text .env payload (discouraged for secrets; prefer env_b64) (example: 'KEY=value')."
@@ -140,10 +140,10 @@ inputs:
     required: false
     default: 'true'
   registry_username:
-    description: "Username for authenticated registry pulls when registry_login is true (example: ${{ github.actor }})."
+    description: "Username for authenticated registry pulls when registry_login is true (example: a CI user or bot account)."
     required: false
   registry_token:
-    description: "Password or token for the registry account (example: ${{ secrets.GHCR_TOKEN }})."
+    description: "Password or token for the registry account (example: a repository/organization secret token)."
     required: false
 
   # Runtime
@@ -241,7 +241,7 @@ inputs:
     required: false
     default: ''
   dashboard_users_b64:
-    description: "Base64-encoded htpasswd entries for the Traefik dashboard (pre-hashed users, example: ${{ secrets.TRAEFIK_USERS_B64 }})."
+    description: "Base64-encoded htpasswd entries for the Traefik dashboard (pre-hashed users, example: a repository/organization secret)."
     required: false
     default: ''
 
