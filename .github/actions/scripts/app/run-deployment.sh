@@ -173,13 +173,74 @@ echo "================================================================"
 
 
 # --- Execute Deployment ---------------------------------------------------------------
+echo "🔒 Configuring firewall (UFW) ..."
+echo "================================================================"
+UFW_PORTS_INPUT="${UFW_ALLOW_PORTS_INPUT:-}"
+UFW_PORTS="$UFW_PORTS_INPUT"
+if [ -z "$UFW_PORTS" ]; then
+  SSH_PORT_EFF="${SSH_PORT:-22}"
+  UFW_PORTS="$SSH_PORT_EFF"
+  if [ "${TRAEFIK_ENABLED:-false}" = "true" ]; then
+    UFW_PORTS="$UFW_PORTS 80 443"
+  else
+    if [ -n "${HOST_PORT_IN:-}" ]; then
+      UFW_PORTS="$UFW_PORTS ${HOST_PORT_IN}"
+    fi
+  fi
+  if [ "${INSTALL_WEBMIN:-false}" = "true" ]; then
+    UFW_PORTS="$UFW_PORTS 10000"
+  fi
+  if [ "${INSTALL_USERMIN:-false}" = "true" ]; then
+    UFW_PORTS="$UFW_PORTS 20000"
+  fi
+fi
+
+if [ -x "$HOME/uactions/scripts/infra/configure-ufw.sh" ]; then
+  export SSH_PORT
+  export UFW_ALLOW_PORTS="$UFW_PORTS"
+  export ENABLE_PODMAN_FORWARD="${TRAEFIK_ENABLED:-false}"
+  export ROUTE_PORTS='80 443'
+  export SET_FORWARD_POLICY_ACCEPT='true'
+  export WAN_IFACE=''
+  export PODMAN_IFACE=''
+  if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo env \
+      SSH_PORT="$SSH_PORT" \
+      UFW_ALLOW_PORTS="$UFW_ALLOW_PORTS" \
+      ENABLE_PODMAN_FORWARD="$ENABLE_PODMAN_FORWARD" \
+      ROUTE_PORTS="$ROUTE_PORTS" \
+      SET_FORWARD_POLICY_ACCEPT="$SET_FORWARD_POLICY_ACCEPT" \
+      WAN_IFACE="$WAN_IFACE" \
+      PODMAN_IFACE="$PODMAN_IFACE" \
+      "$HOME/uactions/scripts/infra/configure-ufw.sh"
+  else
+    "$HOME/uactions/scripts/infra/configure-ufw.sh"
+  fi
+else
+  echo "::warning::configure-ufw.sh not found; skipping firewall configuration"
+fi
+
+if [ "${INSTALL_WEBMIN:-false}" = "true" ] || [ "${INSTALL_USERMIN:-false}" = "true" ]; then
+  echo "================================================================"
+  echo "🛠 Installing Webmin/Usermin (as requested) ..."
+  echo "================================================================"
+  if [ -x "$HOME/uactions/scripts/infra/install-webmin.sh" ]; then
+    if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo env INSTALL_WEBMIN="${INSTALL_WEBMIN:-false}" INSTALL_USERMIN="${INSTALL_USERMIN:-false}" "$HOME/uactions/scripts/infra/install-webmin.sh"
+    else
+      "$HOME/uactions/scripts/infra/install-webmin.sh"
+    fi
+  else
+    echo "::warning::install-webmin.sh not found; skipping Webmin/Usermin installation"
+  fi
+fi
+
 echo "🚀 Executing deployment script..."
 echo "================================================================"
 echo "  Script: $HOME/uactions/scripts/app/deploy-container.sh"
 echo "  App: $APP_SLUG"
 echo "  Image: $IMAGE_REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
 echo "  Traefik: $TRAEFIK_ENABLED"
-echo "  Sudo available: $SUDO_STATUS"
 if [ "${DEBUG:-false}" = "true" ]; then
   echo "📄 Using env file: $REMOTE_ENV_FILE"
 fi

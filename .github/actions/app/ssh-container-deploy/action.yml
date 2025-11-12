@@ -155,6 +155,14 @@ inputs: # All parameters accepted by this action
     description: "Space-separated list of ports opened in UFW during host prep (example: '80 443')."
     required: false
     default: ''
+  install_webmin:
+    description: 'Install Webmin during host prep/first-run (requires sudo).'
+    required: false
+    default: 'true'
+  install_usermin:
+    description: 'Install Usermin alongside Webmin when enabled (requires sudo).'
+    required: false
+    default: 'false'
   show_root_install_hints:
     description: 'Show explicit manual install instructions when root privileges are required (fail-fast messaging)'
     required: false
@@ -407,10 +415,14 @@ runs: # Composite action implementation
           echo "================================================================"
           echo "Deploying container via SSH..."
           echo "================================================================"
+          # ------------------------------------------------------------------
           # Export deployment variables for run-deployment.sh
-          # Env payload (optional): prefer explicit inputs, else resolved secret
+          # ------------------------------------------------------------------
+          # Env payload (optional)
           export ENV_B64='${{ inputs.env_b64 != '' && inputs.env_b64 || steps.envsel.outputs.env_b64 }}'
           export ENV_CONTENT='${{ inputs.env_content }}'
+
+          # Registry & image
           export IMAGE_REGISTRY='${{ inputs.registry }}'
           export IMAGE_NAME='${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}'
           export IMAGE_TAG='${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}'
@@ -422,19 +434,27 @@ runs: # Composite action implementation
             export REGISTRY_USERNAME='${{ inputs.registry_username }}'
             export REGISTRY_TOKEN='${{ inputs.registry_token }}'
           fi
+
+          # App identity & environment
           export APP_SLUG='${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}'
           export ENV_NAME='${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}'
           export CONTAINER_NAME_IN="${{ inputs.container_name }}"
+
+          # Paths on host
           if [ -n '${{ inputs.env_file_path }}' ]; then
             export ENV_FILE_PATH_BASE='${{ inputs.env_file_path }}'
           else
             export ENV_FILE_PATH_BASE='${{ inputs.deployment_base_dir }}'
           fi
+
+          # Ports & runtime
           export HOST_PORT_IN='${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}'
           export CONTAINER_PORT_IN='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'
           export EXTRA_RUN_ARGS='${{ inputs.extra_run_args }}'
           export RESTART_POLICY='${{ inputs.restart_policy }}'
           export MEMORY_LIMIT='${{ inputs.memory_limit }}'
+
+          # Traefik & domain routing
           export TRAEFIK_ENABLED='${{ inputs.enable_traefik }}'
           export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
           export TRAEFIK_NETWORK_NAME='${{ inputs.traefik_network_name }}'
@@ -444,12 +464,23 @@ runs: # Composite action implementation
           export DOMAIN_ALIASES='${{ inputs.domain_aliases }}'
           export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
           export DOMAIN_HOSTS='${{ inputs.domain_hosts }}'
-          export DEBUG='${{ inputs.debug }}'
 
+          # Debug & diagnostics toggles
+          export DEBUG='${{ inputs.debug }}'
+          export PROBE_HTTP_FALLBACK=true
+          export PROBE_TIMEOUT=12
+          export PROBE_TRIES=12
+          export PROBE_DELAY=5
+
+          # Host hardening & optional services
+          export SSH_PORT='${{ inputs.ssh_port }}'
+          export UFW_ALLOW_PORTS_INPUT='${{ inputs.ufw_allow_ports }}'
+          export INSTALL_WEBMIN='${{ inputs.install_webmin }}'
+          export INSTALL_USERMIN='${{ inputs.install_usermin }}'
 
 
           echo "================================================================"
-          echo "Install scripts on remote host."
+          echo "Installing server-managed scripts bundle on remote host"
           echo "================================================================"
           mkdir -p "$HOME/uactions"
           if [ ! -f "$HOME/uactions-scripts.tgz" ]; then
@@ -474,32 +505,10 @@ runs: # Composite action implementation
           date -u +'%Y-%m-%d %H:%M:%S UTC' > "$HOME/uactions/scripts/.deployed_at"
           echo '${{ github.sha }}' > "$HOME/uactions/scripts/.version"
           echo "================================================================"
-          echo "Running deployment script..."
-          echo "  Script: $HOME/uactions/scripts/app/run-deployment.sh"
-          echo "  App: $APP_SLUG"
-          echo "  Image: $IMAGE_REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
-          echo "  Traefik: $TRAEFIK_ENABLED"
-          "$HOME/uactions/scripts/app/run-deployment.sh"
-          echo "================================================================"
-          ROUTER='${{ steps.dfl.outputs.traefik_router }}'
-          DOMAIN_EFFECTIVE='${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }}'
-          SERVICE_PORT='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'
-          PROBE_PATH='${{ inputs.probe_path }}'
-          echo "================================================================"
-          echo "Router: $ROUTER"
-          echo "Domain: $DOMAIN_EFFECTIVE"
-          echo "Service Port: $SERVICE_PORT"
-          echo "Probe Path: $PROBE_PATH"
-          echo "================================================================"
-          # Probe tuning: enable HTTP fallback and slightly extend timeout for slow DNS/ACME
-          export PROBE_HTTP_FALLBACK=true
-          export PROBE_TIMEOUT=12
-          export PROBE_TRIES=12
-          export PROBE_DELAY=5
-          echo "================================================================"
-          echo "Running Traefik probe..."
-          echo "================================================================"
-          "$HOME/uactions/scripts/traefik/probe-traefik.sh" post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT" "$PROBE_PATH"
+          echo "✅ Scripts installed. Launching container deployment orchestrator ..."
+          # Minimal environment for remote entry to handle UFW/Webmin and deploy
+          
+          "$HOME/uactions/scripts/app/start-container-deployment.sh"
 
           
    
