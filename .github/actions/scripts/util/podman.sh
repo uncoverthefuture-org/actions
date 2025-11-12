@@ -86,67 +86,50 @@ podman_build_dns_args() {
 # Run podman container with preview
 podman_run_with_preview() {
   local name="$1" env_file="$2" restart_policy="$3" memory_limit="$4" image_ref="$5"
-  local extra_run_args="$6" debug="$7"
-  local port_ref_name="$8" dns_ref_name="$9" net_ref_name="${10}" label_ref_name="${11}" volume_ref_name="${12:-}"
+  local extra_run_args="${6:-}" debug="${7:-}" 
+  local port_ref_name="${8:-}" dns_ref_name="${9:-}" net_ref_name="${10:-}" 
+  local label_ref_name="${11:-}" volume_ref_name="${12:-}"
 
-  local -a port_args dns_args network_args label_args volume_args
+  local -a port_args dns_args network_args label_args volume_args extra_args
+  local -a cmd
 
-  if [[ -n "$port_ref_name" ]]; then
-    local -n _port_ref="$port_ref_name"
-    port_args=("${_port_ref[@]}")
-  else
-    port_args=()
-  fi
+  # Helper: safely expand array ref if name provided
+  _expand_ref() {
+    local ref_name="$1"
+    if [[ -n "$ref_name" && -v "$ref_name" ]]; then
+      local -n src="$ref_name"
+      printf '%s\n' "${src[@]}"
+    fi
+  }
 
-  if [[ -n "$dns_ref_name" ]]; then
-    local -n _dns_ref="$dns_ref_name"
-    dns_args=("${_dns_ref[@]}")
-  else
-    dns_args=()
-  fi
+  # Expand all optional arrays
+  readarray -t port_args    < <(_expand_ref "$port_ref_name")
+  readarray -t dns_args     < <(_expand_ref "$dns_ref_name")
+  readarray -t network_args < <(_expand_ref "$net_ref_name")
+  readarray -t label_args   < <(_expand_ref "$label_ref_name")
+  readarray -t volume_args  < <(_expand_ref "$volume_ref_name")
 
-  if [[ -n "$net_ref_name" ]]; then
-    local -n _net_ref="$net_ref_name"
-    network_args=("${_net_ref[@]}")
-  else
-    network_args=()
-  fi
-
-  if [[ -n "$label_ref_name" ]]; then
-    local -n _label_ref="$label_ref_name"
-    label_args=("${_label_ref[@]}")
-  else
-    label_args=()
-  fi
-
-  if [[ -n "$volume_ref_name" ]]; then
-    local -n _volume_ref="$volume_ref_name"
-    volume_args=("${_volume_ref[@]}")
-  else
-    volume_args=()
-  fi
-
-  local -a cmd=(podman run -d --name "$name")
-
-  [[ -s "$env_file" ]] && cmd+=("--env-file" "$env_file")
-  cmd+=("${port_args[@]}" --restart="$restart_policy" --memory="$memory_limit" --memory-swap="$memory_limit")
-  cmd+=("${dns_args[@]}" "${network_args[@]}")
-  [[ ${#volume_args[@]} -gt 0 ]] && cmd+=("${volume_args[@]}")
-
+  # Parse extra args safely
   if [[ -n "$extra_run_args" ]]; then
-    read -ra extra <<<"$extra_run_args"
-    cmd+=("${extra[@]}")
+    readarray -t extra_args < <(printf '%s\n' "$extra_run_args" | xargs -n1 printf '%s\n')
   fi
 
-  cmd+=("${label_args[@]}" "$image_ref")
+  # Build command
+  cmd=(podman run -d --name "$name")
 
-  echo "🐚 podman run command (preview):"
-  printf '  %q' "${cmd[@]}"
-  echo
+  [[ -s "$env_file" ]] && cmd+=(--env-file "$env_file")
+  cmd+=("${port_args[@]}" --restart="$restart_policy")
+  cmd+=("--memory=$memory_limit" "--memory-swap=$memory_limit")
+  cmd+=("${dns_args[@]}" "${network_args[@]}" "${volume_args[@]}" "${extra_args[@]}" "${label_args[@]}")
+  cmd+=("$image_ref")
 
+  # Preview
+  echo "podman run command (preview):"
+  printf '  %q' "${cmd[@]}"; echo
+
+  # Execute
   "${cmd[@]}"
 }
-
 # Login to registry if credentials are provided
 podman_login_if_credentials() {
   local registry="$1" username="$2" token="$3"
