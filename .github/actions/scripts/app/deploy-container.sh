@@ -18,7 +18,7 @@
 #   CONTAINER_PORT_IN     - Optional container port (service port for Traefik or mapping)
 #   EXTRA_RUN_ARGS        - Extra args appended to podman run
 #   DEPLOY_DIR_VOLUME_ENABLED - Toggle automatic mount of deployment dir (default: true)
-#   DEPLOY_DIR_CONTAINER_PATH - Target path inside container for deployment dir (default: /var/www)
+#   DEPLOY_DIR_CONTAINER_PATH - Target path inside container for deployment dir (default: /<app_slug>)
 #   RESTART_POLICY        - Podman restart policy (default: unless-stopped)
 #   MEMORY_LIMIT          - Memory and swap (default: 512m)
 #   TRAEFIK_ENABLED       - 'true' to attach labels (requires DOMAIN)
@@ -73,13 +73,17 @@ EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
 DEPLOY_DIR_VOLUME_ENABLED="${DEPLOY_DIR_VOLUME_ENABLED:-true}"
-DEPLOY_DIR_CONTAINER_PATH="${DEPLOY_DIR_CONTAINER_PATH:-/var/www}"
+if [[ -z "${DEPLOY_DIR_CONTAINER_PATH:-}" ]]; then
+  DEPLOY_DIR_CONTAINER_PATH="/${APP_SLUG}"
+else
+  DEPLOY_DIR_CONTAINER_PATH="${DEPLOY_DIR_CONTAINER_PATH}"
+fi
 if [[ "$DEPLOY_DIR_CONTAINER_PATH" == "/" ]]; then
   # Inline doc: Podman (especially rootless) refuses mounting directories at container
   # root. Example: set DEPLOY_DIR_CONTAINER_PATH=/srv/app to expose the deployment at
   # /srv/app inside the container instead of attempting to mount to '/'.
-  echo "::warning::DEPLOY_DIR_CONTAINER_PATH='/' is not supported; defaulting to /var/www" >&2
-  DEPLOY_DIR_CONTAINER_PATH="/var/www"
+  echo "::warning::DEPLOY_DIR_CONTAINER_PATH='/' is not supported; defaulting to /${APP_SLUG}" >&2
+  DEPLOY_DIR_CONTAINER_PATH="/${APP_SLUG}"
 fi
 DEPLOY_DIR_HOST_PATH="${DEPLOY_DIR_HOST_PATH:-}"
 
