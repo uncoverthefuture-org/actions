@@ -73,7 +73,10 @@ check_local_reachability() {
   if command -v curl >/dev/null 2>&1; then
     if [ "${TRAEFIK_PING_ENABLED:-true}" = "true" ]; then
       PING_REACHABILITY="fail"
-      code=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "http://127.0.0.1/ping" || echo "000")
+      # Use -sS (not -f) and ignore curl's exit code so that HTTP 4xx responses
+      # still produce a valid status code (e.g. 404) without appending extra
+      # digits like "404000". Any 2xx-4xx result is treated as reachable.
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "http://127.0.0.1/ping" || true)
       if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
         notice "Traefik ping reachable on http://127.0.0.1/ping (HTTP $code)"
         PING_REACHABILITY="ok"
@@ -85,7 +88,9 @@ check_local_reachability() {
 
     modes=",${DASHBOARD_PUBLISH_MODES:-},"
     if printf '%s' "$modes" | grep -q ',http8080,'; then
-      code=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "http://127.0.0.1:8080/api/overview" || echo "000")
+      # Same fix as above: drop -f and avoid concatenating fallback output so
+      # that 404 and other HTTP errors are reported as-is.
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "http://127.0.0.1:8080/api/overview" || true)
       if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
         notice "Traefik API reachable at http://127.0.0.1:8080/api/overview (HTTP $code)"
       else
