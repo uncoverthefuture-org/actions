@@ -127,6 +127,41 @@ Example usage (skip Traefik entirely, useful if Traefik is managed out-of-band):
       }
 ```
 
+## TLS certificate inspection and ACME reset
+
+When Traefik is enabled and a domain is configured, the post-deploy probe automatically inspects the TLS certificate in use:
+
+- Uses `openssl` to connect to `https://<domain>` and read the certificate.
+- Logs the issuer, subject, and validity dates (notBefore/notAfter).
+- Detects common Let's Encrypt staging issuers (for example `Fake LE Intermediate`) and prints a clear warning that browsers will not trust the certificate.
+
+If your deployment logs show a staging or otherwise untrusted certificate, you can ask the action to reset Traefik's ACME storage on the next run so new certificates are requested:
+
+- Set `traefik_reset_acme: "true"` for a deployment. This will:
+  - Back up the current `~/.local/share/traefik/acme.json` on the server.
+  - Replace it with a fresh `{}` file owned by the deploy user.
+  - Cause Traefik to request new certificates from Let's Encrypt (production CA) the next time it starts or reconciles.
+- After certificates are refreshed and trusted in the browser, you should revert `traefik_reset_acme` back to its default (`"false"`) for normal runs.
+
+Example (one-off certificate rotation run):
+
+```yaml
+- name: Deploy Container (rotate TLS certs)
+  uses: uncoverthefuture-org/actions@v1
+  with:
+    subaction: ssh-container-deploy
+    params_json: |
+      {
+        "ssh_host": "${{ secrets.SERVER_HOST }}",
+        "ssh_user": "${{ secrets.SERVER_USER }}",
+        "ssh_key":  "${{ secrets.SERVER_SSH_KEY }}",
+        "enable_traefik": "true",
+        "base_domain": "${{ secrets.BASE_DOMAIN }}",
+        "env_name": "production",
+        "traefik_reset_acme": "true"
+      }
+```
+
 ## Additional tips
 
 - If `enable_traefik` is `true` and Traefik is not detected, host preparation will run automatically. You can optionally set `ufw_allow_ports: "80 443"` to open HTTP/HTTPS.
