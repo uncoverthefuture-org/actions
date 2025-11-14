@@ -203,6 +203,34 @@ post() {
     fi
   fi
 
+  if command -v openssl >/dev/null 2>&1; then
+    notice "Inspecting TLS certificate for $domain:443 ..."
+    cert_info=$(echo | openssl s_client -connect "$domain:443" -servername "$domain" 2>/dev/null | openssl x509 -noout -issuer -subject -dates 2>/dev/null || true)
+    if [ -n "$cert_info" ]; then
+      issuer=$(printf '%s\n' "$cert_info" | sed -n 's/^issuer=//p' | head -n1)
+      subject=$(printf '%s\n' "$cert_info" | sed -n 's/^subject=//p' | head -n1)
+      not_before=$(printf '%s\n' "$cert_info" | sed -n 's/^notBefore=//p' | head -n1)
+      not_after=$(printf '%s\n' "$cert_info" | sed -n 's/^notAfter=//p' | head -n1)
+      if [ -n "$issuer" ]; then
+        notice "TLS cert issuer: $issuer"
+      fi
+      if [ -n "$subject" ]; then
+        notice "TLS cert subject: $subject"
+      fi
+      if [ -n "$not_before" ] && [ -n "$not_after" ]; then
+        notice "TLS cert validity: notBefore=$not_before, notAfter=$not_after"
+      fi
+      if printf '%s\n' "$issuer" | grep -qi 'Fake LE Intermediate'; then
+        notice "TLS inspection: certificate appears to be a Let's Encrypt staging certificate. Browsers will not trust this."
+        notice "To rotate to a production certificate, reset the Traefik ACME storage (for example remove ~/.local/share/traefik/acme.json) or set TRAEFIK_RESET_ACME=true (traefik_reset_acme: 'true') on the next deployment."
+      fi
+    else
+      notice "TLS inspection: unable to retrieve certificate details via openssl."
+    fi
+  else
+    notice "TLS inspection: openssl not available on host; skipping certificate inspection."
+  fi
+
   notice "Probing https://$domain$path via Traefik (up to $tries tries) ..."
   while [ $i -le $tries ]; do
     code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time "$timeout" "https://$domain$path" || echo "000")

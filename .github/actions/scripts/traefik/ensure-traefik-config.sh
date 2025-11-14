@@ -88,7 +88,18 @@ fi
 install_user_file "$CONFIG_TMP" "$CONFIG_PATH" 0640 "Traefik user config"
 echo "✅ Ensured Traefik static config at $CONFIG_PATH"
 
-if [ -f "$ACME_PATH" ]; then
+if [ "${TRAEFIK_RESET_ACME:-false}" = "true" ]; then
+  ACME_TMP="$(mktemp -t traefik-acme.XXXXXX)"
+  if [ -f "$ACME_PATH" ]; then
+    cp "$ACME_PATH" "${ACME_PATH}.bak-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+    echo "🧨 TRAEFIK_RESET_ACME=true; backing up existing ACME storage and creating a fresh store."
+  else
+    echo "🧨 TRAEFIK_RESET_ACME=true; creating fresh ACME storage at $ACME_PATH."
+  fi
+  printf '{}' >"$ACME_TMP"
+  install_user_file "$ACME_TMP" "$ACME_PATH" 0600 "Traefik ACME storage"
+  echo "✅ Reset ACME storage at $ACME_PATH"
+elif [ -f "$ACME_PATH" ]; then
   if [ -n "$SUDO" ]; then
     $SUDO chmod 600 "$ACME_PATH" >/dev/null 2>&1 || true
   else

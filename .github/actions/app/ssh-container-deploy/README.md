@@ -1,8 +1,37 @@
 # SSH Container Deploy
 
-Deploy a generic containerized app to a remote server via SSH using Podman. Supports Traefik routing by default when a domain is available, and falls back to host port mapping otherwise.
+Deploy a generic containerized app to a remote server via SSH using Podman.
+
+This is the **default deploy path** for new projects:
+
+- Uses a single composite action to handle host preparation (optional), env file upload, image pull, and container run.
+- Prefers Traefik routing when a domain is available, and falls back to host-port mapping when no domain is provided.
+
+## What this action does
+
+At a high level this action:
+
+1. Validates SSH connectivity to your server.
+2. Optionally prepares the host (Podman, Traefik, directories) when needed.
+3. Writes or updates a remote `.env` file for your app.
+4. Logs in to your container registry (optional) and pulls the image.
+5. Starts or replaces the app container:
+   - With Traefik labels when a domain is available.
+   - Or with `-p host:container` ports when no domain is available.
+
+## When to use this action
+
+Use `ssh-container-deploy` when you want to:
+
+- Deploy any containerized web/API app to a Linux server via SSH.
+- Reuse the same deployment flow for production, staging, and development.
+- Prefer Traefik-based HTTPS routing when a domain exists, with a clean host-port fallback.
+
+Older app-specific deployers (Django, Laravel, etc.) are still available for legacy workflows, but new projects should use this generic action whenever possible.
 
 ## Minimal usage (GitHub Actions)
+
+This example deploys a production app using Traefik and a base64-encoded `.env` secret:
 
 ```yaml
 - name: Deploy Container
@@ -12,6 +41,7 @@ Deploy a generic containerized app to a remote server via SSH using Podman. Supp
     params_json: |
       {
         "ssh_host": "${{ secrets.SERVER_HOST }}",
+        "ssh_user": "${{ secrets.SERVER_USER }}",
         "ssh_key":  "${{ secrets.SERVER_SSH_KEY }}",
         "enable_traefik": "true",
         "base_domain": "${{ secrets.BASE_DOMAIN }}",
@@ -23,7 +53,7 @@ Deploy a generic containerized app to a remote server via SSH using Podman. Supp
 
 Notes:
 - When `enable_traefik` is `true`, the action will probe the server for Traefik and automatically run host preparation if it is missing.
-- If no domain/base_domain is provided, the action publishes a host port (see port mapping below).
+- If no `domain`/`base_domain` is provided, the action publishes a host port instead (see port mapping below).
 
 ## base_domain vs explicit domain
 
