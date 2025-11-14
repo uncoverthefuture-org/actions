@@ -64,6 +64,7 @@ generate_traefik_static_config() {
   local log_level_raw="${3:-INFO}"
   local debug="${4:-}"
   local log_level="${log_level_raw^^}"
+  local acme_email
 
   # Validate log level
   case "$log_level" in
@@ -77,6 +78,16 @@ generate_traefik_static_config() {
   fi
 
   traefik_util_debug "$debug" "Generating Traefik static config at '$dest' (log level: $log_level)"
+
+  # Decide which email string to embed in the static config. When an explicit
+  # email is provided, write it directly so Let's Encrypt sees a concrete
+  # contact address. When empty, fall back to a placeholder that can be set
+  # via TRAEFIK_EMAIL (used only in legacy/diagnostic scenarios).
+  if [[ -n "$email" ]]; then
+    acme_email="$email"
+  else
+    acme_email='${TRAEFIK_EMAIL}'
+  fi
 
   cat >"$dest" <<EOF
 entryPoints:
@@ -124,7 +135,7 @@ certificatesResolvers:
   letsencrypt:
     acme:
       caServer: https://acme-v02.api.letsencrypt.org/directory
-      email: "\${TRAEFIK_EMAIL}"
+      email: "$acme_email"
       storage: /letsencrypt/acme.json
       httpChallenge:
         entryPoint: web
@@ -150,19 +161,6 @@ http:
         servers:
           - url: "http://127.0.0.1"
 EOF
-
-  if [[ -n "$email" ]]; then
-    python3 -c "
-import sys, re
-path, email = sys.argv[1:3]
-with open(path, 'r') as f:
-    content = f.read()
-content = re.sub(r'email:\s*\"?\${TRAEFIK_EMAIL[^\"]*\"?', f'email: \"{email}\"', content)
-with open(path, 'w') as f:
-    f.write(content)
-" "$dest" "$email"
-    traefik_util_debug "$debug" "Set ACME email to '$email'"
-  fi
 }
 
 # build_traefik_labels_fallback \
