@@ -283,6 +283,7 @@ else
         if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
            ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
           echo "✅ Traefik already running and up-to-date (confighash match); skipping restart."
+          ensure_traefik_systemd_user_service
           exit 0
         else
           echo "::notice::Traefik confighash matches but listeners not detected; restarting container to recover ..."
@@ -295,20 +296,11 @@ else
           done
           if $ok; then
             echo "✅ Traefik recovered after restart; leaving container as-is."
-            if systemctl --user is-enabled --quiet container-traefik.service 2>/dev/null; then
-              :
-            else
-              if podman generate systemd --files --name traefik >/dev/null 2>&1; then
-                podman generate systemd --files --name traefik
-                mkdir -p "$HOME/.config/systemd/user"
-                mv -f container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null || true
-                systemctl --user daemon-reload >/dev/null 2>&1 || true
-                systemctl --user enable --now container-traefik.service >/dev/null 2>&1 || true
-              fi
-            fi
+            ensure_traefik_systemd_user_service
             exit 0
+          else
+            echo "::warning::Traefik restart did not restore listeners; will recreate container."
           fi
-          echo "::warning::Traefik restart did not restore listeners; will recreate container."
         fi
       else
         echo "::notice::Traefik container exists but status='${STATUS}'; attempting start ..."
@@ -316,15 +308,7 @@ else
         if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
            ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
           echo "✅ Traefik started and listeners present; skipping recreate."
-          if systemctl --user is-enabled --quiet container-traefik.service 2>/dev/null; then :; else
-            if podman generate systemd --files --name traefik >/dev/null 2>&1; then
-              podman generate systemd --files --name traefik
-              mkdir -p "$HOME/.config/systemd/user"
-              mv -f container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null || true
-              systemctl --user daemon-reload >/dev/null 2>&1 || true
-              systemctl --user enable --now container-traefik.service >/dev/null 2>&1 || true
-            fi
-          fi
+          ensure_traefik_systemd_user_service
           exit 0
         fi
         echo "::warning::Traefik start did not show listeners; will recreate container."
@@ -394,6 +378,53 @@ cleanup_existing_traefik() {
       fi
       sleep 1
     done
+  fi
+}
+
+ensure_traefik_systemd_user_service() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "::notice::systemctl not available; skipping user-level persistence." >&2
+    return 0
+  fi
+
+  echo "🧾 Generating/refreshing systemd user service for Traefik ..."
+  if ! podman container exists traefik >/dev/null 2>&1; then
+    echo "::warning::Traefik container not found; cannot generate systemd unit." >&2
+    return 0
+  fi
+
+  if podman generate systemd --files --name traefik >/dev/null 2>&1; then
+    podman generate systemd --files --name traefik
+    mkdir -p "$HOME/.config/systemd/user"
+    local unit_tmp="container-traefik.service"
+    local unit_path="$HOME/.config/systemd/user/container-traefik.service"
+    if mv -f "$unit_tmp" "$unit_path" 2>/dev/null; then
+      if command -v sed >/dev/null 2>&1; then
+        sed -i '/^PIDFile=/d' "$unit_path" 2>/dev/null || true
+        if grep -q '^Type=' "$unit_path"; then
+          sed -i 's/^Type=.*/Type=oneshot/' "$unit_path" 2>/dev/null || true
+        else
+          sed -i 's/^\[Service\]/[Service]\nType=oneshot/' "$unit_path" 2>/dev/null || true
+        fi
+        if ! grep -q '^RemainAfterExit=' "$unit_path"; then
+          sed -i 's/^Type=oneshot$/Type=oneshot\nRemainAfterExit=yes/' "$unit_path" 2>/dev/null || true
+        fi
+      fi
+
+      if systemctl --user daemon-reload >/dev/null 2>&1; then
+        if systemctl --user enable --now container-traefik.service >/dev/null 2>&1; then
+          echo "  ✓ Installed/updated container-traefik.service and enabled persistence"
+        else
+          echo "::warning::Failed to enable/start container-traefik.service (user systemd may be unavailable)." >&2
+        fi
+      else
+        echo "::warning::systemctl --user daemon-reload failed; user-level systemd may be unavailable." >&2
+      fi
+    else
+      echo "::warning::Failed to install container-traefik.service; check permissions." >&2
+    fi
+  else
+    echo "::warning::podman generate systemd not available; skipping persistence." >&2
   fi
 }
 
@@ -723,27 +754,4 @@ if ! $ok; then
   exit 1
 fi
 
-echo "🧾 Generating systemd user service for Traefik ..."
-if systemctl --user is-enabled --quiet container-traefik.service 2>/dev/null; then
-  echo "  ✓ container-traefik.service already enabled; skipping regeneration"
-else
-  if podman generate systemd --files --name traefik >/dev/null 2>&1; then
-    podman generate systemd --files --name traefik
-    mkdir -p "$HOME/.config/systemd/user"
-    if mv container-traefik.service "$HOME/.config/systemd/user/" 2>/dev/null; then
-      if systemctl --user daemon-reload >/dev/null 2>&1; then
-        if systemctl --user enable --now container-traefik.service >/dev/null 2>&1; then
-          echo "  ✓ Installed container-traefik.service and enabled persistence"
-        else
-          echo "::warning::Failed to enable/start container-traefik.service (user systemd may be unavailable)." >&2
-        fi
-      else
-        echo "::warning::systemctl --user daemon-reload failed; user-level systemd may be unavailable." >&2
-      fi
-    else
-      echo "::warning::Failed to install container-traefik.service; check permissions." >&2
-    fi
-  else
-    echo "::warning::podman generate systemd not available; skipping persistence." >&2
-  fi
-fi
+ensure_traefik_systemd_user_service
