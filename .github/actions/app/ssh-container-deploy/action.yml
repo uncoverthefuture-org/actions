@@ -329,6 +329,28 @@ runs: # Composite action implementation
         ssh_key: ${{ inputs.ssh_key }}
         ssh_port: ${{ inputs.ssh_port }}
 
+    - name: Fail when SSH host is unreachable
+      if: ${{ steps.reach.outputs.reachable != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # When the SSH probe cannot reach the remote host, fail fast with a
+        # descriptive error so the overall app summary reports a failure
+        # instead of "deployed successfully". Example:
+        #   Host 'example.com' unreachable after 3 attempts on port 22.
+        #   Last error: ssh: connect to host example.com port 22: Connection timed out
+        echo "::error title=SSH host unreachable::SSH host '${{ inputs.ssh_host }}' is unreachable after ${{ steps.reach.outputs.attempts }} attempt(s) on port ${{ inputs.ssh_port }}."
+        if [ -n "${{ steps.reach.outputs.last_error }}" ]; then
+          echo "Last SSH error message:" >&2
+          printf '%s\n' "${{ steps.reach.outputs.last_error }}" >&2
+        fi
+        echo "" >&2
+        echo "Hints:" >&2
+        echo "  - Verify the server is online and reachable (ping, DNS, routing)." >&2
+        echo "  - Confirm SSH is listening on port ${{ inputs.ssh_port }} and not firewalled." >&2
+        echo "  - Check that ssh_user='${{ inputs.ssh_user }}' and the provided ssh_key are valid." >&2
+        exit 1
+
     - name: Ensure server scripts bundle is deployed
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.ensure_scripts_deployed == 'true' }}
       uses: ./.github/actions/infra/deploy-server-scripts

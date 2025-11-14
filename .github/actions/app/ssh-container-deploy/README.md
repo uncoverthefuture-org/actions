@@ -102,3 +102,39 @@ Example usage (skip Traefik entirely, useful if Traefik is managed out-of-band):
 - If `enable_traefik` is `true` and Traefik is not detected, host preparation will run automatically. You can optionally set `ufw_allow_ports: "80 443"` to open HTTP/HTTPS.
 - To force a specific container name, set `container_name`. Otherwise it defaults to `<app_slug>-<env>`.
 - Use `extra_run_args` to pass additional Podman flags (e.g., volumes).
+
+## SSH reachability failures
+
+This action performs a lightweight SSH probe before any remote work:
+
+- When the probe **succeeds**, deployment proceeds normally.
+- When the probe **fails** (host offline, DNS issue, port blocked, bad key),
+  the action now fails fast with a clear error instead of reporting a
+  successful deployment in the operation summary.
+
+Example (simplified workflow excerpt):
+
+```yaml
+- name: Deploy Container
+  uses: uncoverthefuture-org/actions@v1
+  with:
+    subaction: ssh-container-deploy
+    params_json: |
+      {
+        "ssh_host": "${{ secrets.SERVER_HOST }}",
+        "ssh_user": "${{ secrets.SERVER_USER }}",
+        "ssh_key":  "${{ secrets.SERVER_SSH_KEY }}",
+        "base_domain": "example.com"
+      }
+```
+
+If the host is unreachable, the logs will contain an error like:
+
+```text
+::error title=SSH host unreachable::SSH host 'example.com' is unreachable after 3 attempt(s) on port 22.
+Last SSH error message:
+ssh: connect to host example.com port 22: Connection timed out
+```
+
+and the overall Uncover operation summary will show the app deployment as
+failed instead of "✅ Success".

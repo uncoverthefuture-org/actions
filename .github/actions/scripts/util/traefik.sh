@@ -116,9 +116,14 @@ metrics:
     addRoutersLabels: true
     addServicesLabels: true
 
+# ACME resolver: explicitly target the official Let's Encrypt production
+# directory so that production deployments never accidentally use the
+# staging CA (which browsers do not trust). Example:
+#   - caServer: https://acme-v02.api.letsencrypt.org/directory
 certificatesResolvers:
   letsencrypt:
     acme:
+      caServer: https://acme-v02.api.letsencrypt.org/directory
       email: "\${TRAEFIK_EMAIL}"
       storage: /letsencrypt/acme.json
       httpChallenge:
@@ -204,6 +209,20 @@ build_traefik_labels_fallback() {
         fi
         ;;
     esac
+
+    # When DOMAIN is already a www.<apex> host (for example when compute-defaults
+    # is given base_domain=admissionboox.com and uses the default production
+    # prefix "www" → DOMAIN=www.admissionboox.com), auto-add the apex variant so
+    # both example.com and www.example.com are covered by the same router and
+    # certificate. Example:
+    #   domain=www.admissionboox.com → hosts=[www.admissionboox.com, admissionboox.com]
+    dom_lower="$(printf '%s' "$domain" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$dom_lower" == www.* ]]; then
+      apex_candidate="${dom_lower#www.}"
+      if [[ -n "$apex_candidate" ]]; then
+        hosts+=("$apex_candidate")
+      fi
+    fi
   fi
 
   # De-duplicate
