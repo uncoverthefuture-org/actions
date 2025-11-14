@@ -54,119 +54,140 @@ This example deploys a production app using Traefik and a base64-encoded `.env` 
 Notes:
 - When `enable_traefik` is `true`, the action will probe the server for Traefik and automatically run host preparation if it is missing.
 - If no `domain`/`base_domain` is provided, the action publishes a host port instead (see port mapping below).
+ 
+## Inputs
 
-## base_domain vs explicit domain
+All inputs are provided via the `params_json` object. The tables below list each input, its default, and what it controls.
 
-- `domain` (explicit): Provide a full FQDN (e.g., `app.example.com`). The action will use this exact host for Traefik labels.
-- `base_domain` (derived): Provide an apex domain (e.g., `example.com`). The action derives the FQDN by environment:
-  - production: `domain_prefix_prod` + `base_domain` (default prefix is empty, so apex is used; e.g., `example.com`)
-  - staging: `domain_prefix_staging` + `base_domain` (default: `staging.example.com`)
-  - development: `domain_prefix_dev` + `base_domain` (default: `dev.example.com`)
+### SSH & connectivity
 
-You can override prefixes via inputs:
-- `domain_prefix_prod` (default: empty string)
-- `domain_prefix_staging` (default: `staging`)
-- `domain_prefix_dev` (default: `dev`)
+| Input | Default | Description |
+|-------|---------|-------------|
+| `ssh_host` | – | Required. SSH host (IP or DNS) of the remote server. |
+| `ssh_user` | – | Required. SSH username used for remote execution. |
+| `ssh_key` | – | Required. Private key for `ssh_user` (PEM, usually from a secret). |
+| `root_ssh_key` | – | Optional key for root when privileged operations are needed. |
+| `ssh_port` | `22` | SSH port on the remote host. |
+| `ssh_fingerprint` | – | Optional host key fingerprint for trust pinning. |
+| `skip_upload` | `true` | Skip staging `deploy-container.sh` when scripts are already present. |
+| `ensure_scripts_deployed` | `true` | Automatically deploy/update the server scripts bundle before remote steps. |
 
-## Port selection and fallbacks (remote .env)
+### Host preparation & infra
 
-The action determines ports in this order:
+| Input | Default | Description |
+|-------|---------|-------------|
+| `prepare_host` | `true` | Run first-time host prep (install Podman/Traefik, create directories). |
+| `install_podman` | `true` | Install Podman during host prep if missing. |
+| `create_podman_user` | `false` | Create the `podman_user` account when it does not exist. |
+| `install_traefik` | `true` | Install or reconcile Traefik during host prep. |
+| `traefik_email` | – | Email passed to Traefik ACME for certificate registration. |
+| `env_dir_path` | – | Base directory for env files and app metadata (overrides default). |
+| `deployment_base_dir` | `~/deployments` | Base directory for per-env app deployment roots. |
+| `additional_packages` | `jq curl ca-certificates` | Extra apt packages installed during host prep. |
+| `ufw_allow_ports` | `''` | Space-separated ports to open in UFW (e.g. `"80 443"`). |
+| `install_webmin` | `true` | Install Webmin during host prep (requires sudo). |
+| `install_usermin` | `false` | Install Usermin alongside Webmin. |
+| `show_root_install_hints` | `true` | Print manual instructions when root privileges are required. |
 
-- Host port (`HOST_PORT`):
-  1) `host_port` input
-  2) `WEB_HOST_PORT` from remote `.env`
-  3) `PORT` from remote `.env`
-  4) Default: `8080` (persisted per app/env; auto-increments if occupied)
+### Environment & app metadata
 
-- Container port (`CONTAINER_PORT`):
-  1) `container_port` input
-  2) `WEB_CONTAINER_PORT` from remote `.env`
-  3) `TARGET_PORT` from remote `.env`
-  4) `PORT` from remote `.env`
-  5) Default: `8080` (project standard; override if your app listens elsewhere)
+| Input | Default | Description |
+|-------|---------|-------------|
+| `env_name` | – | Logical env name (`production`, `staging`, `development`). Auto-derived when omitted. |
+| `auto_detect_env` | `true` | Derive `env_name` from branch/tag via `compute-defaults`. |
+| `env_file_path` | – | Base path for `.env` on the host (otherwise derived from `deployment_base_dir`). |
+| `write_env_file` | `false` | When true, write `env_b64`/`env_content` to the remote `.env`. |
+| `env_b64` | – | Base64-encoded `.env` payload to materialize on the host. |
+| `env_content` | – | Raw `.env` content (prefer `env_b64` for secrets). |
+| `auto_fetch_env` | `true` | Resolve `env_b64` automatically from job env (e.g. `PROD_ENV_B64`). |
+| `env_secret_prefix` | `''` | Prefix used when deriving env secret var names from `env_name`. |
+| `env_secret_suffix` | `_ENV_B64` | Suffix used when deriving env secret var names from `env_name`. |
+| `app_slug` | – | Human-readable app slug; defaults from repo name when omitted. |
+| `container_name` | – | Override Podman container name (default: `<app_slug>-<env>`). |
 
-When Traefik is enabled and a domain is available, the action does not publish host ports (`-p`). Instead, it attaches Traefik labels and sets the service port to `CONTAINER_PORT`.
+### Registry & image
 
-## Remote .env location
+| Input | Default | Description |
+|-------|---------|-------------|
+| `registry` | `ghcr.io` | Container registry hostname for image pulls. |
+| `image_name` | – | Image path without tag (e.g. `org/app`). |
+| `image_tag` | – | Tag to deploy (e.g. `production-abcdef`). |
+| `registry_username` | – | Registry username (defaults from GitHub actor for `ghcr.io`). |
+| `registry_token` | – | Registry password/token. |
+| `registry_login` | `true` | Attempt registry login before pulling when credentials exist. |
 
-By default, the env file is stored on the server at:
+### Runtime & ports
 
+| Input | Default | Description |
+|-------|---------|-------------|
+| `host_port` | – | Host port to publish when Traefik is disabled. |
+| `container_port` | – | Container service port (labels/port mapping). Defaults from `.env` or `default_container_port`. |
+| `default_host_port` | `8080` | Fallback host port when Traefik is disabled and `host_port` is empty. |
+| `default_container_port` | `8080` | Fallback container port when `container_port` is empty. |
+| `restart_policy` | `unless-stopped` | Podman restart policy for the app container. |
+| `extra_run_args` | – | Extra flags appended to `podman run` (e.g. extra volumes, caps). |
+| `memory_limit` | `512m` | Memory (and swap) limit applied to the container. |
+
+### Traefik, domains & TLS
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `enable_traefik` | `true` | Attach Traefik labels and network when a domain is provided. |
+| `ensure_traefik` | `true` | Run Traefik preflight + reconciliation (skip when managed out-of-band). |
+| `enable_acme` | `true` | Attach certresolver labels so Traefik requests Let’s Encrypt certs. |
+| `traefik_reset_acme` | `false` | When `true`, reset ACME storage (`acme.json`) on next run to force new certs. |
+| `traefik_network_name` | `traefik-network` | Podman network for Traefik and app containers. |
+| `traefik_use_host_network` | `false` | Run Traefik on host network to avoid CNI DNS issues. |
+| `traefik_skip_upload` | `true` | Skip uploading Traefik scripts when already installed. |
+| `enable_dashboard` | `true` | Enable Traefik dashboard exposure (when paired with `dashboard_publish_modes`). |
+| `dashboard_publish_modes` | `''` | CSV: `http8080`, `https8080`, `subdomain`, or `both`. |
+| `dashboard_host` | `''` | FQDN for dashboard when using `subdomain` mode. |
+| `dashboard_password` | `''` | Plain dashboard password (hashed on host); default user is `admin`. |
+| `dashboard_users_b64` | `''` | Base64 htpasswd users file; overrides `dashboard_password`. |
+| `dns_servers` | `''` | Optional DNS servers for the Traefik container (`--dns`). |
+| `domain` | `''` | Explicit FQDN for the app (e.g. `app.example.com`). |
+| `base_domain` | `''` | Apex domain used to derive env-specific hosts (e.g. `example.com`). |
+| `domain_prefix_prod` | `''` | Prefix for production when `base_domain` is set (default: apex only). |
+| `domain_prefix_staging` | – | Prefix for staging when `base_domain` is set (e.g. `staging`). |
+| `domain_prefix_dev` | – | Prefix for development when `base_domain` is set (e.g. `dev`). |
+| `require_dns_match` | `true` | Reserved flag to gate changes behind DNS validation. |
+| `domain_aliases` | `''` | Comma/space-separated aliases routed to the service. |
+| `include_www_alias` | `false` | When true and `domain` is set, also include `www.<domain>` as alias. |
+| `domain_hosts` | `''` | CSV of hostnames to route (overrides `domain_aliases` when set). |
+| `probe_path` | `/` | Path used by the Traefik probe to validate readiness (e.g. `/health`). |
+
+### Diagnostics & summary
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `debug` | `false` | Enable verbose logging for troubleshooting. |
+| `summary_mode` | `full` | Controls operation summary: `full`, `light`, or `off`. |
+| `source_env` | `true` | Source the remote `.env` before running deployment scripts. |
+| `fail_if_env_missing` | `true` | When `source_env=true`, fail if the `.env` file cannot be sourced. |
+
+## Examples
+
+These examples build on the **Minimal usage** snippet above. Only the relevant extra fields are shown.
+
+### Skip Traefik reconciliation (Traefik managed out-of-band)
+
+Add to your `params_json`:
+
+```jsonc
+// ...base params_json omitted for brevity...
+"ensure_traefik": "false"
 ```
-/var/deployments/<env>/<app_slug>/.env
+
+### Rotate TLS certificate (reset ACME storage once)
+
+If the logs show a staging or otherwise untrusted certificate, you can trigger an ACME reset on a one-off run:
+
+```jsonc
+// ...base params_json omitted for brevity...
+"traefik_reset_acme": "true"
 ```
 
-- `<env>` is derived from branch or `env_name` (production|staging|development)
-- `<app_slug>` is derived from the repository name (lowercased, slugified)
-
-You can upload the env via base64 payload:
-- `write_env_file: true`
-- `env_b64: ${{ secrets.PROD_ENV_B64 }}` (or `STAGING_ENV_B64`, `DEV_ENV_B64`)
-
-## Traefik fast-path and ensure_traefik
-
-- `ensure_traefik` (default `'true'`) gates all Traefik-related checks and reconciliation in this action.
-  - When set to `'false'`, the action skips Traefik preflight checks, the `infra/setup-traefik` reconciliation step, and the post-deploy routing probe. App deployment still proceeds normally.
-- Fast-path: `infra/setup-traefik` probes first and is a no-op when Traefik is already running, ports 80/443 are listening, and the configuration is up-to-date. Upload and setup are only performed when needed or when `force_restart: 'true'` is passed to that action.
-
-Example usage (skip Traefik entirely, useful if Traefik is managed out-of-band):
-
-```yaml
-- name: Deploy Container
-  uses: uncoverthefuture-org/actions@v1
-  with:
-    subaction: ssh-container-deploy
-    params_json: |
-      {
-        "ssh_host": "${{ secrets.SERVER_HOST }}",
-        "ssh_user": "${{ secrets.SERVER_USER }}",
-        "ssh_key":  "${{ secrets.SERVER_SSH_KEY }}",
-        "enable_traefik": "true",
-        "ensure_traefik": "false",
-        "base_domain": "${{ secrets.BASE_DOMAIN }}",
-        "env_name": "production"
-      }
-```
-
-## TLS certificate inspection and ACME reset
-
-When Traefik is enabled and a domain is configured, the post-deploy probe automatically inspects the TLS certificate in use:
-
-- Uses `openssl` to connect to `https://<domain>` and read the certificate.
-- Logs the issuer, subject, and validity dates (notBefore/notAfter).
-- Detects common Let's Encrypt staging issuers (for example `Fake LE Intermediate`) and prints a clear warning that browsers will not trust the certificate.
-
-If your deployment logs show a staging or otherwise untrusted certificate, you can ask the action to reset Traefik's ACME storage on the next run so new certificates are requested:
-
-- Set `traefik_reset_acme: "true"` for a deployment. This will:
-  - Back up the current `~/.local/share/traefik/acme.json` on the server.
-  - Replace it with a fresh `{}` file owned by the deploy user.
-  - Cause Traefik to request new certificates from Let's Encrypt (production CA) the next time it starts or reconciles.
-- After certificates are refreshed and trusted in the browser, you should revert `traefik_reset_acme` back to its default (`"false"`) for normal runs.
-
-Example (one-off certificate rotation run):
-
-```yaml
-- name: Deploy Container (rotate TLS certs)
-  uses: uncoverthefuture-org/actions@v1
-  with:
-    subaction: ssh-container-deploy
-    params_json: |
-      {
-        "ssh_host": "${{ secrets.SERVER_HOST }}",
-        "ssh_user": "${{ secrets.SERVER_USER }}",
-        "ssh_key":  "${{ secrets.SERVER_SSH_KEY }}",
-        "enable_traefik": "true",
-        "base_domain": "${{ secrets.BASE_DOMAIN }}",
-        "env_name": "production",
-        "traefik_reset_acme": "true"
-      }
-```
-
-## Additional tips
-
-- If `enable_traefik` is `true` and Traefik is not detected, host preparation will run automatically. You can optionally set `ufw_allow_ports: "80 443"` to open HTTP/HTTPS.
-- To force a specific container name, set `container_name`. Otherwise it defaults to `<app_slug>-<env>`.
-- Use `extra_run_args` to pass additional Podman flags (e.g., volumes).
+The post-deploy probe will also log TLS certificate issuer/subject/validity so you can confirm when a trusted Let’s Encrypt production certificate is in use.
 
 ## SSH reachability failures
 
