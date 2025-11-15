@@ -163,6 +163,106 @@ http:
 EOF
 }
 
+# cleanup_existing_traefik
+#   Stops and removes the "traefik" container and its associated user-level
+#   systemd unit when present. Safe to call even when Traefik is not running.
+#   Example:
+#     # Ensure we can re-create the Traefik container without name conflicts
+#     cleanup_existing_traefik
+cleanup_existing_traefik() {
+  echo "🧹 Cleaning up existing Traefik container ..."
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl --user is-active --quiet container-traefik.service 2>/dev/null; then
+      systemctl --user stop container-traefik.service >/dev/null 2>&1 || true
+    fi
+  fi
+
+  if podman container exists traefik >/dev/null 2>&1; then
+    status=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)
+    if [[ "$status" = "running" || "$status" = "stopping" || "$status" = "paused" ]]; then
+      podman stop -t 15 traefik >/dev/null 2>&1 || true
+    fi
+
+    for i in {1..10}; do
+      status=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)
+      if [[ -z "$status" || "$status" = "exited" || "$status" = "dead" ]]; then
+        break
+      fi
+      sleep 1
+    done
+
+    status=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)
+    if [[ -n "$status" && "$status" != "" && "$status" != "exited" ]]; then
+      podman kill traefik >/dev/null 2>&1 || true
+    fi
+    podman rm -f traefik >/dev/null 2>&1 || true
+
+    for i in {1..10}; do
+      if ! podman container exists traefik >/dev/null 2>&1; then
+        echo "  ✓ Traefik container name is free"
+        break
+      fi
+      sleep 1
+    done
+  fi
+}
+
+# ensure_traefik_systemd_user_service
+#   Generates (or refreshes) the user-level systemd unit for the "traefik"
+#   container using `podman generate systemd`, installs it under
+#   ~/.config/systemd/user, and enables it via `systemctl --user` when
+#   possible. This allows Traefik to restart automatically for the podman
+#   user after reboots.
+#   Example:
+#     # After confirming Traefik is healthy, persist it via systemd user unit
+#     ensure_traefik_systemd_user_service
+ensure_traefik_systemd_user_service() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "::notice::systemctl not available; skipping user-level persistence." >&2
+    return 0
+  fi
+
+  echo "🧾 Generating/refreshing systemd user service for Traefik ..."
+  if ! podman container exists traefik >/dev/null 2>&1; then
+    echo "::warning::Traefik container not found; cannot generate systemd unit." >&2
+    return 0
+  fi
+
+  if podman generate systemd --files --name traefik >/dev/null 2>&1; then
+    podman generate systemd --files --name traefik
+    mkdir -p "$HOME/.config/systemd/user"
+    local unit_tmp="container-traefik.service"
+    local unit_path="$HOME/.config/systemd/user/container-traefik.service"
+    if mv -f "$unit_tmp" "$unit_path" 2>/dev/null; then
+      if command -v sed >/dev/null 2>&1; then
+        sed -i '/^PIDFile=/d' "$unit_path" 2>/dev/null || true
+        if grep -q '^Type=' "$unit_path"; then
+          sed -i 's/^Type=.*/Type=oneshot/' "$unit_path" 2>/dev/null || true
+        else
+          sed -i 's/^\[Service\]/[Service]\nType=oneshot/' "$unit_path" 2>/dev/null || true
+        fi
+        if ! grep -q '^RemainAfterExit=' "$unit_path"; then
+          sed -i 's/^Type=oneshot$/Type=oneshot\nRemainAfterExit=yes/' "$unit_path" 2>/dev/null || true
+        fi
+      fi
+
+      if systemctl --user daemon-reload >/dev/null 2>&1; then
+        if systemctl --user enable --now container-traefik.service >/dev/null 2>&1; then
+          echo "  ✓ Installed/updated container-traefik.service and enabled persistence"
+        else
+          echo "::warning::Failed to enable/start container-traefik.service (user systemd may be unavailable)." >&2
+        fi
+      else
+        echo "::warning::systemctl --user daemon-reload failed; user-level systemd may be unavailable." >&2
+      fi
+    else
+      echo "::warning::Failed to install container-traefik.service; check permissions." >&2
+    fi
+  else
+    echo "::warning::podman generate systemd not available; skipping persistence." >&2
+  fi
+}
+
 # build_traefik_labels_fallback \
 #   <router_name> <domain> <container_port> <enable_acme> \
 #   <domain_hosts> <domain_aliases> <include_www_alias> <network_name>

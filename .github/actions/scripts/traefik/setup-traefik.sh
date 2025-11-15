@@ -68,8 +68,23 @@ if ! command -v podman >/dev/null 2>&1; then
   exit 1
 fi
 
-# Verify system installation was completed
+# Verify system installation was completed and wire shared Traefik helpers
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+UTIL_TRAEFIK="$SCRIPT_DIR/../util/traefik.sh"
+if [[ -r "$UTIL_TRAEFIK" ]]; then
+  # Source shared Traefik helpers like cleanup_existing_traefik and
+  # ensure_traefik_systemd_user_service so this script stays thin.
+  # Example: after confirming listeners are healthy, call
+  #   ensure_traefik_systemd_user_service
+  # to persist Traefik via a user-level systemd unit.
+  # shellcheck source=/dev/null
+  . "$UTIL_TRAEFIK"
+else
+  echo "::error::Traefik utility helpers not found at $UTIL_TRAEFIK; cannot proceed." >&2
+  exit 1
+fi
+
 ENSURE_CONFIG="$SCRIPT_DIR/ensure-traefik-config.sh"
 if [[ -x "$ENSURE_CONFIG" ]]; then
   echo "🔍 Ensuring Traefik configuration files exist ..."
@@ -339,94 +354,7 @@ if [[ -n "$CONFLICTING_SERVICES" ]]; then
   else
     echo "  ✓ Ports 80/443 are free after stopping existing traefik"
   fi
-else
-  echo "  ✓ No conflicting listeners detected"
 fi
-
-cleanup_existing_traefik() {
-  echo "🧹 Cleaning up existing Traefik container ..."
-  if command -v systemctl >/dev/null 2>&1; then
-    if systemctl --user is-active --quiet container-traefik.service 2>/dev/null; then
-      systemctl --user stop container-traefik.service >/dev/null 2>&1 || true
-    fi
-  fi
-
-  if podman container exists traefik >/dev/null 2>&1; then
-    status=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)
-    if [[ "$status" = "running" || "$status" = "stopping" || "$status" = "paused" ]]; then
-      podman stop -t 15 traefik >/dev/null 2>&1 || true
-    fi
-
-    for i in {1..10}; do
-      status=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)
-      if [[ -z "$status" || "$status" = "exited" || "$status" = "dead" ]]; then
-        break
-      fi
-      sleep 1
-    done
-
-    status=$(podman inspect -f '{{.State.Status}}' traefik 2>/dev/null || true)
-    if [[ -n "$status" && "$status" != "" && "$status" != "exited" ]]; then
-      podman kill traefik >/dev/null 2>&1 || true
-    fi
-    podman rm -f traefik >/dev/null 2>&1 || true
-
-    for i in {1..10}; do
-      if ! podman container exists traefik >/dev/null 2>&1; then
-        echo "  ✓ Traefik container name is free"
-        break
-      fi
-      sleep 1
-    done
-  fi
-}
-
-ensure_traefik_systemd_user_service() {
-  if ! command -v systemctl >/dev/null 2>&1; then
-    echo "::notice::systemctl not available; skipping user-level persistence." >&2
-    return 0
-  fi
-
-  echo "🧾 Generating/refreshing systemd user service for Traefik ..."
-  if ! podman container exists traefik >/dev/null 2>&1; then
-    echo "::warning::Traefik container not found; cannot generate systemd unit." >&2
-    return 0
-  fi
-
-  if podman generate systemd --files --name traefik >/dev/null 2>&1; then
-    podman generate systemd --files --name traefik
-    mkdir -p "$HOME/.config/systemd/user"
-    local unit_tmp="container-traefik.service"
-    local unit_path="$HOME/.config/systemd/user/container-traefik.service"
-    if mv -f "$unit_tmp" "$unit_path" 2>/dev/null; then
-      if command -v sed >/dev/null 2>&1; then
-        sed -i '/^PIDFile=/d' "$unit_path" 2>/dev/null || true
-        if grep -q '^Type=' "$unit_path"; then
-          sed -i 's/^Type=.*/Type=oneshot/' "$unit_path" 2>/dev/null || true
-        else
-          sed -i 's/^\[Service\]/[Service]\nType=oneshot/' "$unit_path" 2>/dev/null || true
-        fi
-        if ! grep -q '^RemainAfterExit=' "$unit_path"; then
-          sed -i 's/^Type=oneshot$/Type=oneshot\nRemainAfterExit=yes/' "$unit_path" 2>/dev/null || true
-        fi
-      fi
-
-      if systemctl --user daemon-reload >/dev/null 2>&1; then
-        if systemctl --user enable --now container-traefik.service >/dev/null 2>&1; then
-          echo "  ✓ Installed/updated container-traefik.service and enabled persistence"
-        else
-          echo "::warning::Failed to enable/start container-traefik.service (user systemd may be unavailable)." >&2
-        fi
-      else
-        echo "::warning::systemctl --user daemon-reload failed; user-level systemd may be unavailable." >&2
-      fi
-    else
-      echo "::warning::Failed to install container-traefik.service; check permissions." >&2
-    fi
-  else
-    echo "::warning::podman generate systemd not available; skipping persistence." >&2
-  fi
-}
 
 # --- Container management -------------------------------------------------------------
 echo "🛑 Ensuring no existing Traefik container ..."
