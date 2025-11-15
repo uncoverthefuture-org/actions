@@ -101,6 +101,42 @@ CURRENT_GROUPS="${CURRENT_GROUPS:-$(id -Gn)}"
 #   SUDO_STATUS="$(detect_sudo_status "yes" "no")"
 SUDO_STATUS="$(detect_sudo_status)"
 
+echo "================================================================"
+echo "📛 Confirming podman installation..."
+echo "================================================================"
+if command -v podman >/dev/null 2>&1; then
+  echo "✅ Podman is already installed"
+  echo "   Podman version: $(podman --version)"
+  echo "   Podman info: $(podman info 2>/dev/null | head -n 5)"
+else
+  echo "❌ Podman is not installed on this host."
+  echo "   This deployment requires Podman to be installed on the remote host."
+  if [[ "${SUDO_STATUS:-available}" == "unavailable" ]]; then
+    echo "Detected: user=$(id -un); sudo(non-interactive)=${SUDO_STATUS}" >&2
+    echo 'Install manually as root then re-run:' >&2
+    echo '  sudo apt-get update -y' >&2
+    echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
+    echo 'Or re-run this action with a user that can install packages non-interactively.' >&2
+    exit 1
+  else
+    echo "   Running (sudo apt-get update -y)"
+    if sudo apt-get update -y; then
+      echo "   ✅ apt-get update completed"
+    else
+      echo "::error::apt-get update failed" >&2
+      exit 1
+    fi
+
+    echo "   Running (sudo apt-get install -y podman curl jq ca-certificates)"
+    if sudo apt-get install -y podman curl jq ca-certificates; then
+      echo "   ✅ Podman and dependencies installed"
+    else
+      echo "::error::apt-get install podman curl jq ca-certificates failed" >&2
+      exit 1
+    fi
+  fi
+fi
+
 
 # --- Environment Setup ---------------------------------------------------------------
 echo "🔧 Setting up deployment environment..."
