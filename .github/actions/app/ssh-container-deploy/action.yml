@@ -403,7 +403,7 @@ runs: # Composite action implementation
         ssh_port: ${{ inputs.ssh_port }} # SSH port
         ssh_fingerprint: ${{ inputs.ssh_fingerprint }} # Host key pin
         app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }} # Derived slug
-        prepare_host: ${{ steps.eff.outputs.prepare_host }} # Run host prep?
+        prepare_host: ${{ inputs.prepare_host }} # Run host prep (defaults to true for ssh-container-deploy)
         install_podman: ${{ inputs.install_podman }} # Install podman
         install_traefik: ${{ inputs.install_traefik }} # Install Traefik
         traefik_enable_acme: ${{ inputs.enable_acme }} # Whether to enable ACME in Traefik setup

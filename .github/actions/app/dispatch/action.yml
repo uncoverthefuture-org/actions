@@ -79,7 +79,7 @@ inputs:
   prepare_host:
     description: "When true, run infra/prepare-ubuntu-host before deploying containers (example: true)."
     required: false
-    default: 'false'
+    default: 'true'
 
   # Host prep
   env_dir_path:
