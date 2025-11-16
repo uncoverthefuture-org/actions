@@ -141,26 +141,8 @@ else
   fi
 fi
 
-# Source environment variables if file exists
-if [ -f "$ENV_FILE" ]; then
-  # shellcheck disable=SC1090
-  if [ "${DEBUG:-false}" = "true" ]; then
-    echo "🔄 Sourcing environment variables"
-  fi
-  set -a
-  . "$ENV_FILE"
-  set +a
-else
-  echo "::warning::Environment file $ENV_FILE not found; continuing without sourcing"
-fi
-
-
-if [[ "${DEBUG:-false}" == "true" ]]; then
-  echo "� Using prepared environment directory: $ENV_DIR"
-  echo "📄 Using env file: $ENV_FILE"
-fi
-
-
+# When a fresh env payload is provided, overwrite the env file *before* sourcing
+# so stale or invalid content cannot cause the shell to fail prior to the update.
 if [ -n "$ENV_B64" ] || [ -n "$ENV_CONTENT" ]; then
   echo " Preparing to write env file"
   echo "================================================================"
@@ -180,6 +162,26 @@ else
   if [ "${DEBUG:-false}" = "true" ]; then
     echo "ℹ️  No ENV_B64/ENV_CONTENT provided; leaving existing $ENV_FILE as-is"
   fi
+fi
+
+# Source environment variables if file exists (using the freshly written file
+# when ENV_B64/ENV_CONTENT was provided).
+if [ -f "$ENV_FILE" ]; then
+  # shellcheck disable=SC1090
+  if [ "${DEBUG:-false}" = "true" ]; then
+    echo "🔄 Sourcing environment variables"
+  fi
+  set -a
+  . "$ENV_FILE"
+  set +a
+else
+  echo "::warning::Environment file $ENV_FILE not found; continuing without sourcing"
+fi
+
+
+if [[ "${DEBUG:-false}" == "true" ]]; then
+  echo "� Using prepared environment directory: $ENV_DIR"
+  echo "📄 Using env file: $ENV_FILE"
 fi
 
 
