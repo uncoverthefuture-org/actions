@@ -95,9 +95,15 @@ fi
 
 echo "🔍 Checking if current user can bind to low ports (80/443) ..."
 CAN_BIND=false
-if timeout 3 bash -c 'exec 3<>/dev/tcp/localhost/80' 2>/dev/null || \
-   python3 -c 'import socket; s=socket.socket(); s.bind(("", 80)); s.close()' 2>/dev/null; then
-  CAN_BIND=true
+# Prefer inspecting the kernel's unprivileged port start so we don't confuse
+# "can connect to port 80" with "can bind to port 80". On most Linux hosts,
+# net.ipv4.ip_unprivileged_port_start defaults to 1024; when it is lowered to
+# 80 or below, rootless processes may bind to 80/443 without additional hacks.
+if command -v sysctl >/dev/null 2>&1; then
+  unpriv_start=$(sysctl -n net.ipv4.ip_unprivileged_port_start 2>/dev/null || echo 1024)
+  if [ "$unpriv_start" -le 80 ]; then
+    CAN_BIND=true
+  fi
 fi
 
 CURRENT_USER_LOG="$(id -un) (uid:$(id -u))"
