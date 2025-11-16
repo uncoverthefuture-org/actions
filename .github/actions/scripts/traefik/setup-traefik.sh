@@ -347,10 +347,38 @@ if [[ -n "$CONFLICTING_SERVICES" ]]; then
   # Re-check after attempting to stop existing Traefik
   CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk '/:(80|443) / {print $0}' || true)"
   if [[ -n "$CONFLICTING_SERVICES" ]]; then
-    echo "❌ ERROR: Detected services still listening on 80/443:" >&2
-    printf '%s\n' "$CONFLICTING_SERVICES" >&2
-    echo "   Stop or reconfigure the conflicting service before continuing." >&2
-    exit 1
+    if command -v systemctl >/dev/null 2>&1; then
+      if [ "$(id -u)" -eq 0 ] || [ "$SUDO_AVAILABLE" = "yes" ]; then
+        echo "⚠️  Detected services still listening on 80/443; attempting to stop apache2/nginx via systemctl ..." >&2
+        if systemctl is-active --quiet apache2 2>/dev/null; then
+          if [ "$(id -u)" -eq 0 ]; then
+            systemctl stop apache2 || true
+            systemctl disable apache2 >/dev/null 2>&1 || true
+          else
+            sudo systemctl stop apache2 || true
+            sudo systemctl disable apache2 >/dev/null 2>&1 || true
+          fi
+        fi
+        if systemctl is-active --quiet nginx 2>/dev/null; then
+          if [ "$(id -u)" -eq 0 ]; then
+            systemctl stop nginx || true
+            systemctl disable nginx >/dev/null 2>&1 || true
+          else
+            sudo systemctl stop nginx || true
+            sudo systemctl disable nginx >/dev/null 2>&1 || true
+          fi
+        fi
+        CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk '/:(80|443) / {print $0}' || true)"
+      fi
+    fi
+    if [[ -n "$CONFLICTING_SERVICES" ]]; then
+      echo "❌ ERROR: Detected services still listening on 80/443:" >&2
+      printf '%s\n' "$CONFLICTING_SERVICES" >&2
+      echo "   Stop or reconfigure the conflicting service before continuing." >&2
+      exit 1
+    else
+      echo "  ✓ Ports 80/443 are free after stopping conflicting services"
+    fi
   else
     echo "  ✓ Ports 80/443 are free after stopping existing traefik"
   fi
