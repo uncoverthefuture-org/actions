@@ -118,6 +118,14 @@ if [ ! -w "$ENV_DIR" ]; then
   exit 1
 fi
 
+# Final ownership normalization: even when the directory is already writable
+# (for example 0777 but still owned by root), ensure any existing files inside
+# the deployment root are owned by the SSH user so they can be read and updated
+# without manual chmod/chown on each deploy.
+if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  sudo chown -R "$CURRENT_USER:$(id -gn)" "$ENV_DIR" 2>/dev/null || true
+fi
+
 # -----------------------------------------------------------------------------
 # ENV FILE BOOTSTRAP
 # -----------------------------------------------------------------------------

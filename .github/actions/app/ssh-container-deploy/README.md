@@ -19,6 +19,8 @@ At a high level this action:
    - With Traefik labels when a domain is available.
    - Or with `-p host:container` ports when no domain is available.
 
+Behind the scenes it also prepares a per-environment deployment directory under `~/deployments/{env_name}/{app_slug}` on the remote host. When passwordless `sudo` is available, the scripts normalize ownership of this directory (and existing files within it) to the SSH user so that files created there can be read and updated without manual `chown`/`chmod` fixes between deploys.
+
 ## When to use this action
 
 Use `ssh-container-deploy` when you want to:
