@@ -181,7 +181,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        printf 'spec=%s\n' "id=app_env,src=${{ steps.prep_env.outputs.env_file }}" >> "$GITHUB_OUTPUT"
+        printf 'spec=%s\n' "app_env=${{ steps.prep_env.outputs.env_file }}" >> "$GITHUB_OUTPUT"
 
     # ========================================================================
     # STEP 4: Build and push Docker image
@@ -210,9 +210,6 @@ runs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        secrets: ${{ steps.secrets_spec.outputs.spec }}
+        secret-files: ${{ steps.secrets_spec.outputs.spec }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        build-args: |
-          ${{ steps.prep_env.outputs.env_string }}
-          
