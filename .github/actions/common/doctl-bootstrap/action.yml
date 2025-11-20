@@ -1,0 +1,87 @@
+# ============================================================================
+# ACTION: DOCTL Bootstrap
+# ============================================================================
+# PURPOSE:
+# Prepare a DigitalOcean-backed SSH session for remote commands by:
+# - Installing doctl via digitalocean/action-doctl
+# - Materializing an SSH key into an on-disk file for use with --ssh-key-path
+# - Normalizing basic SSH connection parameters (host, user, port)
+#
+# This action does NOT run any remote commands by itself. It is meant to be
+# reused by actions like app/doctl-container-deploy that then call
+# `doctl compute ssh` with the resolved key path.
+# ============================================================================
+
+name: 'common: doctl bootstrap'
+description: 'Install doctl and prepare an SSH key file for doctl compute ssh connections.'
+
+inputs:
+  do_token:
+    description: 'DigitalOcean API token used by digitalocean/action-doctl to authenticate doctl.'
+    required: true
+  ssh_host:
+    description: 'Droplet identifier passed to doctl compute ssh (name or ID).'
+    required: true
+  ssh_user:
+    description: 'SSH username for the Droplet (example: root or deploy).'
+    required: false
+    default: 'root'
+  ssh_key:
+    description: 'Private SSH key (PEM) for ssh_user. Must be trusted on the Droplet.'
+    required: true
+  ssh_port:
+    description: 'SSH port on the Droplet (forwarded to doctl --ssh-port).'
+    required: false
+    default: '22'
+
+outputs:
+  droplet:
+    description: 'Resolved Droplet identifier (echo of ssh_host).'
+    value: ${{ steps.out.outputs.droplet }}
+  ssh_user:
+    description: 'Resolved SSH user used for doctl compute ssh.'
+    value: ${{ steps.out.outputs.ssh_user }}
+  ssh_port:
+    description: 'Resolved SSH port used for doctl compute ssh.'
+    value: ${{ steps.out.outputs.ssh_port }}
+  ssh_key_path:
+    description: 'Filesystem path to the SSH private key file written for doctl.'
+    value: ${{ steps.out.outputs.ssh_key_path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install doctl CLI
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ inputs.do_token }}
+
+    - name: Write SSH key file for doctl
+      id: keyfile
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh_key }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.ssh"
+        key_path="$HOME/.ssh/doctl-deploy-key"
+        printf '%s\n' "$SSH_KEY" > "$key_path"
+        chmod 600 "$key_path"
+        printf 'ssh_key_path=%s\n' "$key_path" >> "$GITHUB_OUTPUT"
+
+    - name: Expose connection parameters
+      id: out
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        SSH_KEY_PATH: ${{ steps.keyfile.outputs.ssh_key_path }}
+      run: |
+        set -euo pipefail
+        {
+          printf 'droplet=%s\n' "$SSH_HOST"
+          printf 'ssh_user=%s\n' "$SSH_USER"
+          printf 'ssh_port=%s\n' "$SSH_PORT"
+          printf 'ssh_key_path=%s\n' "$SSH_KEY_PATH"
+        } >> "$GITHUB_OUTPUT"

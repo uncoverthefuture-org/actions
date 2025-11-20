@@ -1,0 +1,496 @@
+# ============================================================================
+# ACTION: DOCTL Container Deploy
+# ============================================================================
+# PURPOSE:
+# Deploy a generic containerized application to a DigitalOcean Droplet using
+# the official digitalocean/action-doctl GitHub Action and doctl compute ssh.
+# This action mirrors ssh-container-deploy but reaches the server via doctl
+# instead of a direct SSH action, while still delegating all heavy work to the
+# server-managed scripts bundle (start-container-deployment.sh + run-deployment.sh).
+#
+# WHAT IT DOES:
+# 1. Computes deployment defaults (env, domain, image, app slug)
+# 2. Optionally resolves env_b64 from DEV_ENV_B64/STAGING_ENV_B64/PROD_ENV_B64
+# 3. Runs deploy-preflight for validation only (no network calls)
+# 4. Installs doctl using digitalocean/action-doctl
+# 5. Stages the uactions scripts bundle locally and uploads it via doctl
+# 6. Runs the same remote deployment script used by ssh-container-deploy
+#
+# WHEN TO USE:
+# - You deploy to DigitalOcean Droplets and prefer using doctl + DO API token
+# - You still rely on SSH keys on the Droplet, but do not want a separate
+#   SSH action; instead, you let doctl own the connection
+# - You want identical behavior to ssh-container-deploy once on the host
+# ============================================================================
+
+name: 'DOCTL Container Deploy'
+description: 'Deploy a container to a DigitalOcean Droplet using doctl compute ssh and server-managed scripts.'
+
+inputs:
+  # --------------------------------------------------------------------------
+  # DigitalOcean / doctl
+  # --------------------------------------------------------------------------
+  do_token:
+    description: 'DigitalOcean API token for digitalocean/action-doctl (provide via GitHub secret, e.g. DO_API_TOKEN).'
+    required: true
+
+  # --------------------------------------------------------------------------
+  # SSH / Droplet identifier (used by doctl compute ssh)
+  # --------------------------------------------------------------------------
+  ssh_host:
+    description: 'Droplet identifier passed to doctl compute ssh (name or ID, for example: my-app-prod).'
+    required: true
+  ssh_user:
+    description: 'SSH username for doctl compute ssh (example: root or deploy).'
+    required: false
+    default: 'root'
+  ssh_key:
+    description: 'Private SSH key (PEM) for ssh_user. Must correspond to a key installed on the Droplet.'
+    required: true
+  ssh_port:
+    description: 'SSH port on the Droplet (forwarded to doctl --ssh-port).'
+    required: false
+    default: '22'
+
+  # --------------------------------------------------------------------------
+  # Smart defaults & directories
+  # --------------------------------------------------------------------------
+  default_host_port:
+    description: 'Default host port when Traefik is disabled and host_port is empty.'
+    required: false
+    default: '8080'
+  default_container_port:
+    description: 'Default container port when container_port is empty.'
+    required: false
+    default: '8080'
+  deployment_base_dir:
+    description: 'Base directory for deployments on the Droplet (used when env_file_path is not provided).'
+    required: false
+    default: '~/deployments'
+
+  # --------------------------------------------------------------------------
+  # Environment & domain
+  # --------------------------------------------------------------------------
+  env_name:
+    description: 'Logical environment name (production, staging, development). Auto-derived when omitted.'
+    required: false
+  auto_detect_env:
+    description: 'When true, derive env_name from branch or tag using compute-defaults.'
+    required: false
+    default: 'true'
+  env_file_path:
+    description: 'Remote base path where the .env file should be written (example: /opt/uactions/envs/app.env).'
+    required: false
+  write_env_file:
+    description: 'When true, write env_b64 or env_content to the Droplet before deployment.'
+    required: false
+    default: 'false'
+  env_b64:
+    description: 'Base64-encoded .env payload to materialize on the Droplet.'
+    required: false
+  env_content:
+    description: 'Raw .env content for the Droplet (prefer env_b64 for secrets).'
+    required: false
+
+  domain:
+    description: 'Explicit FQDN for the app (example: api.example.com).'
+    required: false
+  base_domain:
+    description: 'Apex domain used to derive per-environment hosts (example: example.com).'
+    required: false
+  domain_prefix_prod:
+    description: 'Prefix for production when base_domain is set.'
+    required: false
+    default: ''
+  domain_prefix_staging:
+    description: 'Prefix for staging when base_domain is set.'
+    required: false
+  domain_prefix_dev:
+    description: 'Prefix for development when base_domain is set.'
+    required: false
+
+  # --------------------------------------------------------------------------
+  # Registry & image
+  # --------------------------------------------------------------------------
+  registry:
+    description: 'Container registry hostname used for image pulls (example: ghcr.io).'
+    required: false
+    default: 'ghcr.io'
+  image_name:
+    description: 'Repository and image path without tag (example: org/app).'
+    required: false
+  image_tag:
+    description: 'Image tag to deploy (example: v1.2.3 or production-abcdef).'
+    required: false
+  registry_username:
+    description: 'Registry username for authenticated pulls.'
+    required: false
+  registry_token:
+    description: 'Registry password or token with pull permissions.'
+    required: false
+  registry_login:
+    description: 'Attempt registry login before pulling when credentials exist.'
+    required: false
+    default: 'true'
+
+  # --------------------------------------------------------------------------
+  # Runtime & ports
+  # --------------------------------------------------------------------------
+  app_slug:
+    description: 'Human-readable slug for the application; defaults from the repo name when omitted.'
+    required: false
+  container_name:
+    description: 'Container name override; defaults to <app_slug>-<env>.'
+    required: false
+  host_port:
+    description: 'Host port to publish when Traefik is disabled.'
+    required: false
+  container_port:
+    description: 'Container service port used by Traefik labels or host port mapping.'
+    required: false
+  restart_policy:
+    description: 'Podman restart policy applied to the container.'
+    required: false
+    default: 'unless-stopped'
+  extra_run_args:
+    description: 'Additional flags appended to podman run, provided as a quoted string.'
+    required: false
+  memory_limit:
+    description: 'Memory limit (and swap) applied to the container.'
+    required: false
+    default: '512m'
+
+  # --------------------------------------------------------------------------
+  # Traefik / routing
+  # --------------------------------------------------------------------------
+  enable_traefik:
+    description: 'When true, attach Traefik labels and network when a domain is provided.'
+    required: false
+    default: 'true'
+  enable_acme:
+    description: 'When true, attach certresolver labels so Traefik requests TLS certificates.'
+    required: false
+    default: 'true'
+  traefik_email:
+    description: 'Email passed to Traefik ACME for certificate registration.'
+    required: false
+    default: ''
+  traefik_reset_acme:
+    description: 'When true, reset Traefik ACME storage (acme.json) on next run.'
+    required: false
+    default: 'false'
+  traefik_network_name:
+    description: 'Podman network for Traefik and app containers.'
+    required: false
+    default: 'traefik-network'
+  domain_aliases:
+    description: 'Comma/space-separated aliases routed to the service.'
+    required: false
+    default: ''
+  include_www_alias:
+    description: 'When true and domain is set, also include www.<domain> as alias.'
+    required: false
+    default: 'false'
+  domain_hosts:
+    description: 'CSV of hostnames to route (preferred when provided).'
+    required: false
+    default: ''
+
+  # --------------------------------------------------------------------------
+  # Dashboard & extras
+  # --------------------------------------------------------------------------
+  enable_dashboard:
+    description: 'Enable Traefik dashboard exposure when paired with dashboard_publish_modes.'
+    required: false
+    default: 'true'
+  dashboard_publish_modes:
+    description: 'CSV: http8080, https8080, subdomain, or both.'
+    required: false
+    default: ''
+  dashboard_host:
+    description: 'FQDN for dashboard when using subdomain mode.'
+    required: false
+    default: ''
+  dashboard_password:
+    description: 'Plain dashboard password (hashed on host).'
+    required: false
+    default: ''
+  dashboard_users_b64:
+    description: 'Base64 htpasswd users file; overrides dashboard_password when set.'
+    required: false
+    default: ''
+
+  ufw_allow_ports:
+    description: 'Space-separated ports opened in UFW during host prep (used by scripts when applicable).'
+    required: false
+    default: ''
+  install_webmin:
+    description: 'Install Webmin during host prep/first-run (scripts respect this flag).'
+    required: false
+    default: 'true'
+  install_usermin:
+    description: 'Install Usermin alongside Webmin when enabled.'
+    required: false
+    default: 'false'
+
+  # --------------------------------------------------------------------------
+  # Logging / diagnostics
+  # --------------------------------------------------------------------------
+  debug:
+    description: 'Enable verbose logging for troubleshooting.'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Compute derived defaults
+      id: dfl
+      uses: ./.github/actions/app/common/compute-defaults
+      with:
+        env_name: ${{ inputs.env_name }}
+        auto_detect_env: ${{ inputs.auto_detect_env }}
+        domain: ${{ inputs.domain }}
+        base_domain: ${{ inputs.base_domain }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
+
+    - name: Resolve env secret (optional)
+      id: envsel
+      if: ${{ inputs.write_env_file != 'true' && inputs.env_b64 == '' && inputs.env_content == '' }}
+      shell: bash
+      env:
+        ENV_NAME_DEFAULT: ${{ steps.dfl.outputs.env_name_default }}
+      run: |
+        set -euo pipefail
+        key=""
+        case "${ENV_NAME_DEFAULT:-development}" in
+          production) key="PROD" ;;
+          staging) key="STAGING" ;;
+          *) key="DEV" ;;
+        esac
+        varname="${key}_ENV_B64"
+        echo "Looking for env var: $varname"
+        val=${!varname:-}
+        if [ -n "$val" ]; then
+          echo "env_b64 resolved from $varname"
+          printf 'env_b64=%s\n' "$val" >> "$GITHUB_OUTPUT"
+        else
+          echo "env_b64 not found in job env for $varname (will proceed without writing .env)"
+        fi
+
+    - name: Deploy preflight (validation only)
+      id: preflight
+      uses: ./.github/actions/app/common/deploy-preflight
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_key: ${{ inputs.ssh_key }}
+        registry: ${{ inputs.registry }}
+        registry_username: ${{ inputs.registry_username }}
+        registry_token: ${{ inputs.registry_token }}
+        registry_login: ${{ inputs.registry_login }}
+        write_env_file: ${{ (inputs.write_env_file == 'true') || (inputs.env_b64 != '' || inputs.env_content != '' || steps.envsel.outputs.env_b64 != '') }}
+        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || steps.envsel.outputs.env_b64 }}
+        env_content: ${{ inputs.env_content }}
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}
+        require_image_name: 'true'
+        install_traefik: ${{ inputs.enable_traefik }}
+        traefik_email: ${{ inputs.traefik_email }}
+        traefik_domain: ${{ inputs.domain != '' && inputs.domain || steps.dfl.outputs.domain_default }}
+        traefik_domain_apex: ${{ steps.dfl.outputs.domain_apex }}
+
+    - name: Bootstrap doctl connection
+      id: doctl
+      uses: ./.github/actions/common/doctl-bootstrap
+      with:
+        do_token: ${{ inputs.do_token }}
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+
+    - name: Stage scripts bundle
+      id: stage
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$WORKSPACE/.uactions_cache"
+        TAR_PATH="$WORKSPACE/.uactions_cache/uactions-scripts.tgz"
+        SRC_ROOT="$(cd "$ACTION_PATH/../.." && pwd)"
+        if [ ! -d "$SRC_ROOT/scripts" ]; then
+          echo '::notice::No local scripts directory found; skipping server scripts upload.'
+          echo "has_bundle=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        tar -C "$SRC_ROOT" -czf "$TAR_PATH" scripts
+        if ! tar -tzf "$TAR_PATH" >/dev/null 2>&1; then
+          echo '::error::Staged tarball appears invalid or empty (tar -tzf failed). Aborting upload.'
+          ls -lh "$TAR_PATH" || true
+          exit 1
+        fi
+        ls -lh "$TAR_PATH"
+        echo "has_bundle=true" >> "$GITHUB_OUTPUT"
+        printf 'tar_path=%s\n' "$TAR_PATH" >> "$GITHUB_OUTPUT"
+
+    - name: Upload scripts bundle via doctl
+      if: ${{ steps.stage.outputs.has_bundle == 'true' }}
+      shell: bash
+      env:
+        DROPLET: ${{ steps.doctl.outputs.droplet }}
+        SSH_USER: ${{ steps.doctl.outputs.ssh_user }}
+        SSH_PORT: ${{ steps.doctl.outputs.ssh_port }}
+        SSH_KEY_PATH: ${{ steps.doctl.outputs.ssh_key_path }}
+        TAR_PATH: ${{ steps.stage.outputs.tar_path }}
+      run: |
+        set -euo pipefail
+        if [ ! -f "$TAR_PATH" ]; then
+          echo '::error::Local scripts tarball not found; expected $TAR_PATH.'
+          exit 1
+        fi
+        doctl compute ssh "${SSH_USER}@${DROPLET}" \
+          --ssh-port "${SSH_PORT}" \
+          --ssh-key-path "${SSH_KEY_PATH}" \
+          --ssh-command 'bash -lc "mkdir -p \"$HOME/uactions\" && cat > \"$HOME/uactions-scripts.tgz\""' < "$TAR_PATH"
+
+    - name: Deploy container via doctl compute ssh
+      shell: bash
+      env:
+        DROPLET: ${{ steps.doctl.outputs.droplet }}
+        SSH_USER: ${{ steps.doctl.outputs.ssh_user }}
+        SSH_PORT: ${{ steps.doctl.outputs.ssh_port }}
+        SSH_KEY_PATH: ${{ steps.doctl.outputs.ssh_key_path }}
+      run: |
+        set -euo pipefail
+        doctl compute ssh "${SSH_USER}@${DROPLET}" \
+          --ssh-port "${SSH_PORT}" \
+          --ssh-key-path "${SSH_KEY_PATH}" \
+          --ssh-command "bash -s" << 'EOF_REMOTE'
+        echo "================================================================"
+        echo "Deploying container via doctl (DigitalOcean) ..."
+        echo "================================================================"
+        # Env payload (optional)
+        export ENV_B64='${{ inputs.env_b64 != '' && inputs.env_b64 || steps.envsel.outputs.env_b64 }}'
+        export ENV_CONTENT='${{ inputs.env_content }}'
+
+        # Registry & image
+        export IMAGE_REGISTRY='${{ inputs.registry }}'
+        export IMAGE_NAME='${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}'
+        export IMAGE_TAG='${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}'
+        export REGISTRY_LOGIN='${{ inputs.registry_login }}'
+        if [ '${{ inputs.registry }}' = 'ghcr.io' ]; then
+          export REGISTRY_USERNAME='${{ inputs.registry_username != '' && inputs.registry_username || github.actor }}'
+          export REGISTRY_TOKEN='${{ inputs.registry_token != '' && inputs.registry_token || github.token }}'
+        else
+          export REGISTRY_USERNAME='${{ inputs.registry_username }}'
+          export REGISTRY_TOKEN='${{ inputs.registry_token }}'
+        fi
+
+        # App identity & environment
+        export APP_SLUG='${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}'
+        export ENV_NAME='${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}'
+        export CONTAINER_NAME_IN="${{ inputs.container_name }}"
+
+        # Paths on host
+        if [ -n '${{ inputs.env_file_path }}' ]; then
+          export ENV_FILE_PATH_BASE='${{ inputs.env_file_path }}'
+        else
+          export ENV_FILE_PATH_BASE='${{ inputs.deployment_base_dir }}'
+        fi
+
+        DEPLOYMENT_ROOT="$ENV_FILE_PATH_BASE"
+        if [ -z "$DEPLOYMENT_ROOT" ]; then
+          DEPLOYMENT_ROOT="$HOME/deployments"
+        fi
+        case "$DEPLOYMENT_ROOT" in
+          "~/"*) DEPLOYMENT_ROOT="$HOME/${DEPLOYMENT_ROOT#~/}" ;;
+          "/home/runner/"*) DEPLOYMENT_ROOT="$HOME/${DEPLOYMENT_ROOT#/home/runner/}" ;;
+        esac
+        DEPLOYMENT_ROOT="${DEPLOYMENT_ROOT%/}"
+        export REMOTE_DEPLOYMENT_DIR="${DEPLOYMENT_ROOT}/${ENV_NAME}/${APP_SLUG}"
+
+        # Ports & runtime
+        export HOST_PORT_IN='${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}'
+        export CONTAINER_PORT_IN='${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}'
+        export EXTRA_RUN_ARGS='${{ inputs.extra_run_args }}'
+        export RESTART_POLICY='${{ inputs.restart_policy }}'
+        export MEMORY_LIMIT='${{ inputs.memory_limit }}'
+
+        # Traefik & domain routing
+        export TRAEFIK_ENABLED='${{ inputs.enable_traefik }}'
+        export TRAEFIK_ENABLE_ACME='${{ inputs.enable_acme }}'
+        export TRAEFIK_EMAIL='${{ inputs.traefik_email }}'
+        export TRAEFIK_RESET_ACME='${{ inputs.traefik_reset_acme }}'
+        export TRAEFIK_NETWORK_NAME='${{ inputs.traefik_network_name }}'
+        export DOMAIN_INPUT='${{ inputs.domain }}'
+        export DOMAIN_DEFAULT='${{ steps.dfl.outputs.domain_default }}'
+        export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'
+        export DOMAIN_ALIASES='${{ inputs.domain_aliases }}'
+        export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
+        export DOMAIN_HOSTS='${{ inputs.domain_hosts }}'
+
+        # Debug & diagnostics toggles
+        export DEBUG='${{ inputs.debug }}'
+        export PROBE_HTTP_FALLBACK=true
+        export PROBE_TIMEOUT=12
+        export PROBE_TRIES=12
+        export PROBE_DELAY=5
+
+        # Host hardening & optional services
+        export SSH_PORT='${{ inputs.ssh_port }}'
+        export UFW_ALLOW_PORTS_INPUT='${{ inputs.ufw_allow_ports }}'
+        export INSTALL_WEBMIN='${{ inputs.install_webmin }}'
+        export INSTALL_USERMIN='${{ inputs.install_usermin }}'
+
+        echo "================================================================"
+        echo "Installing server-managed scripts bundle on remote host (via doctl)"
+        echo "================================================================"
+        mkdir -p "$HOME/uactions"
+        if [ ! -f "$HOME/uactions-scripts.tgz" ]; then
+          echo '::error::Missing $HOME/uactions-scripts.tgz on remote host (upload failed or was skipped)';
+          exit 1
+        fi
+        if ! tar -tzf "$HOME/uactions-scripts.tgz" >/dev/null 2>&1; then
+          echo '::error::Invalid or empty tar archive at $HOME/uactions-scripts.tgz (tar -tzf failed)';
+          ls -lh "$HOME/uactions-scripts.tgz" || true
+          exit 1
+        fi
+        TMPDIR="$(mktemp -d)"
+        tar -xzf "$HOME/uactions-scripts.tgz" -C "$TMPDIR"
+        rm -rf "$HOME/uactions/scripts"
+        mv "$TMPDIR/scripts" "$HOME/uactions/scripts"
+        rm -rf "$TMPDIR"
+        find "$HOME/uactions/scripts" -type f -name '*.sh' -exec chmod +x {} +
+        date -u +'%Y-%m-%d %H:%M:%S UTC' > "$HOME/uactions/scripts/.deployed_at"
+        echo '${{ github.sha }}' > "$HOME/uactions/scripts/.version"
+
+        if [ -z "${TRAEFIK_ENABLED}" ]; then
+          if [ -n "${DOMAIN_INPUT}" ] || [ -n "${DOMAIN_DEFAULT}" ]; then
+            TRAEFIK_ENABLED='true'
+          else
+            TRAEFIK_ENABLED='false'
+          fi
+        fi
+        if [ -z "${TRAEFIK_ENABLE_ACME}" ] && [ "${TRAEFIK_ENABLED}" = "true" ]; then
+          TRAEFIK_ENABLE_ACME='true'
+        fi
+        if [ -z "${TRAEFIK_EMAIL}" ]; then
+          DOMAIN_FOR_EMAIL="${DOMAIN_DEFAULT:-${DOMAIN_INPUT:-}}"
+          if [ -n "${DOMAIN_FOR_EMAIL}" ]; then
+            lower_domain=$(printf '%s' "${DOMAIN_FOR_EMAIL}" | tr '[:upper:]' '[:lower:]')
+            IFS='.' read -r -a email_parts <<<"${lower_domain#www.}"
+            part_count=${#email_parts[@]}
+            if [ "$part_count" -ge 2 ]; then
+              apex="${email_parts[part_count-2]}.${email_parts[part_count-1]}"
+            else
+              apex="${lower_domain#www.}"
+            fi
+            TRAEFIK_EMAIL="traefik@${apex}"
+          fi
+        fi
+
+        "$HOME/uactions/scripts/app/start-container-deployment.sh"
+        EOF_REMOTE

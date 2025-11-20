@@ -17,12 +17,9 @@
 # - Part of the aggregator pattern
 #
 # SUPPORTED SUBACTIONS:
-# - ssh-django-deploy: Deploy Django API applications
-# - ssh-django-api-deploy: Deploy Django with Apache (deprecated)
-# - ssh-nextjs-deploy: Deploy Next.js applications
-# - ssh-react-deploy: Deploy React applications
-# - ssh-laravel-deploy: Deploy Laravel applications
-# - write-remote-env-file: Write environment files
+# - ssh-container-deploy: Generic SSH-based container deployment using Podman/Traefik
+# - doctl-container-deploy: Generic DigitalOcean Droplet deployment via doctl compute ssh
+# - write-remote-env-file: Write or update remote .env files on the target host
 #
 # REFERENCE: See docs/ARCHITECTURE.md for dispatcher pattern explanation
 # ============================================================================
@@ -40,7 +37,7 @@ inputs:
   # ROUTING
   # ========================================================================
   subaction:
-    description: "Subaction to route to. Required. Options: ssh-django-deploy, ssh-django-api-deploy, ssh-nextjs-deploy, ssh-react-deploy, ssh-laravel-deploy, write-remote-env-file"
+    description: "Subaction to route to. Required. Options: ssh-django-deploy, ssh-django-api-deploy, ssh-nextjs-deploy, doctl-container-deploy, ssh-react-deploy, ssh-laravel-deploy, write-remote-env-file"
     required: true
   params_json:
     description: "JSON blob of parameters to pass to the selected subaction. Optional. Used for complex parameter passing"
@@ -271,10 +268,10 @@ runs:
       uses: ./.github/actions/common/validate-subaction
       with:
         subaction: ${{ inputs.subaction }}
-        allowed: ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-container-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file
+        allowed: ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-container-deploy|doctl-container-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file
 
     - name: Validate base SSH for app subactions
-      if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-django-api-deploy' || inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-nextjs-deploy' || inputs.subaction == 'ssh-container-deploy' || inputs.subaction == 'ssh-react-deploy' || inputs.subaction == 'ssh-laravel-deploy' }}
+      if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-django-api-deploy' || inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-nextjs-deploy' || inputs.subaction == 'ssh-container-deploy' || inputs.subaction == 'doctl-container-deploy' || inputs.subaction == 'ssh-react-deploy' || inputs.subaction == 'ssh-laravel-deploy' }}
       uses: ./.github/actions/app/common/validate-base-ssh
       with:
         subaction: ${{ inputs.subaction }}
@@ -374,4 +371,73 @@ runs:
         ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
         domain_hosts: ${{ inputs.domain_hosts != '' && inputs.domain_hosts || fromJSON(steps.params.outputs.json).domain_hosts }}
         traefik_email: ${{ (inputs.traefik_email != '' && inputs.traefik_email) || (fromJSON(steps.params.outputs.json).traefik_email != '' && fromJSON(steps.params.outputs.json).traefik_email) || steps.defaults.outputs.traefik_email_default }}
+
+    - name: doctl-container-deploy
+      if: ${{ inputs.subaction == 'doctl-container-deploy' }}
+      uses: ./.github/actions/app/doctl-container-deploy
+      with:
+        # DigitalOcean / doctl
+        do_token: ${{ fromJSON(steps.params.outputs.json).do_token }}
+
+        # SSH / Droplet identifier
+        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
+        ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
+        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
+        ssh_port: ${{ inputs.ssh_port != '' && inputs.ssh_port || fromJSON(steps.params.outputs.json).ssh_port }}
+
+        # Environment & env file
+        env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.params.outputs.json).env_name }}
+        auto_detect_env: ${{ inputs.auto_detect_env != '' && inputs.auto_detect_env || fromJSON(steps.params.outputs.json).auto_detect_env }}
+        env_file_path: ${{ inputs.env_file_path != '' && inputs.env_file_path || fromJSON(steps.params.outputs.json).env_file_path || steps.defaults.outputs.env_file_path }}
+        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.params.outputs.json).write_env_file }}
+        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
+        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
+
+        # Registry & image
+        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.params.outputs.json).registry }}
+        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.params.outputs.json).registry_username }}
+        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.params.outputs.json).registry_token }}
+        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
+        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
+        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag || steps.defaults.outputs.image_tag_default }}
+
+        # Runtime & ports
+        app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
+        container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.params.outputs.json).container_name }}
+        host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
+        container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.params.outputs.json).container_port }}
+        restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.params.outputs.json).restart_policy }}
+        extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
+        memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit }}
+        default_host_port: '8080'
+        default_container_port: '8080'
+        deployment_base_dir: ${{ inputs.env_dir_path != '' && inputs.env_dir_path || fromJSON(steps.params.outputs.json).env_dir_path || steps.defaults.outputs.env_dir_path }}
+
+        # Traefik / domains
+        enable_traefik: ${{ inputs.enable_traefik != '' && inputs.enable_traefik || fromJSON(steps.params.outputs.json).enable_traefik || 'true' }}
+        enable_acme: ${{ inputs.enable_acme != '' && inputs.enable_acme || fromJSON(steps.params.outputs.json).enable_acme || 'true' }}
+        traefik_email: ${{ (inputs.traefik_email != '' && inputs.traefik_email) || (fromJSON(steps.params.outputs.json).traefik_email != '' && fromJSON(steps.params.outputs.json).traefik_email) || steps.defaults.outputs.traefik_email_default }}
+        traefik_reset_acme: ${{ fromJSON(steps.params.outputs.json).traefik_reset_acme }}
+        traefik_network_name: ${{ fromJSON(steps.params.outputs.json).traefik_network_name }}
+        domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
+        base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
+        domain_aliases: ${{ fromJSON(steps.params.outputs.json).domain_aliases }}
+        include_www_alias: ${{ fromJSON(steps.params.outputs.json).include_www_alias }}
+        domain_hosts: ${{ inputs.domain_hosts != '' && inputs.domain_hosts || fromJSON(steps.params.outputs.json).domain_hosts }}
+
+        # Dashboard & extras
+        enable_dashboard: ${{ inputs.enable_dashboard != '' && inputs.enable_dashboard || fromJSON(steps.params.outputs.json).enable_dashboard }}
+        dashboard_publish_modes: ${{ inputs.dashboard_publish_modes != '' && inputs.dashboard_publish_modes || fromJSON(steps.params.outputs.json).dashboard_publish_modes }}
+        dashboard_host: ${{ inputs.dashboard_host != '' && inputs.dashboard_host || fromJSON(steps.params.outputs.json).dashboard_host }}
+        dashboard_password: ${{ inputs.dashboard_password != '' && inputs.dashboard_password || fromJSON(steps.params.outputs.json).dashboard_password }}
+        dashboard_users_b64: ${{ inputs.dashboard_users_b64 != '' && inputs.dashboard_users_b64 || fromJSON(steps.params.outputs.json).dashboard_users_b64 }}
+
+        # Host hardening & diagnostics
+        ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
+        install_webmin: ${{ fromJSON(steps.params.outputs.json).install_webmin }}
+        install_usermin: ${{ fromJSON(steps.params.outputs.json).install_usermin }}
+        debug: ${{ inputs.debug != '' && inputs.debug || fromJSON(steps.params.outputs.json).debug }}
     
