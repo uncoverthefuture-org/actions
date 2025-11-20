@@ -1,0 +1,497 @@
+# ============================================================================
+# ACTION: AWS SSM Container Deploy
+# ============================================================================
+# PURPOSE:
+# Deploy a generic containerized application to an AWS EC2 instance using
+# AWS Systems Manager (SSM) Run Command and GitHub OIDC-based workload
+# identity. This action mirrors ssh-container-deploy/doctl-container-deploy
+# but reaches the server via SSM instead of SSH keys.
+#
+# WHAT IT DOES:
+# 1. Computes deployment defaults (env, domain, image, app slug)
+# 2. Optionally resolves env_b64 from DEV_ENV_B64/STAGING_ENV_B64/PROD_ENV_B64
+# 3. Configures AWS credentials via aws-actions/configure-aws-credentials
+# 4. Bundles the local uactions scripts and uploads them to S3
+# 5. Uses aws ssm send-command (AWS-RunShellScript) to:
+#    - Download the scripts tarball from S3 to the instance
+#    - Install scripts into $HOME/uactions/scripts
+#    - Export the same deployment env vars as ssh-container-deploy
+#    - Run start-container-deployment.sh on the instance
+#
+# WHEN TO USE:
+# - Your app runs on AWS EC2 and is managed by SSM (SSM agent installed)
+# - GitHub Actions assumes an IAM role via OIDC (no static AWS keys)
+# - EC2 instance has an IAM role that can read from the scripts S3 bucket
+# - You want to reuse the same server-managed deployment scripts used by
+#   ssh-container-deploy/doctl-container-deploy.
+# ============================================================================
+
+name: 'AWS SSM Container Deploy'
+description: 'Deploy a container to an AWS EC2 instance using SSM Run Command and server-managed scripts.'
+
+inputs:
+  # --------------------------------------------------------------------------
+  # AWS identity & SSM target
+  # --------------------------------------------------------------------------
+  aws_region:
+    description: 'AWS region where the EC2 instance and SSM are located (example: us-east-1).'
+    required: true
+  aws_role_to_assume:
+    description: 'IAM role ARN to assume via GitHub OIDC (used by aws-actions/configure-aws-credentials).'
+    required: true
+  ssm_target:
+    description: 'SSM target for the instance (typically the EC2 instance-id, e.g. i-0123456789abcdef0).'
+    required: true
+
+  # S3 bucket used to deliver the scripts bundle to the instance
+  scripts_bucket:
+    description: 'S3 bucket name where the uactions scripts tarball will be uploaded (instance role must have read access).'
+    required: true
+  scripts_prefix:
+    description: 'Optional S3 key prefix for scripts bundle (default: uactions/scripts).'
+    required: false
+    default: 'uactions/scripts'
+
+  # --------------------------------------------------------------------------
+  # Smart defaults & directories
+  # --------------------------------------------------------------------------
+  default_host_port:
+    description: 'Default host port when Traefik is disabled and host_port is empty.'
+    required: false
+    default: '8080'
+  default_container_port:
+    description: 'Default container port when container_port is empty.'
+    required: false
+    default: '8080'
+  deployment_base_dir:
+    description: 'Base directory for deployments on the instance (used when env_file_path is not provided).'
+    required: false
+    default: '~/deployments'
+
+  # --------------------------------------------------------------------------
+  # Environment & domain
+  # --------------------------------------------------------------------------
+  env_name:
+    description: 'Logical environment name (production, staging, development). Auto-derived when omitted.'
+    required: false
+  auto_detect_env:
+    description: 'When true, derive env_name from branch or tag using compute-defaults.'
+    required: false
+    default: 'true'
+  env_file_path:
+    description: 'Remote base path where the .env file should be written (example: /opt/uactions/envs/app.env).'
+    required: false
+  write_env_file:
+    description: 'When true, write env_b64 or env_content to the instance before deployment.'
+    required: false
+    default: 'false'
+  env_b64:
+    description: 'Base64-encoded .env payload to materialize on the instance.'
+    required: false
+  env_content:
+    description: 'Raw .env content for the instance (prefer env_b64 for secrets).'
+    required: false
+
+  domain:
+    description: 'Explicit FQDN for the app (example: api.example.com).'
+    required: false
+  base_domain:
+    description: 'Apex domain used to derive per-environment hosts (example: example.com).'
+    required: false
+  domain_prefix_prod:
+    description: 'Prefix for production when base_domain is set.'
+    required: false
+    default: ''
+  domain_prefix_staging:
+    description: 'Prefix for staging when base_domain is set.'
+    required: false
+  domain_prefix_dev:
+    description: 'Prefix for development when base_domain is set.'
+    required: false
+
+  # --------------------------------------------------------------------------
+  # Registry & image
+  # --------------------------------------------------------------------------
+  registry:
+    description: 'Container registry hostname used for image pulls (example: ghcr.io).'
+    required: false
+    default: 'ghcr.io'
+  image_name:
+    description: 'Repository and image path without tag (example: org/app).'
+    required: false
+  image_tag:
+    description: 'Image tag to deploy (example: v1.2.3 or production-abcdef).'
+    required: false
+  registry_username:
+    description: 'Registry username for authenticated pulls.'
+    required: false
+  registry_token:
+    description: 'Registry password or token with pull permissions.'
+    required: false
+  registry_login:
+    description: 'Attempt registry login before pulling when credentials exist.'
+    required: false
+    default: 'true'
+
+  # --------------------------------------------------------------------------
+  # Runtime & ports
+  # --------------------------------------------------------------------------
+  app_slug:
+    description: 'Human-readable slug for the application; defaults from the repo name when omitted.'
+    required: false
+  container_name:
+    description: 'Container name override; defaults to <app_slug>-<env>.'
+    required: false
+  host_port:
+    description: 'Host port to publish when Traefik is disabled.'
+    required: false
+  container_port:
+    description: 'Container service port used by Traefik labels or host port mapping.'
+    required: false
+  restart_policy:
+    description: 'Podman restart policy applied to the container.'
+    required: false
+    default: 'unless-stopped'
+  extra_run_args:
+    description: 'Additional flags appended to podman run, provided as a quoted string.'
+    required: false
+  memory_limit:
+    description: 'Memory limit (and swap) applied to the container.'
+    required: false
+    default: '512m'
+
+  # --------------------------------------------------------------------------
+  # Traefik / routing
+  # --------------------------------------------------------------------------
+  enable_traefik:
+    description: 'When true, attach Traefik labels and network when a domain is provided.'
+    required: false
+    default: 'true'
+  enable_acme:
+    description: 'When true, attach certresolver labels so Traefik requests TLS certificates.'
+    required: false
+    default: 'true'
+  traefik_email:
+    description: 'Email passed to Traefik ACME for certificate registration.'
+    required: false
+    default: ''
+  traefik_reset_acme:
+    description: 'When true, reset Traefik ACME storage (acme.json) on next run.'
+    required: false
+    default: 'false'
+  traefik_network_name:
+    description: 'Podman network for Traefik and app containers.'
+    required: false
+    default: 'traefik-network'
+  domain_aliases:
+    description: 'Comma/space-separated aliases routed to the service.'
+    required: false
+    default: ''
+  include_www_alias:
+    description: 'When true and domain is set, also include www.<domain> as alias.'
+    required: false
+    default: 'false'
+  domain_hosts:
+    description: 'CSV of hostnames to route (preferred when provided).'
+    required: false
+    default: ''
+
+  # --------------------------------------------------------------------------
+  # Dashboard & extras
+  # --------------------------------------------------------------------------
+  enable_dashboard:
+    description: 'Enable Traefik dashboard exposure when paired with dashboard_publish_modes.'
+    required: false
+    default: 'true'
+  dashboard_publish_modes:
+    description: 'CSV: http8080, https8080, subdomain, or both.'
+    required: false
+    default: ''
+  dashboard_host:
+    description: 'FQDN for dashboard when using subdomain mode.'
+    required: false
+    default: ''
+  dashboard_password:
+    description: 'Plain dashboard password (hashed on host).'
+    required: false
+    default: ''
+  dashboard_users_b64:
+    description: 'Base64 htpasswd users file; overrides dashboard_password when set.'
+    required: false
+    default: ''
+
+  ufw_allow_ports:
+    description: 'Space-separated ports opened in UFW during host prep (used by scripts when applicable).'
+    required: false
+    default: ''
+  install_webmin:
+    description: 'Install Webmin during host prep/first-run (scripts respect this flag).'
+    required: false
+    default: 'true'
+  install_usermin:
+    description: 'Install Usermin alongside Webmin when enabled.'
+    required: false
+    default: 'false'
+
+  # --------------------------------------------------------------------------
+  # Logging / diagnostics
+  # --------------------------------------------------------------------------
+  debug:
+    description: 'Enable verbose logging for troubleshooting.'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Compute derived defaults
+      id: dfl
+      uses: ./.github/actions/app/common/compute-defaults
+      with:
+        env_name: ${{ inputs.env_name }}
+        auto_detect_env: ${{ inputs.auto_detect_env }}
+        domain: ${{ inputs.domain }}
+        base_domain: ${{ inputs.base_domain }}
+        domain_prefix_prod: ${{ inputs.domain_prefix_prod }}
+        domain_prefix_staging: ${{ inputs.domain_prefix_staging }}
+        domain_prefix_dev: ${{ inputs.domain_prefix_dev }}
+
+    - name: Resolve env secret (optional)
+      id: envsel
+      if: ${{ inputs.write_env_file != 'true' && inputs.env_b64 == '' && inputs.env_content == '' }}
+      shell: bash
+      env:
+        ENV_NAME_DEFAULT: ${{ steps.dfl.outputs.env_name_default }}
+      run: |
+        set -euo pipefail
+        key=""
+        case "${ENV_NAME_DEFAULT:-development}" in
+          production) key="PROD" ;;
+          staging) key="STAGING" ;;
+          *) key="DEV" ;;
+        esac
+        varname="${key}_ENV_B64"
+        echo "Looking for env var: $varname"
+        val=${!varname:-}
+        if [ -n "$val" ]; then
+          echo "env_b64 resolved from $varname"
+          printf 'env_b64=%s\n' "$val" >> "$GITHUB_OUTPUT"
+        else
+          echo "env_b64 not found in job env for $varname (will proceed without writing .env)"
+        fi
+
+    - name: Lightweight deploy validation
+      id: validate
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}
+      run: |
+        set -euo pipefail
+        if [ -z "$IMAGE_NAME" ]; then
+          echo 'Error: image_name (or repository default) is required for aws-ssm-container-deploy.' >&2
+          exit 1
+        fi
+
+    - name: Configure AWS credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.aws_role_to_assume }}
+        aws-region: ${{ inputs.aws_region }}
+
+    - name: Stage scripts bundle
+      id: stage
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$WORKSPACE/.uactions_cache"
+        TAR_PATH="$WORKSPACE/.uactions_cache/uactions-scripts.tgz"
+        SRC_ROOT="$(cd "$ACTION_PATH/../.." && pwd)"
+        if [ ! -d "$SRC_ROOT/scripts" ]; then
+          echo '::notice::No local scripts directory found; skipping server scripts upload.'
+          echo "has_bundle=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        tar -C "$SRC_ROOT" -czf "$TAR_PATH" scripts
+        if ! tar -tzf "$TAR_PATH" >/dev/null 2>&1; then
+          echo '::error::Staged tarball appears invalid or empty (tar -tzf failed). Aborting upload.'
+          ls -lh "$TAR_PATH" || true
+          exit 1
+        fi
+        ls -lh "$TAR_PATH"
+        echo "has_bundle=true" >> "$GITHUB_OUTPUT"
+        printf 'tar_path=%s\n' "$TAR_PATH" >> "$GITHUB_OUTPUT"
+
+    - name: Upload scripts bundle to S3
+      if: ${{ steps.stage.outputs.has_bundle == 'true' }}
+      id: upload
+      shell: bash
+      env:
+        TAR_PATH: ${{ steps.stage.outputs.tar_path }}
+        SCRIPTS_BUCKET: ${{ inputs.scripts_bucket }}
+        SCRIPTS_PREFIX: ${{ inputs.scripts_prefix }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+        if [ ! -f "$TAR_PATH" ]; then
+          echo '::error::Local scripts tarball not found; expected $TAR_PATH.'
+          exit 1
+        fi
+        prefix="${SCRIPTS_PREFIX%/}"
+        if [ -z "$prefix" ]; then
+          prefix="uactions/scripts"
+        fi
+        key="$prefix/uactions-scripts-${GITHUB_SHA:-local}.tgz"
+        uri="s3://${SCRIPTS_BUCKET}/${key}"
+        echo "Uploading scripts bundle to $uri"
+        aws s3 cp "$TAR_PATH" "$uri"
+        printf 's3_uri=%s\n' "$uri" >> "$GITHUB_OUTPUT"
+
+    - name: Deploy container via AWS SSM
+      shell: bash
+      env:
+        AWS_REGION: ${{ inputs.aws_region }}
+        SSM_TARGET: ${{ inputs.ssm_target }}
+        S3_URI: ${{ steps.upload.outputs.s3_uri }}
+
+        ENV_B64_VAL: ${{ inputs.env_b64 != '' && inputs.env_b64 || steps.envsel.outputs.env_b64 }}
+        ENV_CONTENT_VAL: ${{ inputs.env_content }}
+
+        REGISTRY: ${{ inputs.registry }}
+        IMAGE_NAME_VAL: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}
+        IMAGE_TAG_VAL: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}
+        REGISTRY_LOGIN: ${{ inputs.registry_login }}
+        REGISTRY_USERNAME_VAL: ${{ inputs.registry_username }}
+        REGISTRY_TOKEN_VAL: ${{ inputs.registry_token }}
+
+        APP_SLUG_VAL: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}
+        ENV_NAME_VAL: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
+        CONTAINER_NAME_VAL: ${{ inputs.container_name }}
+
+        ENV_FILE_PATH_INPUT: ${{ inputs.env_file_path }}
+        DEPLOYMENT_BASE_DIR: ${{ inputs.deployment_base_dir }}
+
+        HOST_PORT_VAL: ${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}
+        CONTAINER_PORT_VAL: ${{ inputs.container_port != '' && inputs.container_port || inputs.default_container_port }}
+        EXTRA_RUN_ARGS_VAL: ${{ inputs.extra_run_args }}
+        RESTART_POLICY_VAL: ${{ inputs.restart_policy }}
+        MEMORY_LIMIT_VAL: ${{ inputs.memory_limit }}
+
+        ENABLE_TRAEFIK_VAL: ${{ inputs.enable_traefik }}
+        ENABLE_ACME_VAL: ${{ inputs.enable_acme }}
+        TRAEFIK_EMAIL_VAL: ${{ inputs.traefik_email }}
+        TRAEFIK_RESET_ACME_VAL: ${{ inputs.traefik_reset_acme }}
+        TRAEFIK_NETWORK_NAME_VAL: ${{ inputs.traefik_network_name }}
+        DOMAIN_INPUT_VAL: ${{ inputs.domain }}
+        DOMAIN_DEFAULT_VAL: ${{ steps.dfl.outputs.domain_default }}
+        ROUTER_NAME_VAL: ${{ steps.dfl.outputs.traefik_router }}
+        DOMAIN_ALIASES_VAL: ${{ inputs.domain_aliases }}
+        INCLUDE_WWW_ALIAS_VAL: ${{ inputs.include_www_alias }}
+        DOMAIN_HOSTS_VAL: ${{ inputs.domain_hosts }}
+
+        ENABLE_DASHBOARD_VAL: ${{ inputs.enable_dashboard }}
+        DASHBOARD_PUBLISH_MODES_VAL: ${{ inputs.dashboard_publish_modes }}
+        DASHBOARD_HOST_VAL: ${{ inputs.dashboard_host }}
+        DASHBOARD_PASSWORD_VAL: ${{ inputs.dashboard_password }}
+        DASHBOARD_USERS_B64_VAL: ${{ inputs.dashboard_users_b64 }}
+
+        UFW_ALLOW_PORTS_VAL: ${{ inputs.ufw_allow_ports }}
+        INSTALL_WEBMIN_VAL: ${{ inputs.install_webmin }}
+        INSTALL_USERMIN_VAL: ${{ inputs.install_usermin }}
+
+        DEBUG_VAL: ${{ inputs.debug }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "$S3_URI" ]; then
+          echo '::error::S3 URI for scripts bundle is empty; upload may have been skipped or failed.' >&2
+          exit 1
+        fi
+
+        cat > ssm-commands.json << 'EOF_CMDS'
+        {
+          "commands": [
+            "set -euo pipefail",
+            "export ENV_B64='${ENV_B64_VAL}'",
+            "export ENV_CONTENT='${ENV_CONTENT_VAL}'",
+            "export IMAGE_REGISTRY='${REGISTRY}'",
+            "export IMAGE_NAME='${IMAGE_NAME_VAL}'",
+            "export IMAGE_TAG='${IMAGE_TAG_VAL}'",
+            "export REGISTRY_LOGIN='${REGISTRY_LOGIN}'",
+            "export REGISTRY_USERNAME='${REGISTRY_USERNAME_VAL}'",
+            "export REGISTRY_TOKEN='${REGISTRY_TOKEN_VAL}'",
+            "export APP_SLUG='${APP_SLUG_VAL}'",
+            "export ENV_NAME='${ENV_NAME_VAL}'",
+            "export CONTAINER_NAME_IN='${CONTAINER_NAME_VAL}'",
+            "export ENV_FILE_PATH_BASE='${ENV_FILE_PATH_INPUT:-${DEPLOYMENT_BASE_DIR}}'",
+            "export HOST_PORT_IN='${HOST_PORT_VAL}'",
+            "export CONTAINER_PORT_IN='${CONTAINER_PORT_VAL}'",
+            "export EXTRA_RUN_ARGS='${EXTRA_RUN_ARGS_VAL}'",
+            "export RESTART_POLICY='${RESTART_POLICY_VAL}'",
+            "export MEMORY_LIMIT='${MEMORY_LIMIT_VAL}'",
+            "export TRAEFIK_ENABLED='${ENABLE_TRAEFIK_VAL}'",
+            "export TRAEFIK_ENABLE_ACME='${ENABLE_ACME_VAL}'",
+            "export TRAEFIK_EMAIL='${TRAEFIK_EMAIL_VAL}'",
+            "export TRAEFIK_RESET_ACME='${TRAEFIK_RESET_ACME_VAL}'",
+            "export TRAEFIK_NETWORK_NAME='${TRAEFIK_NETWORK_NAME_VAL}'",
+            "export DOMAIN_INPUT='${DOMAIN_INPUT_VAL}'",
+            "export DOMAIN_DEFAULT='${DOMAIN_DEFAULT_VAL}'",
+            "export ROUTER_NAME='${ROUTER_NAME_VAL}'",
+            "export DOMAIN_ALIASES='${DOMAIN_ALIASES_VAL}'",
+            "export INCLUDE_WWW_ALIAS='${INCLUDE_WWW_ALIAS_VAL}'",
+            "export DOMAIN_HOSTS='${DOMAIN_HOSTS_VAL}'",
+            "export ENABLE_DASHBOARD='${ENABLE_DASHBOARD_VAL}'",
+            "export DASHBOARD_PUBLISH_MODES='${DASHBOARD_PUBLISH_MODES_VAL}'",
+            "export DASHBOARD_HOST='${DASHBOARD_HOST_VAL}'",
+            "export DASHBOARD_PASSWORD='${DASHBOARD_PASSWORD_VAL}'",
+            "export DASHBOARD_USERS_B64='${DASHBOARD_USERS_B64_VAL}'",
+            "export UFW_ALLOW_PORTS_INPUT='${UFW_ALLOW_PORTS_VAL}'",
+            "export INSTALL_WEBMIN='${INSTALL_WEBMIN_VAL}'",
+            "export INSTALL_USERMIN='${INSTALL_USERMIN_VAL}'",
+            "export DEBUG='${DEBUG_VAL}'",
+            "echo '================================================================'",
+            "echo 'Installing server-managed scripts bundle on EC2 via S3'",
+            "echo '================================================================'",
+            "mkdir -p \"$HOME/uactions\"",
+            "aws s3 cp '${S3_URI}' \"$HOME/uactions-scripts.tgz\"",
+            "if ! tar -tzf \"$HOME/uactions-scripts.tgz\" >/dev/null 2>&1; then echo '::error::Invalid or empty tar archive at $HOME/uactions-scripts.tgz (tar -tzf failed)'; ls -lh \"$HOME/uactions-scripts.tgz\" || true; exit 1; fi",
+            "TMPDIR=\"$(mktemp -d)\"",
+            "tar -xzf \"$HOME/uactions-scripts.tgz\" -C \"$TMPDIR\"",
+            "rm -rf \"$HOME/uactions/scripts\"",
+            "mv \"$TMPDIR/scripts\" \"$HOME/uactions/scripts\"",
+            "rm -rf \"$TMPDIR\"",
+            "find \"$HOME/uactions/scripts\" -type f -name '*.sh' -exec chmod +x {} +",
+            "date -u +'%Y-%m-%d %H:%M:%S UTC' > \"$HOME/uactions/scripts/.deployed_at\"",
+            "echo '${GITHUB_SHA}' > \"$HOME/uactions/scripts/.version\"",
+            "if [ -z \"${TRAEFIK_ENABLED}\" ]; then if [ -n \"${DOMAIN_INPUT}\" ] || [ -n \"${DOMAIN_DEFAULT}\" ]; then TRAEFIK_ENABLED='true'; else TRAEFIK_ENABLED='false'; fi; fi",
+            "if [ -z \"${TRAEFIK_ENABLE_ACME}\" ] && [ \"${TRAEFIK_ENABLED}\" = 'true' ]; then TRAEFIK_ENABLE_ACME='true'; fi",
+            "if [ -z \"${TRAEFIK_EMAIL}\" ]; then DOMAIN_FOR_EMAIL=\"${DOMAIN_DEFAULT:-${DOMAIN_INPUT:-}}\"; if [ -n \"${DOMAIN_FOR_EMAIL}\" ]; then lower_domain=$(printf '%s' \"${DOMAIN_FOR_EMAIL}\" | tr '[:upper:]' '[:lower:]'); IFS='.' read -r -a email_parts <<<\"${lower_domain#www.}\"; part_count=${#email_parts[@]}; if [ \"$part_count\" -ge 2 ]; then apex=\"${email_parts[part_count-2]}.${email_parts[part_count-1]}\"; else apex=\"${lower_domain#www.}\"; fi; TRAEFIK_EMAIL=\"traefik@${apex}\"; fi; fi",
+            "\"$HOME/uactions/scripts/app/start-container-deployment.sh\""
+          ]
+        }
+        EOF_CMDS
+
+        echo "Sending SSM command to target $SSM_TARGET in region $AWS_REGION"
+        CMD_ID=$(aws ssm send-command \
+          --region "$AWS_REGION" \
+          --instance-ids "$SSM_TARGET" \
+          --document-name "AWS-RunShellScript" \
+          --comment "uactions aws-ssm-container-deploy" \
+          --parameters file://ssm-commands.json \
+          --output json | jq -r '.Command.CommandId')
+
+        echo "Waiting for SSM command $CMD_ID to complete..."
+        aws ssm wait command-executed --region "$AWS_REGION" --command-id "$CMD_ID" --instance-id "$SSM_TARGET"
+
+        INVOC_JSON=$(aws ssm list-command-invocations --region "$AWS_REGION" --command-id "$CMD_ID" --instance-id "$SSM_TARGET" --details --output json)
+        STATUS=$(printf '%s' "$INVOC_JSON" | jq -r '.CommandInvocations[0].Status')
+        EXIT_CODE=$(printf '%s' "$INVOC_JSON" | jq -r '.CommandInvocations[0].CommandPlugins[0].ResponseCode')
+
+        echo "SSM command status: $STATUS (exit code: $EXIT_CODE)"
+        if [ "$STATUS" != "Success" ] || [ "$EXIT_CODE" != "0" ]; then
+          echo '::error::AWS SSM deployment command failed' >&2
+          exit 1
+        fi

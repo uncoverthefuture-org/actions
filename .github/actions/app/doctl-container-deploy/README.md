@@ -22,6 +22,10 @@ Use `doctl-container-deploy` when:
 
 For non-DigitalOcean servers (bare VPS, on‑prem), keep using `ssh-container-deploy`.
 
+For **AWS EC2 with true workload identity (no SSH keys)**, see:
+
+- `aws-ssm-container-deploy` – uses GitHub OIDC + IAM role + SSM Run Command to execute the same server-managed deployment scripts on an EC2 instance.
+
 ## Minimal usage via aggregator
 
 Example workflow step using the main `uncoverthefuture-org/actions` aggregator:
