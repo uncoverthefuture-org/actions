@@ -197,14 +197,14 @@ runs:
         # If the EXPORT_TO_ENV flag is set to true, append the decoded file
         # so future steps inherit the variables
         if [ "${EXPORT_TO_ENV}" = "true" ]; then
-          grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$dest" | sed 's/\r$//' >> "$GITHUB_ENV"
+          grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$dest" | sed 's/\r$//' >> "$GITHUB_ENV" || true
         fi
 
         # Resolve absolute path to the env file
         env_file_path="$(cd "$(dirname "$dest")" && pwd)/$(basename "$dest")"
 
         # Export variables from the .env file to GitHub Actions environment
-        grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$env_file_path" | sed 's/\r$//' >> "$GITHUB_ENV"
+        grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$env_file_path" | sed 's/\r$//' >> "$GITHUB_ENV" || true
 
         # Output the resolved env file path to GITHUB_OUTPUT
         printf 'env_file=%s\n' "$env_file_path" >> "$GITHUB_OUTPUT"
