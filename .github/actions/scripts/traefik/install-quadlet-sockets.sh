@@ -41,6 +41,24 @@ SOCK_HOST="${XDG_RUNTIME_DIR}/podman/podman.sock"
 
 mkdir -p "$QUADLET_DIR"
 
+# Before installing new Quadlet units, best-effort clean up any existing
+# Traefik container or user-level service so we do not end up with multiple
+# instances competing for ports 80/443. This is intentionally conservative
+# and does not touch system-level services, but does emit a warning if one is
+# detected so operators can migrate fully to the Quadlet model.
+if command -v podman >/dev/null 2>&1; then
+  podman stop traefik >/dev/null 2>&1 || true
+  podman rm   traefik >/dev/null 2>&1 || true
+fi
+
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl --user stop traefik.service  >/dev/null 2>&1 || true
+  systemctl --user disable traefik.service >/dev/null 2>&1 || true
+  if systemctl is-active --quiet traefik.service 2>/dev/null; then
+    echo "::warning::A system-level traefik.service is active; it may conflict with rootless Quadlet Traefik on ports 80/443. Consider disabling the system service or migrating fully to Quadlet." >&2
+  fi
+fi
+
 # Best-effort: assert socket and SELinux hints if available
 if [[ -x "$HOME/uactions/scripts/traefik/assert-socket-and-selinux.sh" ]]; then
   "$HOME/uactions/scripts/traefik/assert-socket-and-selinux.sh" || true
@@ -158,7 +176,9 @@ EOF
 systemctl --user daemon-reload
 systemctl --user enable --now "${TRAEFIK_NETWORK_NAME}.network"
 systemctl --user enable --now http.socket https.socket
-# Optional: start service (will be socket-activated on demand)
+# Optional: start service (will be socket-activated on demand). We enable the
+# Quadlet-generated traefik.service after explicitly stopping/disabling any
+# prior user unit earlier in this script.
 systemctl --user enable traefik.service >/dev/null 2>&1 || true
 
 # Show status summary

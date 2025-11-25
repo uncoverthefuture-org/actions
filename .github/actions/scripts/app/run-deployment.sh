@@ -82,6 +82,7 @@ CONTAINER_PORT_IN="${CONTAINER_PORT_IN:-8080}"
 EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
+CPU_LIMIT="${CPU_LIMIT:-0.5}"
 
 # --- Traefik & domain routing ------------------------------------------------------
 TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
@@ -204,6 +205,7 @@ export CONTAINER_PORT_IN
 export EXTRA_RUN_ARGS
 export RESTART_POLICY
 export MEMORY_LIMIT
+export CPU_LIMIT
 
 # Traefik settings
 export TRAEFIK_ENABLED

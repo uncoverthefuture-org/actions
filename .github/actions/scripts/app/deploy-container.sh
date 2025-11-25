@@ -21,6 +21,7 @@
 #   DEPLOY_DIR_CONTAINER_PATH - Target path inside container for deployment dir (default: /<app_slug>)
 #   RESTART_POLICY        - Podman restart policy (default: unless-stopped)
 #   MEMORY_LIMIT          - Memory and swap (default: 512m)
+#   CPU_LIMIT             - CPU limit (default: 0.5) passed as --cpus to podman
 #   TRAEFIK_ENABLED       - 'true' to attach labels (requires DOMAIN)
 #   DOMAIN_INPUT          - Explicit FQDN
 #   DOMAIN_DEFAULT        - Derived FQDN
@@ -72,6 +73,7 @@ CONTAINER_PORT_IN="${CONTAINER_PORT_IN:-}"
 EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
+CPU_LIMIT="${CPU_LIMIT:-0.5}"
 DEPLOY_DIR_VOLUME_ENABLED="${DEPLOY_DIR_VOLUME_ENABLED:-true}"
 if [[ -z "${DEPLOY_DIR_CONTAINER_PATH:-}" ]]; then
   DEPLOY_DIR_CONTAINER_PATH="/${APP_SLUG}"
@@ -144,7 +146,7 @@ fi
 
 if [[ "${DEBUG:-false}" == "true" ]]; then
   # Confirm to operators which directory/file the script will mutate.
-  echo "� Using prepared environment directory: $ENV_DIR"
+  echo "🗂️  Using prepared environment directory: $ENV_DIR"
   echo "📄 Using env file: $ENV_FILE"
 fi
 
@@ -413,6 +415,18 @@ echo "Volume args: ${VOLUME_ARGS[*]}"
 echo "Env file: $ENV_FILE"
 echo "================================================================" >&2
 
+# When CPU_LIMIT is provided, append an explicit --cpus constraint so the
+# container cannot monopolize the host. Example: CPU_LIMIT=0.5 adds
+#   --cpus=0.5
+# to the podman run invocation assembled below.
+if [[ -n "$CPU_LIMIT" ]]; then
+  if [[ -n "$EXTRA_RUN_ARGS" ]]; then
+    EXTRA_RUN_ARGS+=" --cpus=${CPU_LIMIT}"
+  else
+    EXTRA_RUN_ARGS="--cpus=${CPU_LIMIT}"
+  fi
+fi
+
 # Assemble and execute podman run with a DEBUG preview via shared helper.
 # Pass array *names* so the helper can dereference them (example: PORT_ARGS →
 # publishes "-p 8080:3000" while an empty array stays omitted).
@@ -425,3 +439,22 @@ echo "================================================================" >&2
 echo " Started container: $CONTAINER_NAME (image: $IMAGE_REF)"
 echo ""
 podman ps --filter name="$CONTAINER_NAME" --format 'table {{.ID}}\t{{.Status}}\t{{.Image}}\t{{.Names}}\t{{.Ports}}'
+
+# After a successful podman run, optionally generate a Quadlet .container unit
+# so systemd --user can restart the app automatically on reboot using the
+# same image, env file, ports, volume, and resource limits. This is a best
+# effort step; failures are reported as warnings but do not fail the deploy.
+if [[ -x "$HOME/uactions/scripts/app/install-app-quadlet.sh" ]]; then
+  export IMAGE_REF
+  export CONTAINER_NAME
+  export HOST_PORT
+  export CONTAINER_PORT
+  export DEPLOY_DIR_SOURCE
+  export DEPLOY_DIR_CONTAINER_PATH
+  export MEMORY_LIMIT
+  export CPU_LIMIT
+  export QUADLET_ENABLED="${QUADLET_ENABLED:-true}"
+  "$HOME/uactions/scripts/app/install-app-quadlet.sh" || echo "::warning::install-app-quadlet.sh failed (Quadlet persistence may be unavailable)" >&2
+else
+  echo "::notice::install-app-quadlet.sh not found; skipping Quadlet persistence unit" >&2
+fi
