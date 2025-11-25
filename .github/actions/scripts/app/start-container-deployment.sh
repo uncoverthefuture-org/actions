@@ -52,7 +52,12 @@ if [ "${TRAEFIK_ENABLED:-false}" = "true" ] && [ -n "$ROUTER" ] && [ -n "$DOMAIN
   echo "================================================================"
   echo "Running Traefik probe..."
   echo "================================================================"
-  "$TRAEFIK_DIR/probe-traefik.sh" post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT" "$PROBE_PATH"
+  if "$TRAEFIK_DIR/probe-traefik.sh" post "$ROUTER" "$DOMAIN_EFFECTIVE" "$SERVICE_PORT" "$PROBE_PATH"; then
+    :
+  else
+    status=$?
+    echo "::warning::Traefik probe failed (exit code $status)" >&2
+  fi
 else
   echo "::notice::Traefik probe skipped (TRAEFIK_ENABLED=$TRAEFIK_ENABLED, router='$ROUTER', domain='$DOMAIN_EFFECTIVE')."
 fi
