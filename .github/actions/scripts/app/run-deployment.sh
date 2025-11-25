@@ -343,4 +343,45 @@ echo "================================================================"
 
 "$HOME/uactions/scripts/app/deploy-container.sh"
 
+# --- Management interfaces summary -------------------------------------------------
+# Surface best-effort access URLs for Portainer/Webmin/Usermin so operators can
+# quickly reach management UIs after a successful deploy. For direct-port
+# access, prefer the apex/base domain (for example, dev.example.com →
+# example.com) when an env-specific subdomain is used, otherwise fall back to
+# the primary host IP.
+ACCESS_HOST=""
+EFFECTIVE_DOMAIN="${DOMAIN_INPUT:-${DOMAIN_DEFAULT:-}}"
+if [ -n "$EFFECTIVE_DOMAIN" ]; then
+  # Count labels; when there are 3+ labels (for example dev.posteat.co.uk),
+  # strip the first label so that direct-port URLs use the apex/base domain
+  # (posteat.co.uk). For 2-label domains (example.com), keep the full domain.
+  label_count=$(printf '%s' "$EFFECTIVE_DOMAIN" | awk -F'.' '{print NF}')
+  if [ "$label_count" -ge 3 ]; then
+    ACCESS_HOST="${EFFECTIVE_DOMAIN#*.}"
+  else
+    ACCESS_HOST="$EFFECTIVE_DOMAIN"
+  fi
+fi
+if [ -z "$ACCESS_HOST" ]; then
+  if command -v hostname >/dev/null 2>&1; then
+    ACCESS_HOST="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  fi
+fi
+if [ -z "$ACCESS_HOST" ]; then
+  ACCESS_HOST="<server-ip-or-hostname>"
+fi
+
+echo "================================================================"
+echo "🧭 Management interfaces (this host)"
+echo "================================================================"
+if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
+  echo "Portainer UI (HTTPS): https://${ACCESS_HOST}:${PORTAINER_HTTPS_PORT}"
+fi
+if [ "${INSTALL_WEBMIN:-false}" = "true" ]; then
+  echo "Webmin (default HTTPS): https://${ACCESS_HOST}:10000"
+fi
+if [ "${INSTALL_USERMIN:-false}" = "true" ]; then
+  echo "Usermin (default HTTPS): https://${ACCESS_HOST}:20000"
+fi
+
 echo "✅ Deployment completed successfully"
