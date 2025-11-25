@@ -127,16 +127,23 @@ podman_run_with_preview() {
   echo "podman run command (preview):"
   printf '  %q' "${cmd[@]}"; echo
 
-  if ! "${cmd[@]}"; then
-    local status=$?
+  local status
+  if "${cmd[@]}"; then
+    status=0
+  else
+    status=$?
     if [[ $status -eq 125 ]] && podman container exists "$name" >/dev/null 2>&1; then
       echo "::warning::Container '$name' already exists; attempting force removal and retry" >&2
       podman rm -f "$name" >/dev/null 2>&1 || true
-      "${cmd[@]}"
-    else
-      return "$status"
+      if "${cmd[@]}"; then
+        status=0
+      else
+        status=$?
+      fi
     fi
   fi
+
+  return "$status"
 }
 # Login to registry if credentials are provided
 podman_login_if_credentials() {
