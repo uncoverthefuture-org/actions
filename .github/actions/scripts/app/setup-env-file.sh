@@ -179,9 +179,25 @@ if [ -f "$ENV_FILE" ]; then
   if [ "${DEBUG:-false}" = "true" ]; then
     echo "🔄 Sourcing environment variables"
   fi
+  # When run under a parent script that enables `set -u` (nounset), a single
+  # reference to an undefined variable inside the .env file (for example,
+  # PASSWORD=$MISSING_SECRET) would normally abort the entire deployment.
+  # To keep .env semantics closer to typical dotenv loaders (unset → empty)
+  # while preserving strict mode for the rest of the deployment, temporarily
+  # relax nounset while sourcing and then restore its previous state.
+  nounset_was_on=false
+  if set -o | grep -q 'nounset[[:space:]]*on'; then
+    nounset_was_on=true
+    set +u
+  fi
+
   set -a
   . "$ENV_FILE"
   set +a
+
+  if [ "$nounset_was_on" = true ]; then
+    set -u
+  fi
 else
   echo "::warning::Environment file $ENV_FILE not found; continuing without sourcing"
 fi

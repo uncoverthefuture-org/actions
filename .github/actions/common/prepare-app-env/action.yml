@@ -197,7 +197,7 @@ runs:
         # If the EXPORT_TO_ENV flag is set to true, append the decoded file
         # so future steps inherit the variables
         if [ "${EXPORT_TO_ENV}" = "true" ]; then
-          cat "$dest" >>"$GITHUB_ENV"
+          grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$dest" | sed 's/\r$//' >> "$GITHUB_ENV"
         fi
 
         # Resolve absolute path to the env file
