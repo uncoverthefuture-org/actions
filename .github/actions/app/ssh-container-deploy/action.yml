@@ -167,6 +167,14 @@ inputs: # All parameters accepted by this action
     description: 'Install Usermin alongside Webmin when enabled (requires sudo).'
     required: false
     default: 'false'
+  install_portainer:
+    description: 'Install Portainer CE (container management UI) on the host as a Quadlet-managed service.'
+    required: false
+    default: 'true'
+  portainer_https_port:
+    description: 'Host HTTPS port for Portainer UI (default: 9443).'
+    required: false
+    default: '9443'
   show_root_install_hints:
     description: 'Show explicit manual install instructions when root privileges are required (fail-fast messaging)'
     required: false
@@ -521,6 +529,8 @@ runs: # Composite action implementation
           export UFW_ALLOW_PORTS_INPUT='${{ inputs.ufw_allow_ports }}'
           export INSTALL_WEBMIN='${{ inputs.install_webmin }}'
           export INSTALL_USERMIN='${{ inputs.install_usermin }}'
+          export INSTALL_PORTAINER='${{ inputs.install_portainer }}'
+          export PORTAINER_HTTPS_PORT='${{ inputs.portainer_https_port }}'
 
           # Quadlet/systemd persistence toggle for app containers. When set to
           # 'false', deploy-container.sh will skip generating a Quadlet

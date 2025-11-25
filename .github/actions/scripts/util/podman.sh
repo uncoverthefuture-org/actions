@@ -83,6 +83,21 @@ podman_build_dns_args() {
   fi
 }
 
+podman_cpu_cgroup_available() {
+  if ! command -v podman >/dev/null 2>&1; then
+    return 1
+  fi
+  local controllers
+  controllers=$(podman info --format '{{ .Host.CgroupControllers }}' 2>/dev/null || true)
+  if [[ -z "$controllers" ]]; then
+    return 1
+  fi
+  if echo "$controllers" | grep -qw "cpu"; then
+    return 0
+  fi
+  return 1
+}
+
 # Run podman container with preview
 podman_run_with_preview() {
   local name="$1" env_file="$2" restart_policy="$3" memory_limit="$4" image_ref="$5"

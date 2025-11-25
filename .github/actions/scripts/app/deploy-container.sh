@@ -420,10 +420,14 @@ echo "================================================================" >&2
 #   --cpus=0.5
 # to the podman run invocation assembled below.
 if [[ -n "$CPU_LIMIT" ]]; then
-  if [[ -n "$EXTRA_RUN_ARGS" ]]; then
-    EXTRA_RUN_ARGS+=" --cpus=${CPU_LIMIT}"
+  if podman_cpu_cgroup_available; then
+    if [[ -n "$EXTRA_RUN_ARGS" ]]; then
+      EXTRA_RUN_ARGS+=" --cpus=${CPU_LIMIT}"
+    else
+      EXTRA_RUN_ARGS="--cpus=${CPU_LIMIT}"
+    fi
   else
-    EXTRA_RUN_ARGS="--cpus=${CPU_LIMIT}"
+    echo "::warning::CPU_LIMIT='${CPU_LIMIT}' configured but Podman host does not expose a 'cpu' cgroup controller; skipping --cpus (container will run without a CPU limit)." >&2
   fi
 fi
 

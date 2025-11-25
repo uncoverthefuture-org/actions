@@ -44,6 +44,10 @@
 # ----------------------------------------------------------------------------
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../util/podman.sh
+source "${SCRIPT_DIR}/../util/podman.sh"
+
 QUADLET_ENABLED="${QUADLET_ENABLED:-true}"
 if [[ "${QUADLET_ENABLED}" != "true" ]]; then
   echo "::notice::Quadlet persistence disabled via QUADLET_ENABLED=${QUADLET_ENABLED}; skipping .container generation" >&2
@@ -111,8 +115,22 @@ REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-}"
     echo "Memory=${MEMORY_LIMIT}"
   fi
 
+  # When CPU_LIMIT is set we prefer to mirror the runtime --cpus behavior in the
+  # Quadlet unit so systemd restarts use the same resource profile. However,
+  # some hosts (for example, rootless on cgroups v1) do not expose a "cpu"
+  # cgroup controller, in which case Podman will reject --cpus. To avoid
+  # Quadlet-based restarts failing with the same error that the deploy script
+  # guards against, only emit PodmanArgs when the helper confirms cpu support.
+  # Example: CPU_LIMIT=0.5 on a host with cpu cgroup available writes
+  #   PodmanArgs=--cpus=0.5
+  # while the same setting on a host without cpu controller will print a
+  # warning and omit PodmanArgs so the container still restarts.
   if [[ -n "${CPU_LIMIT}" ]]; then
-    echo "PodmanArgs=--cpus=${CPU_LIMIT}"
+    if podman_cpu_cgroup_available; then
+      echo "PodmanArgs=--cpus=${CPU_LIMIT}"
+    else
+      echo "::warning::CPU_LIMIT='${CPU_LIMIT}' configured but Podman host does not expose a 'cpu' cgroup controller; skipping PodmanArgs=--cpus in Quadlet unit (container will restart without a CPU limit)." >&2
+    fi
   fi
 
   echo "Label=app=${APP_SLUG}"

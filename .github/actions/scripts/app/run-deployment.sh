@@ -83,6 +83,7 @@ EXTRA_RUN_ARGS="${EXTRA_RUN_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
 CPU_LIMIT="${CPU_LIMIT:-0.5}"
+PORTAINER_HTTPS_PORT="${PORTAINER_HTTPS_PORT:-9443}"
 
 # --- Traefik & domain routing ------------------------------------------------------
 TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
@@ -260,6 +261,9 @@ if [ -z "$UFW_PORTS" ]; then
   if [ "${INSTALL_USERMIN:-false}" = "true" ]; then
     UFW_PORTS="$UFW_PORTS 20000"
   fi
+  if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
+    UFW_PORTS="$UFW_PORTS ${PORTAINER_HTTPS_PORT}"
+  fi
 fi
 
 if [ -x "$HOME/uactions/scripts/infra/configure-ufw.sh" ]; then
@@ -299,6 +303,17 @@ if [ "${INSTALL_WEBMIN:-false}" = "true" ] || [ "${INSTALL_USERMIN:-false}" = "t
     fi
   else
     echo "::warning::install-webmin.sh not found; skipping Webmin/Usermin installation"
+  fi
+fi
+
+if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
+  echo "================================================================"
+  echo "🛠 Installing Portainer (as requested) ..."
+  echo "================================================================"
+  if [ -x "$HOME/uactions/scripts/infra/install-portainer.sh" ]; then
+    INSTALL_PORTAINER="${INSTALL_PORTAINER:-true}" PORTAINER_HTTPS_PORT="${PORTAINER_HTTPS_PORT:-9443}" TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-traefik-network}" "$HOME/uactions/scripts/infra/install-portainer.sh"
+  else
+    echo "::warning::install-portainer.sh not found; skipping Portainer installation"
   fi
 fi
 
