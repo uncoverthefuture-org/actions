@@ -225,7 +225,7 @@ runs:
             echo '::error::Podman is not installed and the current user cannot escalate privileges for package installation.' >&2
             echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
             echo 'Install manually on the server (as root), then re-run:' >&2
-            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
             echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
             echo 'Alternatively, re-run this action with connect_mode: root or provide root_ssh_key.' >&2
           else

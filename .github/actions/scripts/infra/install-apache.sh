@@ -11,12 +11,14 @@ if [ "$IS_ROOT" = "no" ] && [ -z "$SUDO" ]; then
   echo '::error::Apache installation requires root privileges; current session cannot escalate.' >&2
   echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
   echo 'Install manually on the server (as root), then re-run:' >&2
-  echo '  sudo apt-get update -y' >&2
+  echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
   echo '  sudo apt-get install -y apache2 libapache2-mod-wsgi-py3' >&2
   exit 1
 fi
 echo "📥 Updating apt cache ..."
-$SUDO apt-get update -y
+# Use --allow-releaseinfo-change so repository metadata updates (for example,
+# changes to Label or Suite) do not break unattended Apache installs.
+$SUDO apt-get update -y --allow-releaseinfo-change
 echo "📦 Installing apache2 and mod_wsgi ..."
 $SUDO apt-get install -y apache2 libapache2-mod-wsgi-py3
 

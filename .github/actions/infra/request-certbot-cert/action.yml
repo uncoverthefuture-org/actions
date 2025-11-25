@@ -91,10 +91,10 @@ runs:
             echo '::error::Certificate request/renewal (Apache plugin) requires root privileges; current session cannot escalate.' >&2
             echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
             echo 'Install required packages and reload Apache manually on the server (as root), then re-run:' >&2
-            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
             echo '  sudo apt-get install -y software-properties-common' >&2
             echo '  sudo add-apt-repository -y ppa:certbot/certbot' >&2
-            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
             echo '  sudo apt-get install -y certbot python3-certbot-apache' >&2
             echo '  # After request, reload Apache:' >&2
             echo '  sudo systemctl reload apache2' >&2

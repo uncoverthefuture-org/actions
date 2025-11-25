@@ -9,6 +9,11 @@ This repository is intentionally documented in depth in per-action READMEs and l
 - **Purpose**: provide a small, composable set of actions for SSH-based container deployments.
 - **Primary entry point**: use the aggregated action `uncoverthefuture-org/actions@v1` from your workflows.
 - **Default deploy path**: the `ssh-container-deploy` action, which handles generic container deployments (Traefik by default when a domain is available, host ports as a fallback).
+- **Package install behavior**: when actions need to run `apt-get update` on the remote host they include `--allow-releaseinfo-change` so noninteractive installs keep working even if trusted repositories update their Release metadata (for example, a PPA changing its `Label`). If you run manual recovery commands, prefer:
+
+  ```bash
+  sudo apt-get update -y --allow-releaseinfo-change
+  ```
 
 For full details of how deployments work, including examples and configuration, open the **SSH Container Deploy** README in a new tab:
 

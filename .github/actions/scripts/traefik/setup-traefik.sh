@@ -181,7 +181,9 @@ fi
 # Ensure setcap is available when sudo is present; needed for CAP_NET_BIND_SERVICE fallback
 if [ "$SUDO_AVAILABLE" = "yes" ] && ! command -v setcap >/dev/null 2>&1; then
   echo "::notice::Installing libcap2-bin to provide setcap/getcap ..."
-  sudo apt-get update -y >/dev/null 2>&1 || true
+  # Use --allow-releaseinfo-change so apt cache refresh remains robust even if
+  # repository Release metadata (for example, Label) changes between runs.
+  sudo apt-get update -y --allow-releaseinfo-change >/dev/null 2>&1 || true
   sudo apt-get install -y libcap2-bin >/dev/null 2>&1 || true
 fi
 

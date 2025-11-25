@@ -16,21 +16,24 @@ if [ "$IS_ROOT" = "no" ] && [ -z "$SUDO" ]; then
   echo '::error::Certbot installation requires root privileges; current session cannot escalate.' >&2
   echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
   echo 'Install manually on the server (as root), then re-run:' >&2
-  echo '  sudo apt-get update -y' >&2
+  echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
   echo '  sudo apt-get install -y software-properties-common' >&2
   echo '  sudo add-apt-repository -y ppa:certbot/certbot' >&2
-  echo '  sudo apt-get update -y' >&2
+  echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
   echo '  sudo apt-get install -y certbot python3-certbot-apache' >&2
   exit 1
 fi
 echo "📥 Updating apt cache ..."
-$SUDO apt-get update -y
+# Use --allow-releaseinfo-change so repository metadata changes (for example,
+# a PPA adjusting its Label) do not cause noninteractive apt-get update runs
+# to fail.
+$SUDO apt-get update -y --allow-releaseinfo-change
 echo "📦 Installing prerequisite packages ..."
 $SUDO apt-get install -y software-properties-common
 echo "➕ Adding Certbot PPA ..."
 $SUDO add-apt-repository -y ppa:certbot/certbot || true
 echo "📥 Updating apt cache (post-PPA) ..."
-$SUDO apt-get update -y
+$SUDO apt-get update -y --allow-releaseinfo-change
 echo "📦 Installing certbot and apache plugin ..."
 $SUDO apt-get install -y certbot python3-certbot-apache
 

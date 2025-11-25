@@ -13,7 +13,9 @@ fi
 
 if command -v apt-get >/dev/null 2>&1; then
   echo "📥 Updating apt cache ..."
-  apt-get update -y
+  # Allow noninteractive installs to continue when trusted repositories update
+  # their Release metadata (for example, changing the Label or Suite fields).
+  apt-get update -y --allow-releaseinfo-change
   echo "📦 Installing Podman and dependencies ..."
   apt-get install -y podman uidmap slirp4netns fuse-overlayfs ${ADDITIONAL_PACKAGES}
 else

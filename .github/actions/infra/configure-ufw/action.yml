@@ -106,7 +106,7 @@ runs:
             echo '::error::UFW configuration requires root privileges; current session cannot escalate.' >&2
             echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
             echo 'Install manually on the server (as root), then re-run:' >&2
-            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
             echo '  sudo apt-get install -y ufw' >&2
             echo '  sudo ufw --force enable' >&2
             echo '  sudo ufw allow 22/tcp   # plus any ports you need' >&2

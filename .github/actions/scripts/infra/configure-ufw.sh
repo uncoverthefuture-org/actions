@@ -20,7 +20,7 @@ if [ "$(id -u)" -ne 0 ] && [ -z "$SUDO" ]; then
   echo '::error::UFW configuration requires root privileges; current session cannot escalate.' >&2
   echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
   echo 'Install UFW and enable it manually on the server (as root), then re-run:' >&2
-  echo '  sudo apt-get update -y' >&2
+  echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
   echo '  sudo apt-get install -y ufw' >&2
   echo '  sudo ufw --force enable' >&2
   exit 1
@@ -29,7 +29,9 @@ fi
 # Install UFW only if missing
 if ! command -v ufw >/dev/null 2>&1; then
   echo "🔧 Installing UFW ..."
-  $SUDO apt-get update -y >/dev/null 2>&1 || true
+  # Allow Release metadata changes so noninteractive apt-get update calls do
+  # not fail when trusted repositories evolve.
+  $SUDO apt-get update -y --allow-releaseinfo-change >/dev/null 2>&1 || true
   $SUDO apt-get install -y ufw || true
 fi
 

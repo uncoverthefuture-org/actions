@@ -90,11 +90,11 @@ runs:
             echo '::error::Webmin/Usermin installation requires root privileges; current session cannot escalate.' >&2
             echo "Detected: user=$(id -un); sudo(non-interactive)=no" >&2
             echo 'Install manually on the server (as root), then re-run:' >&2
-            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
             echo '  sudo apt-get install -y gnupg wget apt-transport-https software-properties-common' >&2
             echo '  wget -qO- https://download.webmin.com/jcameron-key.asc | sudo gpg --dearmor -o /usr/share/keyrings/webmin.gpg' >&2
             echo "  echo 'deb [signed-by=/usr/share/keyrings/webmin.gpg] https://download.webmin.com/download/repository sarge contrib' | sudo tee /etc/apt/sources.list.d/webmin.list" >&2
-            echo '  sudo apt-get update -y' >&2
+            echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
             echo '  sudo apt-get install -y webmin usermin' >&2
             echo 'Or re-run this action with connect_mode: root (or provide root_ssh_key).' >&2
           else

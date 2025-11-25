@@ -116,7 +116,7 @@ runs:
               echo '::error::Host preparation requires root privileges to install packages (podman missing).' >&2
               echo "Detected: user=$(id -un); sudo(non-interactive)=${SUDO_AVAIL}" >&2
               echo 'To install manually on the server (as root), run:' >&2
-              echo '  sudo apt-get update -y' >&2
+              echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
               echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
               echo 'Then re-run this workflow, or connect as root for automatic installation.' >&2
             else

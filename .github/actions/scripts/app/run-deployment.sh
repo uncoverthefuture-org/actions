@@ -114,13 +114,16 @@ else
   if [[ "${SUDO_STATUS:-available}" == "unavailable" ]]; then
     echo "Detected: user=$(id -un); sudo(non-interactive)=${SUDO_STATUS}" >&2
     echo 'Install manually as root then re-run:' >&2
-    echo '  sudo apt-get update -y' >&2
+    echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
     echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
     echo 'Or re-run this action with a user that can install packages non-interactively.' >&2
     exit 1
   else
-    echo "   Running (sudo apt-get update -y)"
-    if sudo apt-get update -y; then
+    # Use --allow-releaseinfo-change so noninteractive runs do not fail when a
+    # trusted repository (for example, the ondrej/php PPA) updates its
+    # metadata fields such as Label/Suite/codename.
+    echo "   Running (sudo apt-get update -y --allow-releaseinfo-change)"
+    if sudo apt-get update -y --allow-releaseinfo-change; then
       echo "   ✅ apt-get update completed"
     else
       echo "::error::apt-get update failed" >&2
