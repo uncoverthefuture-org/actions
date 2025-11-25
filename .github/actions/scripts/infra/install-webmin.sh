@@ -39,7 +39,22 @@ if dpkg -s usermin >/dev/null 2>&1; then
   INSTALL_USERMIN=false
 fi
 
+has_webmin_repo() {
+  # Detect whether the Webmin APT repository is already present. This keeps the
+  # setup idempotent and allows users to pre-configure the repo (for example,
+  # via cloud-init) without this script overwriting their configuration.
+  if grep -Rqs 'download.webmin.com' /etc/apt/sources.list.d /etc/apt/sources.list 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
 ensure_webmin_repo() {
+  echo "🔑 Ensuring Webmin repository is configured ..."
+  if has_webmin_repo; then
+    echo "✅ Webmin APT repository already configured; skipping setup script"
+    return 0
+  fi
   echo "🔑 Setting up Webmin repository via vendor script ..."
   # Use vendor setup script to configure repo and keys
   # Fetch the vendor repo setup script
@@ -64,6 +79,32 @@ ensure_webmin_repo() {
     exit 1
   fi
   rm -f "$TMP_SETUP"
+  # Verify that the setup script actually registered the Webmin repository.
+  # On some images the helper may no-op; in that case, apply the documented
+  # manual configuration so that apt can locate the webmin package.
+  if has_webmin_repo; then
+    echo "✅ Webmin APT repository configured via vendor script"
+    return 0
+  fi
+  echo "::warning::webmin-setup-repo.sh completed but Webmin APT repository was not detected; applying manual repository configuration fallback" >&2
+  # Manual repo setup (equivalent to the instructions printed in error hints).
+  # This path is idempotent: it overwrites the webmin.list entry and keyring
+  # if they already exist, so repeated runs are safe.
+  $SUDO rm -f /etc/apt/sources.list.d/webmin.list /etc/apt/sources.list.d/webmin.list.disabled 2>/dev/null || true
+  # Ensure keyrings directory exists for the signed-by stanza
+  $SUDO mkdir -p /usr/share/keyrings 2>/dev/null || true
+  if command -v curl >/dev/null 2>&1; then
+    $SUDO sh -c "curl -fsSL https://download.webmin.com/jcameron-key.asc | gpg --dearmor -o /usr/share/keyrings/webmin.gpg"
+  else
+    $SUDO sh -c "wget -qO- https://download.webmin.com/jcameron-key.asc | gpg --dearmor -o /usr/share/keyrings/webmin.gpg"
+  fi
+  $SUDO sh -c "echo 'deb [signed-by=/usr/share/keyrings/webmin.gpg] https://download.webmin.com/download/repository sarge contrib' > /etc/apt/sources.list.d/webmin.list"
+  if has_webmin_repo; then
+    echo "✅ Webmin APT repository configured via manual fallback"
+    return 0
+  fi
+  echo "::error::Failed to configure Webmin APT repository even after manual fallback" >&2
+  return 1
 }
 
 if [ "$INSTALL_WEBMIN" = "true" ] || [ "$INSTALL_USERMIN" = "true" ]; then
