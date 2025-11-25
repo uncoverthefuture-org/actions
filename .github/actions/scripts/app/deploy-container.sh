@@ -379,6 +379,10 @@ echo "🛑 Stopping existing container (if any): $CONTAINER_NAME"
 podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
 echo "🧹 Removing existing container (if any): $CONTAINER_NAME"
 podman rm   "$CONTAINER_NAME" >/dev/null 2>&1 || true
+if podman container exists "$CONTAINER_NAME" >/dev/null 2>&1; then
+  echo "::warning::Container '$CONTAINER_NAME' still exists after stop/rm; attempting force removal" >&2
+  podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+fi
 
 # --- Run container -----------------------------------------------------------------
 echo "🚀 Starting container: $CONTAINER_NAME"
