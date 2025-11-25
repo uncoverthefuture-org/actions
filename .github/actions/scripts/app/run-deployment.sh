@@ -375,7 +375,7 @@ echo "================================================================"
 echo "🧭 Management interfaces (this host)"
 echo "================================================================"
 if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
-  echo "Portainer UI (HTTPS): https://${ACCESS_HOST}:${PORTAINER_HTTPS_PORT}"
+  echo "Portainer UI (HTTPS): https://${ACCESS_HOST}:${PORTAINER_HTTPS_PORT:-9443}"
 fi
 if [ "${INSTALL_WEBMIN:-false}" = "true" ]; then
   echo "Webmin (default HTTPS): https://${ACCESS_HOST}:10000"
