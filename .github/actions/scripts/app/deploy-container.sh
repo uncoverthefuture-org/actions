@@ -453,6 +453,11 @@ if [[ -x "$HOME/uactions/scripts/app/install-app-quadlet.sh" ]]; then
   export DEPLOY_DIR_CONTAINER_PATH
   export MEMORY_LIMIT
   export CPU_LIMIT
+  export APP_SLUG
+  export ENV_NAME
+  export REMOTE_ENV_FILE
+  export TRAEFIK_ENABLED
+  export TRAEFIK_NETWORK_NAME
   export QUADLET_ENABLED="${QUADLET_ENABLED:-true}"
   "$HOME/uactions/scripts/app/install-app-quadlet.sh" || echo "::warning::install-app-quadlet.sh failed (Quadlet persistence may be unavailable)" >&2
 else

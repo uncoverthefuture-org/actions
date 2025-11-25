@@ -132,10 +132,10 @@ if command -v systemctl >/dev/null 2>&1; then
   else
     echo "::warning::systemctl --user daemon-reload failed; Quadlet changes may not be active until next reload" >&2
   fi
-  if systemctl --user enable "${UNIT_NAME}.service" >/dev/null 2>&1; then
-    echo "Enabled ${UNIT_NAME}.service for user" >&2
+  if systemctl --user enable "${UNIT_NAME}.container" >/dev/null 2>&1; then
+    echo "Enabled ${UNIT_NAME}.container for user" >&2
   else
-    echo "::warning::Failed to enable ${UNIT_NAME}.service; ensure linger is enabled and try manually" >&2
+    echo "::warning::Failed to enable ${UNIT_NAME}.container; ensure linger is enabled and try manually" >&2
   fi
 else
   echo "::warning::systemctl not found; Quadlet unit created but not registered" >&2

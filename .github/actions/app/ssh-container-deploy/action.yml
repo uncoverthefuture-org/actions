@@ -241,6 +241,11 @@ inputs: # All parameters accepted by this action
     required: false
     default: '512m'
 
+  quadlet_enabled:
+    description: "When 'false', skip generating Quadlet .container units for the app (no systemd persistence). Default: true."
+    required: false
+    default: 'true'
+
   # Logging / Debugging
   debug:
     description: 'Enable verbose logging, including env paths and user info (default: false)'
@@ -516,6 +521,11 @@ runs: # Composite action implementation
           export UFW_ALLOW_PORTS_INPUT='${{ inputs.ufw_allow_ports }}'
           export INSTALL_WEBMIN='${{ inputs.install_webmin }}'
           export INSTALL_USERMIN='${{ inputs.install_usermin }}'
+
+          # Quadlet/systemd persistence toggle for app containers. When set to
+          # 'false', deploy-container.sh will skip generating a Quadlet
+          # .container unit so the app is not managed by systemd --user.
+          export QUADLET_ENABLED='${{ inputs.quadlet_enabled }}'
 
 
           echo "================================================================"
