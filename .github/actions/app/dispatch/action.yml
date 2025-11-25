@@ -194,6 +194,14 @@ inputs:
     description: "Ports opened via UFW during host prep (space-separated list, example: '80 443')."
     required: false
     default: ''
+  install_portainer:
+    description: "Install Portainer CE (container management UI) on the host as a Quadlet-managed service when using ssh-container-deploy."
+    required: false
+    default: 'true'
+  portainer_https_port:
+    description: "Host HTTPS port for Portainer UI when enabled (default: 9443)."
+    required: false
+    default: '9443'
 
   # VHost
   manage_vhost:
@@ -440,6 +448,8 @@ runs:
         ufw_allow_ports: ${{ inputs.ufw_allow_ports != '' && inputs.ufw_allow_ports || fromJSON(steps.params.outputs.json).ufw_allow_ports }}
         install_webmin: ${{ fromJSON(steps.params.outputs.json).install_webmin }}
         install_usermin: ${{ fromJSON(steps.params.outputs.json).install_usermin }}
+        install_portainer: ${{ inputs.install_portainer != '' && inputs.install_portainer || fromJSON(steps.params.outputs.json).install_portainer }}
+        portainer_https_port: ${{ inputs.portainer_https_port != '' && inputs.portainer_https_port || fromJSON(steps.params.outputs.json).portainer_https_port }}
         debug: ${{ inputs.debug != '' && inputs.debug || fromJSON(steps.params.outputs.json).debug }}
 
     - name: aws-ssm-container-deploy
