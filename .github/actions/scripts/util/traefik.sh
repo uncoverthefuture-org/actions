@@ -49,7 +49,40 @@ ensure_traefik_network() {
     traefik_util_debug "$debug" "Creating Traefik network '$network_name'"
     podman network create "$network_name" >/dev/null
   fi
+  if command -v traefik_fix_cni_config_version >/dev/null 2>&1; then
+    traefik_fix_cni_config_version "$network_name" "$debug" || true
+  fi
   printf '%s' "--network $network_name"
+}
+
+traefik_fix_cni_config_version() {
+  local network_name="$1"
+  local debug="${2:-}"
+  if [[ -z "$network_name" ]]; then return 0; fi
+
+  local conf_dir conf_file
+  if [ "$(id -u)" -eq 0 ]; then
+    conf_dir="/etc/cni/net.d"
+  else
+    conf_dir="$HOME/.config/cni/net.d"
+  fi
+  conf_file="$conf_dir/${network_name}.conflist"
+
+  if [ ! -f "$conf_file" ]; then
+    traefik_util_debug "$debug" "No CNI config found for '$network_name' at $conf_file; skipping version fix"
+    return 0
+  fi
+
+  if grep -q '"cniVersion"[[:space:]]*:[[:space:]]*"1.0.0"' "$conf_file" 2>/dev/null; then
+    traefik_util_debug "$debug" "Downgrading CNI cniVersion to 0.4.0 for '$network_name' ($conf_file)"
+    if command -v sed >/dev/null 2>&1; then
+      if ! sed -i 's/"cniVersion"[[:space:]]*:[[:space:]]*"1.0.0"/"cniVersion": "0.4.0"/' "$conf_file" 2>/dev/null; then
+        echo "::warning::Failed to rewrite CNI cniVersion in $conf_file" >&2
+      fi
+    else
+      echo "::warning::sed not available; cannot adjust CNI cniVersion in $conf_file" >&2
+    fi
+  fi
 }
 
 # generate_traefik_static_config <dest_path> [email] [log_level] [debug]

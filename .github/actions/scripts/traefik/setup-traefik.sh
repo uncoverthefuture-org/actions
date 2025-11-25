@@ -430,6 +430,9 @@ if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
   else
     echo "🌐 Podman network already exists: $TRAEFIK_NETWORK_NAME"
   fi
+  if command -v traefik_fix_cni_config_version >/dev/null 2>&1; then
+    traefik_fix_cni_config_version "$TRAEFIK_NETWORK_NAME" "${DEBUG:-false}" || true
+  fi
 fi
 
 if [[ "$TRAEFIK_USE_HOST_NETWORK" == "true" ]]; then
