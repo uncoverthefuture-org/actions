@@ -82,6 +82,10 @@ fi
 
 QUADLET_DIR="${HOME}/.config/containers/systemd"
 mkdir -p "$QUADLET_DIR"
+# Quadlet uses a .container unit file (portainer.container) which systemd
+# then exposes as a regular service unit (portainer.service). The .container
+# file lives under ~/.config/containers/systemd while the user interacts with
+# the generated service via `systemctl --user` using the .service name.
 UNIT_PATH="${QUADLET_DIR}/portainer.container"
 
 cat >"$UNIT_PATH" <<EOF
@@ -123,9 +127,14 @@ if command -v loginctl >/dev/null 2>&1; then
 fi
 
 if command -v systemctl >/dev/null 2>&1; then
+  # When a Quadlet .container file is present under ~/.config/containers/systemd,
+  # systemd's generators expose it as a corresponding .service unit. For
+  # portainer.container this becomes portainer.service, which is what
+  # `systemctl --user` should manage.
+  PORTAINER_SERVICE="portainer.service"
   if systemctl --user daemon-reload >/dev/null 2>&1; then
-    if systemctl --user enable --now portainer.container >/dev/null 2>&1; then
-      echo "Enabled and started portainer.container for user" >&2
+    if systemctl --user enable --now "${PORTAINER_SERVICE}" >/dev/null 2>&1; then
+      echo "Enabled and started ${PORTAINER_SERVICE} for user (from Quadlet ${UNIT_PATH})" >&2
       # Best-effort HTTPS probe so operators see whether the UI is reachable
       # on the expected address without failing the script when curl is
       # unavailable or the probe times out.
@@ -135,7 +144,7 @@ if command -v systemctl >/dev/null 2>&1; then
         echo "Portainer HTTPS probe on https://127.0.0.1:${PORTAINER_HTTPS_PORT}: HTTP ${code}" >&2
       fi
     else
-      echo "::warning::Failed to enable/start portainer.container; start manually with systemctl --user start portainer.container" >&2
+      echo "::warning::Failed to enable/start ${PORTAINER_SERVICE}; start manually with: systemctl --user start ${PORTAINER_SERVICE}" >&2
     fi
   else
     echo "::warning::systemctl --user daemon-reload failed; Quadlet changes may not be active until next reload" >&2

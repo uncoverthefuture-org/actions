@@ -144,16 +144,43 @@ REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-}"
 
 echo "Quadlet unit written to ${UNIT_PATH}" >&2
 
+# Best-effort: ensure user lingering is enabled so user-level systemd can
+# restart the Quadlet-managed app container after reboots even when the user
+# is not actively logged in. This mirrors the Portainer behavior and keeps the
+# persistence model consistent across management UIs and application services.
+if command -v loginctl >/dev/null 2>&1; then
+  CURRENT_USER_APP="$(id -un)"
+  if ! loginctl show-user "${CURRENT_USER_APP}" 2>/dev/null | grep -q "Linger=yes"; then
+    loginctl enable-linger "${CURRENT_USER_APP}" >/dev/null 2>&1 || true
+  fi
+fi
+
 if command -v systemctl >/dev/null 2>&1; then
+  # Quadlet .container files (for example, myapp-production.container) are
+  # consumed by systemd's generators and exposed as standard service units
+  # (myapp-production.service). The .service name is what operators should
+  # manage via `systemctl --user`.
+  APP_SERVICE_NAME="${UNIT_NAME}.service"
   if systemctl --user daemon-reload >/dev/null 2>&1; then
     echo "systemd --user daemon-reload completed" >&2
   else
     echo "::warning::systemctl --user daemon-reload failed; Quadlet changes may not be active until next reload" >&2
   fi
-  if systemctl --user enable "${UNIT_NAME}.container" >/dev/null 2>&1; then
-    echo "Enabled ${UNIT_NAME}.container for user" >&2
+  # For application containers we only enable the service so that Quadlet
+  # controls restarts on future logins/reboots. The initial container has
+  # already been started by deploy-container.sh, so we deliberately avoid
+  # `--now` here to prevent a second podman run race.
+  if systemctl --user enable "${APP_SERVICE_NAME}" >/dev/null 2>&1; then
+    echo "Enabled ${APP_SERVICE_NAME} for user (from Quadlet ${UNIT_PATH})" >&2
   else
-    echo "::warning::Failed to enable ${UNIT_NAME}.container; ensure linger is enabled and try manually" >&2
+    echo "::warning::Failed to enable ${APP_SERVICE_NAME} under user-level systemd." >&2
+    echo "           To complete setup manually on the server, SSH as ${CURRENT_USER_APP} and run:" >&2
+    echo "             systemctl --user daemon-reload" >&2
+    echo "             systemctl --user enable --now ${APP_SERVICE_NAME}" >&2
+    echo "             systemctl --user status ${APP_SERVICE_NAME}" >&2
+    echo "           If you see 'Failed to connect to bus: No such file or directory', ensure linger is enabled:" >&2
+    echo "             loginctl show-user ${CURRENT_USER_APP} | grep Linger" >&2
+    echo "             sudo loginctl enable-linger ${CURRENT_USER_APP}" >&2
   fi
 else
   echo "::warning::systemctl not found; Quadlet unit created but not registered" >&2

@@ -246,6 +246,12 @@ cleanup_existing_traefik() {
 #   ~/.config/systemd/user, and enables it via `systemctl --user` when
 #   possible. This allows Traefik to restart automatically for the podman
 #   user after reboots.
+#
+#   Podman now recommends Quadlet-based units for new setups. This helper is
+#   intentionally kept as a legacy persistence path for container-mode
+#   deployments so existing workflows continue to function, while the
+#   Quadlet-based flow (for example, install-quadlet-sockets.sh +
+#   traefik.container) can be adopted gradually.
 #   Example:
 #     # After confirming Traefik is healthy, persist it via systemd user unit
 #     ensure_traefik_systemd_user_service
@@ -262,7 +268,6 @@ ensure_traefik_systemd_user_service() {
   fi
 
   if podman generate systemd --files --name traefik >/dev/null 2>&1; then
-    podman generate systemd --files --name traefik
     mkdir -p "$HOME/.config/systemd/user"
     local unit_tmp="container-traefik.service"
     local unit_path="$HOME/.config/systemd/user/container-traefik.service"
