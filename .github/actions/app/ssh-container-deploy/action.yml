@@ -389,6 +389,7 @@ runs: # Composite action implementation
         exit 1
 
     - name: Ensure server scripts bundle is deployed
+      id: scripts
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.ensure_scripts_deployed == 'true' }}
       uses: ./.github/actions/infra/deploy-server-scripts
       with:
@@ -582,30 +583,22 @@ runs: # Composite action implementation
           echo "Installing server-managed scripts bundle on remote host"
           echo "================================================================"
           mkdir -p "$HOME/uactions"
-          # Select the most recent scripts bundle. New uploads use a unique
-          # filename per run (uactions-scripts-<run>-<attempt>.tgz). We pick the
-          # newest matching file and delete older bundles to avoid clutter,
-          # falling back to the legacy uactions-scripts.tgz name when needed.
+          # Use the exact bundle uploaded for this run when available. The
+          # deploy-server-scripts action exposes the staged tarball basename as
+          # an output (for example uactions-scripts-<run>-<attempt>.tgz). This
+          # prevents concurrent workflows from accidentally consuming each
+          # other's bundles. When no bundle name is provided (for example when
+          # ensure_scripts_deployed=false or skip_upload=true), fall back to the
+          # legacy uactions-scripts.tgz path without touching any other files.
           BUNDLE_PATH=""
-          BUNDLE_GLOB="$HOME/uactions-scripts-*.tgz"
-          if compgen -G "$BUNDLE_GLOB" > /dev/null; then
-            first="true"
-            # shellcheck disable=SC2012
-            for path in $(ls -1t $BUNDLE_GLOB 2>/dev/null); do
-              if [ "$first" = "true" ]; then
-                BUNDLE_PATH="$path"
-                first="false"
-              else
-                echo "Cleaning up older scripts bundle: $path"
-                rm -f "$path" || true
-              fi
-            done
-          fi
-          if [ -z "$BUNDLE_PATH" ] && [ -f "$HOME/uactions-scripts.tgz" ]; then
+          BUNDLE_BASENAME='${{ steps.scripts.outputs.tar_basename }}'
+          if [ -n "$BUNDLE_BASENAME" ] && [ -f "$HOME/$BUNDLE_BASENAME" ]; then
+            BUNDLE_PATH="$HOME/$BUNDLE_BASENAME"
+          elif [ -f "$HOME/uactions-scripts.tgz" ]; then
             BUNDLE_PATH="$HOME/uactions-scripts.tgz"
           fi
           if [ -z "$BUNDLE_PATH" ] || [ ! -f "$BUNDLE_PATH" ]; then
-            echo '::error::No uactions scripts bundle found on remote host (expected uactions-scripts-*.tgz or uactions-scripts.tgz)';
+            echo "::error::No uactions scripts bundle found on remote host (expected $HOME/uactions-scripts-<run>-<attempt>.tgz or uactions-scripts.tgz)";
             exit 1
           fi
           ln -sf "$BUNDLE_PATH" "$HOME/uactions-scripts.tgz"

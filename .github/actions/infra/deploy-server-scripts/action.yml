@@ -63,6 +63,9 @@ outputs:
   status:
     description: "High-level deployment status: deployed | upload_failed | install_failed | skipped_no_bundle | skipped_host_unreachable."
     value: ${{ steps.summary.outputs.status }}
+  tar_basename:
+    description: 'Basename of the scripts tarball staged and uploaded for this run (e.g. uactions-scripts-<run>-<attempt>.tgz).'
+    value: ${{ steps.stage.outputs.tar_basename }}
 
 runs:
   using: 'composite'
