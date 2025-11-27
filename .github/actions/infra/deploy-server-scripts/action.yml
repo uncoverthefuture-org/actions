@@ -103,7 +103,10 @@ runs:
       run: |
         set -euo pipefail
         mkdir -p "$WORKSPACE/.uactions_cache"
-        TAR_PATH="$WORKSPACE/.uactions_cache/uactions-scripts.tgz"
+        # Use a unique tarball name per run/attempt so concurrent workflows
+        # targeting the same host do not fight over a single filename.
+        TAR_BASENAME="uactions-scripts-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}.tgz"
+        TAR_PATH="$WORKSPACE/.uactions_cache/$TAR_BASENAME"
         SRC_ROOT="$(cd "$ACTION_PATH/../.." && pwd)"
         if [ ! -d "$SRC_ROOT/scripts" ]; then
           echo '::notice::No local scripts directory found; skipping server scripts upload.'
@@ -119,6 +122,7 @@ runs:
         fi
         ls -lh "$TAR_PATH"
         echo "has_bundle=true" >> "$GITHUB_OUTPUT"
+        echo "tar_basename=$TAR_BASENAME" >> "$GITHUB_OUTPUT"
 
     # Upload: Transfer tarball to remote /tmp via scp
     - name: Upload scripts bundle
@@ -130,7 +134,7 @@ runs:
         username: ${{ inputs.ssh_user }}
         key: ${{ inputs.ssh_key }}
         port: ${{ inputs.ssh_port }}
-        source: ".uactions_cache/uactions-scripts.tgz"
+        source: ".uactions_cache/${{ steps.stage.outputs.tar_basename }}"
         target: "~"
         overwrite: true
         strip_components: 1

@@ -420,14 +420,14 @@ PODMAN_PRUNE_ENABLED="${PODMAN_PRUNE_ENABLED:-true}"
 PODMAN_PRUNE_MIN_AGE_DAYS="${PODMAN_PRUNE_MIN_AGE_DAYS:-15}"
 PODMAN_PRUNE_KEEP_RECENT_IMAGES="${PODMAN_PRUNE_KEEP_RECENT_IMAGES:-2}"
 if [ "$PODMAN_PRUNE_ENABLED" = "true" ]; then
-  if [ -x "$HOME/uactions/scripts/infra/prune-podman-storage.sh" ]; then
+  if [ -f "$HOME/uactions/scripts/infra/prune-podman-storage.sh" ]; then
     echo "================================================================"
     echo "🧹 Running Podman storage cleanup (age>=${PODMAN_PRUNE_MIN_AGE_DAYS} days, keep_recent_images=${PODMAN_PRUNE_KEEP_RECENT_IMAGES})"
     echo "================================================================"
     PODMAN_PRUNE_ENABLED="$PODMAN_PRUNE_ENABLED" \
       PODMAN_PRUNE_MIN_AGE_DAYS="$PODMAN_PRUNE_MIN_AGE_DAYS" \
       PODMAN_PRUNE_KEEP_RECENT_IMAGES="$PODMAN_PRUNE_KEEP_RECENT_IMAGES" \
-      "$HOME/uactions/scripts/infra/prune-podman-storage.sh" || echo "::warning::prune-podman-storage.sh reported an error; continuing deployment"
+      bash "$HOME/uactions/scripts/infra/prune-podman-storage.sh" || echo "::warning::prune-podman-storage.sh reported an error; continuing deployment"
   else
     echo "::notice::PODMAN_PRUNE_ENABLED=true but prune-podman-storage.sh not found; skipping Podman storage cleanup" >&2
   fi
