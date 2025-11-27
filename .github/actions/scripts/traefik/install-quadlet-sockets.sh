@@ -121,8 +121,12 @@ CONTAINER_UNIT_PATH="${QUADLET_DIR}/traefik.container"
 cat >"$CONTAINER_UNIT_PATH" <<EOF
 [Unit]
 Description=Traefik reverse proxy (socket-activated)
-After=${TRAEFIK_NETWORK_NAME}.network http.socket https.socket
-Wants=${TRAEFIK_NETWORK_NAME}.network http.socket https.socket
+# Quadlet maps ${TRAEFIK_NETWORK_NAME}.network to a generated
+# ${TRAEFIK_NETWORK_NAME}-network.service unit under the user generator. Use
+# the latter name in dependencies to avoid Invalid argument warnings from
+# systemd when it attempts to wire up traefik-network.network directly.
+After=${TRAEFIK_NETWORK_NAME}-network.service http.socket https.socket
+Wants=${TRAEFIK_NETWORK_NAME}-network.service http.socket https.socket
 
 [Container]
 Image=docker.io/traefik:${TRAEFIK_VERSION}
