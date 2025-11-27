@@ -149,6 +149,15 @@ All inputs are provided via the `params_json` object. The tables below list each
 | `dashboard_host` | `''` | FQDN for dashboard when using `subdomain` mode. |
 | `dashboard_password` | `''` | Plain dashboard password (hashed on host); default user is `admin`. |
 | `dashboard_users_b64` | `''` | Base64 htpasswd users file; overrides `dashboard_password`. |
+
+### Podman storage cleanup
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `enable_podman_cleanup` | `true` | When `true`, run a safe Podman storage cleanup **after** a successful deployment. This invokes `infra/prune-podman-storage.sh` on the host to prune stopped containers and unused images using an age-based filter, helping prevent overlay storage from growing without bound. |
+| `podman_cleanup_min_age_days` | `15` | Minimum age (in days) before Podman containers/images become eligible for pruning. Resources newer than this threshold are never removed by the cleanup step. |
+| `podman_cleanup_keep_recent_images` | `2` | Hint for how many recent images to keep per host. Currently used for logging alongside the age-based prune, which already preserves recent and in-use images. |
+
 | `dns_servers` | `''` | Optional DNS servers for the Traefik container (`--dns`). |
 | `domain` | `''` | Explicit FQDN for the app (e.g. `app.example.com`). |
 | `base_domain` | `''` | Apex domain used to derive env-specific hosts (e.g. `example.com`). |

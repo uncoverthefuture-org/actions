@@ -155,6 +155,18 @@ inputs: # All parameters accepted by this action
     description: "Extra apt packages installed during host preparation (space separated, example: 'jq curl ca-certificates')."
     required: false
     default: 'jq curl ca-certificates'
+  enable_podman_cleanup:
+    description: 'When true, run a safe Podman storage cleanup after successful deploys to prevent overlay bloat (age-based prune of stopped containers and unused images).'
+    required: false
+    default: 'true'
+  podman_cleanup_min_age_days:
+    description: 'Minimum age in days before Podman containers/images become eligible for pruning (example: 15).'
+    required: false
+    default: '15'
+  podman_cleanup_keep_recent_images:
+    description: 'Hint for how many recent images to keep per host. Currently used for logging alongside the age-based prune (example: 2).'
+    required: false
+    default: '2'
   ufw_allow_ports:
     description: "Space-separated list of ports opened in UFW during host prep (example: '80 443')."
     required: false
@@ -556,6 +568,14 @@ runs: # Composite action implementation
           # entirely so that Traefik can be managed out-of-band. The TRAEFIK_MODE
           # guard defaults to the container-managed path inside the scripts.
           export ENSURE_TRAEFIK='${{ inputs.ensure_traefik }}'
+
+          # Podman storage cleanup controls. When enabled (default),
+          # run-deployment.sh will invoke prune-podman-storage.sh after a
+          # successful deployment to remove old, unused containers/images and
+          # keep Podman overlay storage from growing without bound.
+          export PODMAN_PRUNE_ENABLED='${{ inputs.enable_podman_cleanup }}'
+          export PODMAN_PRUNE_MIN_AGE_DAYS='${{ inputs.podman_cleanup_min_age_days }}'
+          export PODMAN_PRUNE_KEEP_RECENT_IMAGES='${{ inputs.podman_cleanup_keep_recent_images }}'
 
 
           echo "================================================================"
