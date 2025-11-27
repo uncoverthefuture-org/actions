@@ -132,7 +132,7 @@ if [ -n "$PORTAINER_DOMAIN" ]; then
   cat >>"$UNIT_PATH" <<EOF
 Label=traefik.enable=true
 Label=traefik.http.routers.portainer.entrypoints=websecure
-Label=traefik.http.routers.portainer.rule=Host(`${PORTAINER_DOMAIN}`)
+Label=traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)
 Label=traefik.http.routers.portainer.tls=true
 Label=traefik.http.routers.portainer.tls.certresolver=letsencrypt
 Label=traefik.http.services.portainer.loadbalancer.server.port=9000
