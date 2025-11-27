@@ -248,6 +248,10 @@ inputs: # All parameters accepted by this action
     description: "Memory limit (and swap) applied to the container (example: 512m)."
     required: false
     default: '512m'
+  cpu_limit:
+    description: "CPU limit passed as --cpus to podman. Default: 0.5 (half a CPU)."
+    required: false
+    default: '0.5'
 
   quadlet_enabled:
     description: "When 'false', skip generating Quadlet .container units for the app (no systemd persistence). Default: true."
@@ -503,6 +507,7 @@ runs: # Composite action implementation
           export EXTRA_RUN_ARGS='${{ inputs.extra_run_args }}'
           export RESTART_POLICY='${{ inputs.restart_policy }}'
           export MEMORY_LIMIT='${{ inputs.memory_limit }}'
+          export CPU_LIMIT='${{ inputs.cpu_limit }}'
 
           # Traefik & domain routing
           export TRAEFIK_ENABLED='${{ inputs.enable_traefik }}'

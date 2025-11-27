@@ -97,6 +97,10 @@ inputs:
     description: 'Memory limit for container. Default: 512m. Examples: 256m, 1g, 2g'
     required: false
     default: '512m'
+  cpu_limit:
+    description: 'CPU limit passed as --cpus to podman. Default: 0.5 (half a CPU)'
+    required: false
+    default: '0.5'
   extra_run_args:
     description: 'Additional podman run arguments. Optional. Example: --cap-add NET_ADMIN'
     required: false
@@ -224,6 +228,7 @@ runs:
           export EXTRA_ARGS='${{ inputs.extra_run_args }}'
           export RESTART_POLICY='${{ inputs.restart_policy }}'
           export MEMORY_LIMIT='${{ inputs.memory_limit }}'
+          export CPU_LIMIT='${{ inputs.cpu_limit }}'
           export ENV_FILE='${{ inputs.env_file }}'
           export VOLUMES='${{ inputs.volumes }}'
           export COMMAND='${{ inputs.command }}'

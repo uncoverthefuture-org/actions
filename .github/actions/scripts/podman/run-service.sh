@@ -2,12 +2,22 @@
 # run-service.sh - Run a long-lived service container via Podman
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PODMAN_HELPERS="${SCRIPT_DIR}/../util/podman.sh"
+if [[ -r "${PODMAN_HELPERS}" ]]; then
+  # shellcheck source=../util/podman.sh
+  source "${PODMAN_HELPERS}"
+else
+  podman_cpu_cgroup_available() { return 1; }
+fi
+
 IMAGE="${IMAGE:-}"
 SERVICE_NAME="${SERVICE_NAME:-}"
 PORTS="${PORTS:-}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
+CPU_LIMIT="${CPU_LIMIT:-0.5}"
 ENV_FILE="${ENV_FILE:-}"
 VOLUMES="${VOLUMES:-}"
 COMMAND="${COMMAND:-}"
@@ -23,6 +33,7 @@ echo "  • Image:     $IMAGE"
 echo "  • Env file:  ${ENV_FILE:-<none>}"
 echo "  • Restart:   $RESTART_POLICY"
 echo "  • Memory:    $MEMORY_LIMIT"
+echo "  • CPU limit: ${CPU_LIMIT:-<none>}"
 
 # Stop/remove if exists
 echo "🛑 Stopping existing service (if any): $SERVICE_NAME"
@@ -91,6 +102,25 @@ else
     echo "🧭 DNS: using public resolvers (1.1.1.1, 8.8.8.8)"
   fi
   DNS_ARGS+=( --dns 1.1.1.1 --dns 8.8.8.8 )
+fi
+
+# When CPU_LIMIT is provided, prefer an explicit --cpus constraint so the
+# service cannot monopolize the host. Example: CPU_LIMIT=0.25 adds
+#   --cpus=0.25
+# to the podman run invocation. Some environments (for example, rootless on
+# cgroups v1) do not expose a "cpu" cgroup controller; in that case podman
+# rejects --cpus. To avoid hard failures we check via podman_cpu_cgroup_available
+# and emit a warning when limits cannot be applied.
+if [[ -n "$CPU_LIMIT" ]]; then
+  if podman_cpu_cgroup_available; then
+    if [[ -n "$EXTRA_ARGS" ]]; then
+      EXTRA_ARGS+=" --cpus=${CPU_LIMIT}"
+    else
+      EXTRA_ARGS="--cpus=${CPU_LIMIT}"
+    fi
+  else
+    echo "::warning::CPU_LIMIT='${CPU_LIMIT}' configured but Podman host does not expose a 'cpu' cgroup controller; skipping --cpus (service will run without a CPU limit)." >&2
+  fi
 fi
 
 # Assemble command so we can emit a quoted preview when DEBUG=true and then run.
