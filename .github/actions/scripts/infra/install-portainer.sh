@@ -28,8 +28,10 @@ mkdir -p "$PORTAINER_DATA_DIR"
 # Compute a simple configuration signature so we can avoid unnecessary
 # reinstallation when nothing material has changed. Include PORTAINER_DOMAIN
 # so that changing the Traefik host (for example from portainer.dev.example.com
-# to portainer.example.com) forces a Quadlet/container refresh.
-CONF_INPUT="${PORTAINER_TAG}|${PORTAINER_HTTPS_PORT}|${TRAEFIK_NETWORK_NAME}|${PORTAINER_DATA_DIR}|${PORTAINER_DOMAIN}"
+# to portainer.example.com) forces a Quadlet/container refresh. Append a
+# static version token so that changes in label syntax (for example switching
+# the Traefik rule to Host(`domain`)) also trigger a refresh.
+CONF_INPUT="v2|${PORTAINER_TAG}|${PORTAINER_HTTPS_PORT}|${TRAEFIK_NETWORK_NAME}|${PORTAINER_DATA_DIR}|${PORTAINER_DOMAIN}"
 PORTAINER_CONFIG_HASH="$CONF_INPUT"
 if command -v sha256sum >/dev/null 2>&1; then
   PORTAINER_CONFIG_HASH=$(printf '%s' "$CONF_INPUT" | sha256sum | awk '{print $1}')
@@ -130,7 +132,7 @@ if [ -n "$PORTAINER_DOMAIN" ]; then
   cat >>"$UNIT_PATH" <<EOF
 Label=traefik.enable=true
 Label=traefik.http.routers.portainer.entrypoints=websecure
-Label=traefik.http.routers.portainer.rule=Host("${PORTAINER_DOMAIN}")
+Label=traefik.http.routers.portainer.rule=Host(`${PORTAINER_DOMAIN}`)
 Label=traefik.http.routers.portainer.tls=true
 Label=traefik.http.routers.portainer.tls.certresolver=letsencrypt
 Label=traefik.http.services.portainer.loadbalancer.server.port=9000
