@@ -84,6 +84,7 @@ RESTART_POLICY="${RESTART_POLICY:-unless-stopped}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-512m}"
 CPU_LIMIT="${CPU_LIMIT:-0.5}"
 PORTAINER_HTTPS_PORT="${PORTAINER_HTTPS_PORT:-9443}"
+PORTAINER_DOMAIN="${PORTAINER_DOMAIN:-}"
 
 # --- Traefik & domain routing ------------------------------------------------------
 TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
@@ -92,6 +93,28 @@ TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-}"
 DOMAIN_INPUT="${DOMAIN_INPUT:-}"
 DOMAIN_DEFAULT="${DOMAIN_DEFAULT:-}"
 ROUTER_NAME="${ROUTER_NAME:-}"
+
+# When PORTAINER_DOMAIN is not explicitly provided but an app domain exists,
+# derive a friendly default of the form portainer.<apex>. Example:
+#   DOMAIN_DEFAULT=dev.shakohub.com  →  PORTAINER_DOMAIN=portainer.shakohub.com
+# This keeps Portainer tied to the main site domain while remaining
+# environment-agnostic. Callers can still override PORTAINER_DOMAIN when they
+# need a different host.
+if [ -z "$PORTAINER_DOMAIN" ]; then
+  EFFECTIVE_DOMAIN_FOR_PORTAINER="${DOMAIN_INPUT:-${DOMAIN_DEFAULT:-}}"
+  if [ -n "$EFFECTIVE_DOMAIN_FOR_PORTAINER" ]; then
+    dom_lower=$(printf '%s' "$EFFECTIVE_DOMAIN_FOR_PORTAINER" | tr '[:upper:]' '[:lower:]')
+    # Strip any leading www. before computing the apex.
+    dom_stripped="${dom_lower#www.}"
+    IFS='.' read -r -a parts <<<"$dom_stripped"; count=${#parts[@]}
+    if (( count >= 2 )); then
+      apex="${parts[count-2]}.${parts[count-1]}"
+    else
+      apex="$dom_stripped"
+    fi
+    PORTAINER_DOMAIN="portainer.${apex}"
+  fi
+fi
 
 # --- User context ------------------------------------------------------
 CURRENT_USER="${CURRENT_USER:-$(id -un)}"
@@ -311,22 +334,64 @@ if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
   echo "🛠 Installing Portainer (as requested) ..."
   echo "================================================================"
   if [ -x "$HOME/uactions/scripts/infra/install-portainer.sh" ]; then
-    INSTALL_PORTAINER="${INSTALL_PORTAINER:-true}" PORTAINER_HTTPS_PORT="${PORTAINER_HTTPS_PORT:-9443}" TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-traefik-network}" "$HOME/uactions/scripts/infra/install-portainer.sh"
+    # Inline example: when PORTAINER_DOMAIN=portainer.example.com and
+    # TRAEFIK_NETWORK_NAME=traefik-network, install-portainer.sh will create a
+    # Quadlet unit that both exposes Portainer on :9443 and registers a Traefik
+    # router for https://portainer.example.com.
+    INSTALL_PORTAINER="${INSTALL_PORTAINER:-true}" \
+      PORTAINER_HTTPS_PORT="${PORTAINER_HTTPS_PORT:-9443}" \
+      TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-traefik-network}" \
+      PORTAINER_DOMAIN="${PORTAINER_DOMAIN:-}" \
+      "$HOME/uactions/scripts/infra/install-portainer.sh"
   else
     echo "::warning::install-portainer.sh not found; skipping Portainer installation"
   fi
 fi
 
 # --- Ensure Traefik is ready (idempotent) -------------------------------------------
+# TRAEFIK_MODE can be passed in by callers, but when unset we infer a sensible
+# default so that container-managed Traefik and Quadlet-managed Traefik both
+# converge through the same entrypoint.
+TRAEFIK_MODE="${TRAEFIK_MODE:-}"
+if [ -z "$TRAEFIK_MODE" ]; then
+  # Inline example: when install-quadlet-sockets.sh has created
+  #   ~/.config/containers/systemd/traefik.container
+  #   ~/.config/systemd/user/http.socket
+  #   ~/.config/systemd/user/https.socket
+  # we treat Traefik as Quadlet-managed for the purposes of the ensure step.
+  if [ -f "$HOME/.config/containers/systemd/traefik.container" ] || \
+     [ -f "$HOME/.config/systemd/user/http.socket" ] || \
+     [ -f "$HOME/.config/systemd/user/https.socket" ]; then
+    TRAEFIK_MODE="quadlet"
+  else
+    TRAEFIK_MODE="container"
+  fi
+fi
+
 if [ "${TRAEFIK_ENABLED:-false}" = "true" ]; then
   echo "================================================================"
   echo "🧪 Ensuring Traefik is ready ..."
   echo "================================================================"
-  if [ -x "$HOME/uactions/scripts/traefik/ensure-traefik-ready.sh" ]; then
-    export ENSURE_TRAEFIK="${ENSURE_TRAEFIK:-true}"
-    "$HOME/uactions/scripts/traefik/ensure-traefik-ready.sh"
+  if [ "$TRAEFIK_MODE" = "quadlet" ]; then
+    # When Traefik is managed via Quadlet/socket activation, the
+    # ensure-traefik-ready.sh script will reconcile Quadlet units via
+    # install-quadlet-sockets.sh instead of recreating a standalone
+    # container. We still rely on the same preflight/health checks.
+    if [ -x "$HOME/uactions/scripts/traefik/ensure-traefik-ready.sh" ]; then
+      export ENSURE_TRAEFIK="${ENSURE_TRAEFIK:-true}"
+      export TRAEFIK_MODE
+      "$HOME/uactions/scripts/traefik/ensure-traefik-ready.sh"
+    else
+      echo "::warning::ensure-traefik-ready.sh not found; skipping Traefik ensure step (Quadlet mode)"
+    fi
   else
-    echo "::warning::ensure-traefik-ready.sh not found; skipping Traefik ensure step"
+    if [ -x "$HOME/uactions/scripts/traefik/ensure-traefik-ready.sh" ]; then
+      export ENSURE_TRAEFIK="${ENSURE_TRAEFIK:-true}"
+      export TRAEFIK_MODE
+      "$HOME/uactions/scripts/traefik/ensure-traefik-ready.sh"
+    else
+      echo "::warning::ensure-traefik-ready.sh not found; skipping Traefik ensure step"
+    fi
   fi
 fi
 
@@ -376,6 +441,13 @@ echo "🧭 Management interfaces (this host)"
 echo "================================================================"
 if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
   echo "Portainer UI (HTTPS): https://${ACCESS_HOST}:${PORTAINER_HTTPS_PORT:-9443}"
+  # When PORTAINER_DOMAIN is configured (for example portainer.shakohub.com),
+  # Traefik will also expose the UI via HTTPS on port 443 for that host. This
+  # line helps operators discover the friendly URL without remembering the
+  # direct :9443 port.
+  if [ -n "${PORTAINER_DOMAIN:-}" ]; then
+    echo "Portainer via Traefik: https://${PORTAINER_DOMAIN}"
+  fi
 fi
 if [ "${INSTALL_WEBMIN:-false}" = "true" ]; then
   echo "Webmin (default HTTPS): https://${ACCESS_HOST}:10000"

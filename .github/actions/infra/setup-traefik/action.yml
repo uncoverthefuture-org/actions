@@ -73,7 +73,7 @@ inputs:
   mode:
     description: 'Setup mode: container (default) or quadlet (socket activation)'
     required: false
-    default: 'container'
+    default: 'quadlet'
   quadlet_enable_http3:
     description: 'When mode=quadlet, also bind UDP 443 and enable HTTP/3 (default: false)'
     required: false
@@ -329,7 +329,18 @@ runs:
             echo "**Recommended**: Use \`subdomain\` mode on port 443 for Cloudflare compatibility."
             echo ""
           fi
-          
+          fi
+
+          # Network / firewall checklist
+          echo "### 🌐 Network & Firewall Checklist"
+          echo ""
+          echo "- Ensure the server firewall (e.g., UFW) allows inbound TCP on ports 80 and 443 for Traefik." 
+          echo "- If the Traefik dashboard is enabled on 8080, allow TCP 8080 as well (or restrict to trusted IPs)." 
+          echo "- If you use Portainer, ensure TCP ${PORTAINER_HTTPS_PORT:-9443} is allowed (or equivalent configured port)." 
+          echo "- If you use Webmin, ensure TCP 10000 is allowed." 
+          echo "- In cloud environments (AWS Security Groups, GCP firewall rules, Azure NSGs, etc.), open these ports to your desired source IP ranges; UFW alone is not enough if the cloud firewall blocks them." 
+          echo ""
+
         } >> "$GITHUB_STEP_SUMMARY"
         
         # Also emit workflow-level warnings

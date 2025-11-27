@@ -175,6 +175,10 @@ inputs: # All parameters accepted by this action
     description: 'Host HTTPS port for Portainer UI (default: 9443).'
     required: false
     default: '9443'
+  portainer_domain:
+    description: 'FQDN for Portainer behind Traefik (example: portainer.example.com). When set, Portainer is exposed via Traefik on 443 in addition to direct :9443 access.'
+    required: false
+    default: ''
   show_root_install_hints:
     description: 'Show explicit manual install instructions when root privileges are required (fail-fast messaging)'
     required: false
@@ -536,11 +540,22 @@ runs: # Composite action implementation
           export INSTALL_USERMIN='${{ inputs.install_usermin }}'
           export INSTALL_PORTAINER='${{ inputs.install_portainer }}'
           export PORTAINER_HTTPS_PORT='${{ inputs.portainer_https_port }}'
+          # When PORTAINER_DOMAIN is set (for example portainer.shakohub.com), the
+          # install-portainer.sh script will attach Traefik labels so the UI is
+          # reachable via HTTPS on 443 at that host in addition to any direct
+          # :9443 binding.
+          export PORTAINER_DOMAIN='${{ inputs.portainer_domain }}'
 
           # Quadlet/systemd persistence toggle for app containers. When set to
           # 'false', deploy-container.sh will skip generating a Quadlet
           # .container unit so the app is not managed by systemd --user.
           export QUADLET_ENABLED='${{ inputs.quadlet_enabled }}'
+
+          # Propagate Traefik ensure hint to the remote orchestration layer. When
+          # ensure_traefik=false, run-deployment.sh will skip ensure-traefik-ready
+          # entirely so that Traefik can be managed out-of-band. The TRAEFIK_MODE
+          # guard defaults to the container-managed path inside the scripts.
+          export ENSURE_TRAEFIK='${{ inputs.ensure_traefik }}'
 
 
           echo "================================================================"

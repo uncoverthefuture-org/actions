@@ -24,6 +24,7 @@ if [ "${DEBUG:-false}" = "true" ]; then set -x; fi
 
 ENSURE_TRAEFIK="${ENSURE_TRAEFIK:-true}"
 TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
+TRAEFIK_MODE="${TRAEFIK_MODE:-container}"
 
 # Track whether the ping endpoint responds so we can reconcile when legacy
 # deployments reused without the ping flag enabled still return HTTP 404.
@@ -53,6 +54,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROBE="$SCRIPT_DIR/probe-traefik.sh"
 SETUP="$SCRIPT_DIR/setup-traefik.sh"
+QUADLET_INSTALL="$SCRIPT_DIR/install-quadlet-sockets.sh"
 
 # Local helpers
 notice() { printf 'ℹ️  %s\n' "$*"; }
@@ -139,48 +141,102 @@ echo "🔍 Traefik preflight"
 echo "================================================================"
 if probe_preflight; then
   echo "✅ Traefik preflight OK (listeners on 80/443)"
-  # Reconcile configuration even when healthy; setup-traefik.sh performs a fast
-  # path when confighash matches and avoids unnecessary restarts.
-  if ! "$SETUP"; then
-    echo "::error::Traefik setup reconciliation failed; see logs above." >&2
-    dump_traefik_logs
-    exit 1
-  fi
-  # Verify again after potential reconciliation
-  if ! probe_preflight; then
-    echo "::error::Traefik preflight failed immediately after reconciliation." >&2
-    dump_traefik_logs
-    exit 1
-  fi
-  check_local_reachability || true
-  if [ "${TRAEFIK_PING_ENABLED:-true}" = "true" ] && [[ "$PING_REACHABILITY" != ok ]]; then
-    if [ "$PING_RESTART_ATTEMPTED" != "true" ]; then
-      notice "Traefik ping endpoint still missing; forcing one-time restart to apply ping settings."
-      PING_RESTART_ATTEMPTED="true"
-      if ! TRAEFIK_FORCE_RESTART=true "$SETUP"; then
-        echo "::error::Traefik forced restart failed; see logs above." >&2
+  if [ "$TRAEFIK_MODE" != "quadlet" ]; then
+    # Container-managed path: reconcile configuration even when healthy;
+    # setup-traefik.sh performs a fast path when confighash matches and avoids
+    # unnecessary restarts.
+    if ! "$SETUP"; then
+      echo "::error::Traefik setup reconciliation failed; see logs above." >&2
+      dump_traefik_logs
+      exit 1
+    fi
+    # Verify again after potential reconciliation
+    if ! probe_preflight; then
+      echo "::error::Traefik preflight failed immediately after reconciliation." >&2
+      dump_traefik_logs
+      exit 1
+    fi
+  else
+    # Quadlet-managed path: assert that the quadlet units match our desired
+    # configuration by re-running install-quadlet-sockets.sh when available,
+    # then verifying listeners again.
+    if [ -x "$QUADLET_INSTALL" ]; then
+      echo "🛠 Reconciling Quadlet Traefik units via install-quadlet-sockets.sh ..."
+      if ! "$QUADLET_INSTALL"; then
+        echo "::error::Quadlet Traefik installation failed; see logs above." >&2
         dump_traefik_logs
         exit 1
       fi
       if ! probe_preflight; then
-        echo "::error::Traefik preflight failed after forced restart." >&2
+        echo "::error::Traefik preflight failed immediately after Quadlet reconciliation." >&2
         dump_traefik_logs
         exit 1
       fi
-      check_local_reachability || true
+    else
+      echo "::notice::TRAEFIK_MODE=quadlet but install-quadlet-sockets.sh not found; skipping Quadlet reconciliation and relying on existing units."
     fi
-    if [[ "$PING_REACHABILITY" != ok ]]; then
-      echo "::error::Traefik ping endpoint remains unreachable after forced restart." >&2
-      dump_traefik_logs
-      exit 1
+  fi
+  check_local_reachability || true
+  if [ "${TRAEFIK_PING_ENABLED:-true}" = "true" ] && [[ "$PING_REACHABILITY" != ok ]]; then
+    if [ "$TRAEFIK_MODE" != "quadlet" ]; then
+      if [ "$PING_RESTART_ATTEMPTED" != "true" ]; then
+        notice "Traefik ping endpoint still missing; forcing one-time restart to apply ping settings."
+        PING_RESTART_ATTEMPTED="true"
+        if ! TRAEFIK_FORCE_RESTART=true "$SETUP"; then
+          echo "::error::Traefik forced restart failed; see logs above." >&2
+          dump_traefik_logs
+          exit 1
+        fi
+        if ! probe_preflight; then
+          echo "::error::Traefik preflight failed after forced restart." >&2
+          dump_traefik_logs
+          exit 1
+        fi
+        check_local_reachability || true
+      fi
+      if [[ "$PING_REACHABILITY" != ok ]]; then
+        echo "::error::Traefik ping endpoint remains unreachable after forced restart." >&2
+        dump_traefik_logs
+        exit 1
+      fi
+    else
+      # Quadlet mode: best-effort user-level restart of traefik.service if the
+      # ping endpoint remains unreachable after unit reconciliation.
+      if [ "$PING_RESTART_ATTEMPTED" != "true" ] && command -v systemctl >/dev/null 2>&1; then
+        notice "Traefik ping not reachable; attempting systemd --user restart of traefik.service (Quadlet mode)."
+        PING_RESTART_ATTEMPTED="true"
+        systemctl --user restart traefik.service >/dev/null 2>&1 || true
+        if ! probe_preflight; then
+          echo "::error::Traefik preflight failed after Quadlet service restart." >&2
+          dump_traefik_logs
+          exit 1
+        fi
+        check_local_reachability || true
+      fi
+      if [[ "$PING_REACHABILITY" != ok ]]; then
+        echo "::error::Traefik ping endpoint remains unreachable after Quadlet reconciliation/restart." >&2
+        dump_traefik_logs
+        exit 1
+      fi
     fi
   fi
   check_ip_reachability || true
   exit 0
 fi
 
-# Slow path: reconcile then verify
-reconcile_setup
+# Slow path: reconcile then verify (container-managed and Quadlet Traefik)
+if [ "$TRAEFIK_MODE" != "quadlet" ]; then
+  reconcile_setup
+else
+  if [ -x "$QUADLET_INSTALL" ]; then
+    echo "🛠 Reconciling Traefik via Quadlet installer (slow path) ..."
+    if ! "$QUADLET_INSTALL"; then
+      echo "::error::Quadlet Traefik installation failed in slow-path reconciliation; see logs above." >&2
+      dump_traefik_logs
+      exit 1
+    fi
+  fi
+fi
 
 echo "================================================================"
 echo "🔁 Verifying Traefik after reconciliation"

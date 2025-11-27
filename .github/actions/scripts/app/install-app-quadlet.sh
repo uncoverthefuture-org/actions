@@ -112,7 +112,7 @@ REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-}"
   fi
 
   if [[ -n "${MEMORY_LIMIT}" ]]; then
-    echo "Memory=${MEMORY_LIMIT}"
+    echo "PodmanArgs=--memory=${MEMORY_LIMIT} --memory-swap=${MEMORY_LIMIT}"
   fi
 
   # When CPU_LIMIT is set we prefer to mirror the runtime --cpus behavior in the
@@ -166,22 +166,12 @@ if command -v systemctl >/dev/null 2>&1; then
   else
     echo "::warning::systemctl --user daemon-reload failed; Quadlet changes may not be active until next reload" >&2
   fi
-  # For application containers we only enable the service so that Quadlet
-  # controls restarts on future logins/reboots. The initial container has
-  # already been started by deploy-container.sh, so we deliberately avoid
-  # `--now` here to prevent a second podman run race.
-  if systemctl --user enable "${APP_SERVICE_NAME}" >/dev/null 2>&1; then
-    echo "Enabled ${APP_SERVICE_NAME} for user (from Quadlet ${UNIT_PATH})" >&2
-  else
-    echo "::warning::Failed to enable ${APP_SERVICE_NAME} under user-level systemd." >&2
-    echo "           To complete setup manually on the server, SSH as ${CURRENT_USER_APP} and run:" >&2
-    echo "             systemctl --user daemon-reload" >&2
-    echo "             systemctl --user enable --now ${APP_SERVICE_NAME}" >&2
-    echo "             systemctl --user status ${APP_SERVICE_NAME}" >&2
-    echo "           If you see 'Failed to connect to bus: No such file or directory', ensure linger is enabled:" >&2
-    echo "             loginctl show-user ${CURRENT_USER_APP} | grep Linger" >&2
-    echo "             sudo loginctl enable-linger ${CURRENT_USER_APP}" >&2
-  fi
+  # For application containers we rely on the [Install] section in the Quadlet
+  # unit so the generator treats the service as enabled on future logins/
+  # reboots. The initial container has already been started by
+  # deploy-container.sh, so we avoid starting it again here to prevent a second
+  # podman run race. Operators can start it on-demand via systemctl --user.
+  echo "Quadlet service ${APP_SERVICE_NAME} is available; start it with: systemctl --user start ${APP_SERVICE_NAME}" >&2
 else
   echo "::warning::systemctl not found; Quadlet unit created but not registered" >&2
 fi

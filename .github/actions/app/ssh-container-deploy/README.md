@@ -89,6 +89,9 @@ All inputs are provided via the `params_json` object. The tables below list each
 | `ufw_allow_ports` | `''` | Space-separated ports to open in UFW (e.g. `"80 443"`). |
 | `install_webmin` | `true` | Install Webmin during host prep (requires sudo). |
 | `install_usermin` | `false` | Install Usermin alongside Webmin. |
+| `install_portainer` | `true` | Install Portainer CE as a Quadlet-managed service on the host. When enabled, the deploy flow ensures a persistent Portainer container exists. |
+| `portainer_https_port` | `9443` | Direct HTTPS port for Portainer UI on the host (e.g. `https://server:9443`). |
+| `portainer_domain` | `''` | Optional FQDN to expose Portainer via Traefik (e.g. `portainer.example.com` → `https://portainer.example.com`). When omitted and an app domain is configured, the deploy scripts derive a default of the form `portainer.<apex>`, for example `dev.shakohub.com` → `portainer.shakohub.com`. |
 | `show_root_install_hints` | `true` | Print manual instructions when root privileges are required. |
 
 ### Environment & app metadata
@@ -134,8 +137,8 @@ All inputs are provided via the `params_json` object. The tables below list each
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `enable_traefik` | `true` | Attach Traefik labels and network when a domain is provided. |
-| `ensure_traefik` | `true` | Run Traefik preflight + reconciliation (skip when managed out-of-band). |
+| `enable_traefik` | `true` | Attach Traefik labels and network when a domain is provided. When `true` and a domain is present, the action prefers Traefik-based HTTPS routing over direct host ports. |
+| `ensure_traefik` | `true` | Run Traefik preflight + reconciliation **on the host** via the `ensure-traefik-ready.sh` script when `enable_traefik=true`. Set to `false` when Traefik is fully managed out-of-band and you do not want the deploy flow to touch it. Quadlet-based Traefik can still be installed separately using the `infra/setup-traefik` composite in your workflows. |
 | `enable_acme` | `true` | Attach certresolver labels so Traefik requests Let’s Encrypt certs. |
 | `traefik_reset_acme` | `false` | When `true`, reset ACME storage (`acme.json`) on next run to force new certs. |
 | `traefik_network_name` | `traefik-network` | Podman network for Traefik and app containers. |
@@ -188,6 +191,8 @@ If the logs show a staging or otherwise untrusted certificate, you can trigger a
 // ...base params_json omitted for brevity...
 "traefik_reset_acme": "true"
 ```
+
+When `ensure_traefik` is `false`, the action still attaches Traefik labels (when `enable_traefik=true`) but **does not** run the Quadlet/setup-traefik flow or the host-side `ensure-traefik-ready.sh`; this is useful when an operations team manages Traefik separately.
 
 The post-deploy probe will also log TLS certificate issuer/subject/validity so you can confirm when a trusted Let’s Encrypt production certificate is in use.
 

@@ -37,9 +37,10 @@ CURRENT_USER="$(id -un)"
 PUID="$(id -u)"
 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$PUID}"
 QUADLET_DIR="${HOME}/.config/containers/systemd"
+USER_SYSTEMD_DIR="${HOME}/.config/systemd/user"
 SOCK_HOST="${XDG_RUNTIME_DIR}/podman/podman.sock"
 
-mkdir -p "$QUADLET_DIR"
+mkdir -p "$QUADLET_DIR" "$USER_SYSTEMD_DIR"
 
 # Before installing new Quadlet units, best-effort clean up any existing
 # Traefik container or user-level service so we do not end up with multiple
@@ -77,7 +78,7 @@ NetworkName=${TRAEFIK_NETWORK_NAME}
 EOF
 
 # http.socket (port 80)
-HTTP_SOCKET_PATH="${QUADLET_DIR}/http.socket"
+HTTP_SOCKET_PATH="${USER_SYSTEMD_DIR}/http.socket"
 cat >"$HTTP_SOCKET_PATH" <<'EOF'
 [Unit]
 Description=Traefik HTTP socket (port 80)
@@ -93,7 +94,7 @@ WantedBy=default.target
 EOF
 
 # https.socket (port 443)
-HTTPS_SOCKET_PATH="${QUADLET_DIR}/https.socket"
+HTTPS_SOCKET_PATH="${USER_SYSTEMD_DIR}/https.socket"
 {
   cat <<'EOF'
 [Unit]
@@ -174,12 +175,12 @@ EOF
 
 # Reload and enable units
 systemctl --user daemon-reload
-systemctl --user enable --now "${TRAEFIK_NETWORK_NAME}.network"
-systemctl --user enable --now http.socket https.socket
+systemctl --user start "${TRAEFIK_NETWORK_NAME}.network"
+systemctl --user start http.socket https.socket
 # Optional: start service (will be socket-activated on demand). We enable the
 # Quadlet-generated traefik.service after explicitly stopping/disabling any
 # prior user unit earlier in this script.
-systemctl --user enable traefik.service >/dev/null 2>&1 || true
+systemctl --user start traefik.service >/dev/null 2>&1 || true
 
 # Show status summary
 echo "Installed quadlet units in ${QUADLET_DIR}:"
