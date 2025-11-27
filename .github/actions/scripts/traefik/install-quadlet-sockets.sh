@@ -173,12 +173,30 @@ cat >>"$CONTAINER_UNIT_PATH" <<'EOF'
 WantedBy=default.target
 EOF
 
-# Reload and enable units
-systemctl --user daemon-reload
-systemctl --user start "${TRAEFIK_NETWORK_NAME}.network"
-systemctl --user start http.socket https.socket
-# Optional: start service (will be socket-activated on demand). We enable the
-# Quadlet-generated traefik.service after explicitly stopping/disabling any
+# Reload and enable units. These operations are best-effort so that differences
+# in how Quadlet exposes network units (for example, ${TRAEFIK_NETWORK_NAME}-network.service
+# vs ${TRAEFIK_NETWORK_NAME}.network) or transient user@.service quirks do not
+# cause the installer to fail outright. We rely on downstream preflight checks
+# (ensure-traefik-ready.sh) to validate listeners on 80/443.
+if ! systemctl --user daemon-reload >/dev/null 2>&1; then
+  echo "::warning::systemctl --user daemon-reload failed; Quadlet changes may not be active until next reload." >&2
+fi
+
+# Network unit: some Podman/Quadlet versions expose the generated service as
+# "${TRAEFIK_NETWORK_NAME}-network.service" instead of "${TRAEFIK_NETWORK_NAME}.network".
+# We attempt the intuitive name but treat failure as informational only.
+if ! systemctl --user start "${TRAEFIK_NETWORK_NAME}.network" >/dev/null 2>&1; then
+  echo "::notice::Could not start ${TRAEFIK_NETWORK_NAME}.network; on some systems the Quadlet-generated service is named ${TRAEFIK_NETWORK_NAME}-network.service or the network is created lazily by Podman. Continuing without treating this as fatal." >&2
+fi
+
+# Start sockets for 80/443; if this fails, emit a warning but avoid aborting so
+# that subsequent diagnostics can still run.
+if ! systemctl --user start http.socket https.socket >/dev/null 2>&1; then
+  echo "::warning::Failed to start http.socket/https.socket via systemctl --user; Traefik may not be socket-activated until these units are started manually." >&2
+fi
+
+# Optional: start service (will also be socket-activated on demand). We enable
+# the Quadlet-generated traefik.service after explicitly stopping/disabling any
 # prior user unit earlier in this script.
 systemctl --user start traefik.service >/dev/null 2>&1 || true
 
