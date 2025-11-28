@@ -173,8 +173,14 @@ if $DASH_ENABLED; then
     fi
   fi
 
+  # Surface where the dashboard credential file lives so operators know
+  # which path on the server should be treated as secret storage.
+  if $DASH_AUTH_ENABLED && [[ -n "$DASH_USERS_LOCAL_FILE" ]]; then
+    echo "📁 Traefik dashboard users file: ${DASH_USERS_LOCAL_FILE} (treat as secret; contains hashed dashboard credentials)."
+  fi
+
   if $USED_DEFAULT_DASH_PASS; then
-    echo "::warning::Traefik dashboard using default credentials admin/12345678. Change immediately via DASHBOARD_PASSWORD or DASHBOARD_USERS_B64."
+    echo "::warning::Traefik dashboard using DEFAULT credentials admin/12345678. These are written to the users file above as a bootstrap secret and must be changed immediately via DASHBOARD_PASSWORD or DASHBOARD_USERS_B64."
   fi
 fi
 

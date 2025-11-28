@@ -98,6 +98,7 @@ generate_traefik_static_config() {
   local debug="${4:-}"
   local log_level="${log_level_raw^^}"
   local acme_email
+  local dashboard_host external_dashboard_router=""
 
   # Validate log level
   case "$log_level" in
@@ -120,6 +121,27 @@ generate_traefik_static_config() {
     acme_email="$email"
   else
     acme_email='${TRAEFIK_EMAIL}'
+  fi
+
+  # Optional external dashboard host (for example traefik.example.com) can be
+  # provided via DASHBOARD_HOST. When set, we expose the internal API
+  # (api@internal) on the websecure entrypoint with TLS via the letsencrypt
+  # resolver, protected by the same basic auth middleware that guards the
+  # internal-dashboard router on the dedicated dashboard entrypoint.
+  dashboard_host="${DASHBOARD_HOST:-}"
+  if [[ -n "$dashboard_host" ]]; then
+    # Indented block to splice directly into the http.routers section below.
+    read -r -d '' external_dashboard_router <<EOR || true
+    external-dashboard:
+      entryPoints:
+        - websecure
+      rule: "Host(\`$dashboard_host\`) && PathPrefix(\`/\`)"
+      middlewares:
+        - internal-dashboard-auth
+      service: "api@internal"
+      tls:
+        certResolver: letsencrypt
+EOR
   fi
 
   cat >"$dest" <<EOF
@@ -188,6 +210,7 @@ http:
       service: "api@internal"
       tls:
         certResolver: letsencrypt
+${external_dashboard_router:+$external_dashboard_router}
   services:
     noop:
       loadBalancer:

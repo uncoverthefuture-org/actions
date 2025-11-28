@@ -179,6 +179,51 @@ All inputs are provided via the `params_json` object. The tables below list each
 | `source_env` | `true` | Source the remote `.env` before running deployment scripts. |
 | `fail_if_env_missing` | `true` | When `source_env=true`, fail if the `.env` file cannot be sourced. |
 
+### Portainer & Traefik credential storage
+
+Portainer and the Traefik dashboard both rely on **server-side state** for credentials. The deploy flow does **not** print any admin passwords into GitHub logs; instead it uses on-host files and in-app configuration.
+
+- **Portainer data directory**
+
+  When `install_portainer=true`, Portainer stores its state (including the admin user and password hash) under:
+
+  ```text
+  $HOME/.local/share/portainer
+  ```
+
+  The `install-portainer.sh` script surfaces this path in the remote logs as the **Portainer data directory**. Treat this directory as **secret** on the server. Portainer will prompt for an admin account on first login; choose a strong password and rotate it via the UI when needed.
+
+- **Traefik dashboard users file**
+
+  When the Traefik dashboard is enabled (`enable_dashboard=true` or `dashboard_publish_modes` non-empty), the setup scripts create a basic auth users file on the host, for example:
+
+  ```text
+  /etc/traefik/dashboard-users             # when sudo available
+  $HOME/.config/traefik/dashboard-users   # otherwise
+  ```
+
+  The path is printed in the Traefik setup logs as the **dashboard users file** and should be treated as secret, since it contains hashed credentials.
+
+  If you do **not** provide `dashboard_password` or `dashboard_users_b64`, the dashboard falls back to a **bootstrap default** of `admin/12345678`. This default is written only into the users file above and is never echoed in plain text to logs.
+
+  You must change the dashboard credentials immediately by either:
+
+  - Setting `dashboard_password` in your workflow (the action will hash it on the host), or
+  - Supplying a precomputed htpasswd file via `dashboard_users_b64`.
+
+  **Example (custom dashboard password)**
+
+  ```jsonc
+  // ...base params_json omitted...
+  "enable_traefik": "true",
+  "enable_dashboard": "true",
+  "dashboard_publish_modes": "subdomain",
+  "dashboard_host": "traefik.example.com",
+  "dashboard_password": "changeMeNow123!"
+  ```
+
+  On the first run, the scripts will hash `changeMeNow123!`, write it to the users file, and route `https://traefik.example.com` to Traefik’s dashboard protected by basic auth.
+
 ## Examples
 
 These examples build on the **Minimal usage** snippet above. Only the relevant extra fields are shown.
