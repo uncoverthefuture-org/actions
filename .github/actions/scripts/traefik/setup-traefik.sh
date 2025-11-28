@@ -250,18 +250,17 @@ fi
 USER_RUNTIME_DIR="/run/user/$PUID"
 SOCK_USER="$USER_RUNTIME_DIR/podman/podman.sock"
 SOCK_ROOT="/var/run/podman/podman.sock"
-if [[ "$CURRENT_USER" == "root" ]]; then
+HOST_SOCK=""
+if [[ -S "$SOCK_USER" ]]; then
+  HOST_SOCK="$SOCK_USER"
+  echo "🔌 Using user podman socket: $HOST_SOCK"
+elif [[ -S "$SOCK_ROOT" ]]; then
   HOST_SOCK="$SOCK_ROOT"
-  echo "🔌 Running as root; using system podman socket: $HOST_SOCK"
+  echo "🔌 Using system podman socket: $HOST_SOCK"
 else
-  if [[ -S "$SOCK_USER" ]]; then
-    HOST_SOCK="$SOCK_USER"
-    echo "🔌 Using user podman socket: $HOST_SOCK"
-  else
-    HOST_SOCK="$SOCK_ROOT"
-    echo "🔌 User podman socket unavailable; using system podman socket: $HOST_SOCK"
-    echo "::notice::If this is unexpected, ensure linger is enabled and podman.socket is running for $CURRENT_USER."
-  fi
+  echo "::error::Podman socket not found at $SOCK_USER or $SOCK_ROOT; cannot mount provider socket into Traefik." >&2
+  echo "         Ensure podman.socket is active for this user or system-wide before enabling Traefik's Docker provider." >&2
+  exit 1
 fi
 
 if [[ -x "$HOME/uactions/scripts/traefik/assert-socket-and-selinux.sh" ]]; then

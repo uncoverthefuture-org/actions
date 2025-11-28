@@ -651,6 +651,15 @@ runs: # Composite action implementation
             fi
           fi
 
+          # Prefer Quadlet-managed Traefik when the Quadlet installer is
+          # available on the host and TRAEFIK_MODE was not explicitly set by
+          # the caller. This ensures ensure-traefik-ready.sh reconciles
+          # Traefik via install-quadlet-sockets.sh instead of recreating a
+          # standalone container.
+          if [ -z "${TRAEFIK_MODE:-}" ] && [ -x "$HOME/uactions/scripts/traefik/install-quadlet-sockets.sh" ]; then
+            export TRAEFIK_MODE='quadlet'
+          fi
+
           "$HOME/uactions/scripts/app/start-container-deployment.sh"
 
           

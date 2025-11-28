@@ -165,6 +165,22 @@ else
   fi
 fi
 
+# --- Install Portainer (after Traefik ensure) ---------------------------------------
+if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
+  echo "================================================================"
+  echo "🛠 Installing Portainer (as requested) ..."
+  echo "================================================================"
+  if [ -x "$HOME/uactions/scripts/infra/install-portainer.sh" ]; then
+    INSTALL_PORTAINER="${INSTALL_PORTAINER:-true}" \
+      PORTAINER_HTTPS_PORT="${PORTAINER_HTTPS_PORT:-9443}" \
+      TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-traefik-network}" \
+      PORTAINER_DOMAIN="${PORTAINER_DOMAIN:-}" \
+      "$HOME/uactions/scripts/infra/install-portainer.sh"
+  else
+    echo "::warning::install-portainer.sh not found; skipping Portainer installation"
+  fi
+fi
+
 
 # --- Environment Setup ---------------------------------------------------------------
 echo "🔧 Setting up deployment environment..."
@@ -314,6 +330,7 @@ else
   echo "::warning::configure-ufw.sh not found; skipping firewall configuration"
 fi
 
+# --- Optional management tools (Webmin/Usermin) ------------------------------------
 if [ "${INSTALL_WEBMIN:-false}" = "true" ] || [ "${INSTALL_USERMIN:-false}" = "true" ]; then
   echo "================================================================"
   echo "🛠 Installing Webmin/Usermin (as requested) ..."
@@ -326,25 +343,6 @@ if [ "${INSTALL_WEBMIN:-false}" = "true" ] || [ "${INSTALL_USERMIN:-false}" = "t
     fi
   else
     echo "::warning::install-webmin.sh not found; skipping Webmin/Usermin installation"
-  fi
-fi
-
-if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
-  echo "================================================================"
-  echo "🛠 Installing Portainer (as requested) ..."
-  echo "================================================================"
-  if [ -x "$HOME/uactions/scripts/infra/install-portainer.sh" ]; then
-    # Inline example: when PORTAINER_DOMAIN=portainer.example.com and
-    # TRAEFIK_NETWORK_NAME=traefik-network, install-portainer.sh will create a
-    # Quadlet unit that both exposes Portainer on :9443 and registers a Traefik
-    # router for https://portainer.example.com.
-    INSTALL_PORTAINER="${INSTALL_PORTAINER:-true}" \
-      PORTAINER_HTTPS_PORT="${PORTAINER_HTTPS_PORT:-9443}" \
-      TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-traefik-network}" \
-      PORTAINER_DOMAIN="${PORTAINER_DOMAIN:-}" \
-      "$HOME/uactions/scripts/infra/install-portainer.sh"
-  else
-    echo "::warning::install-portainer.sh not found; skipping Portainer installation"
   fi
 fi
 

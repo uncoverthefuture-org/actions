@@ -71,10 +71,11 @@ ensure_webmin_repo() {
     exit 1
   fi
   chmod +x "$TMP_SETUP"
-  # Run setup script (adds repo + keys)
-  if ! $SUDO sh "$TMP_SETUP" >/dev/null 2>&1; then
+  # Run setup script (adds repo + keys). Use -f to avoid interactive
+  # confirmation prompts so this remains non-interactive in CI.
+  if ! $SUDO sh "$TMP_SETUP" -f >/dev/null 2>&1; then
     echo "::error::webmin-setup-repo.sh failed to configure repository" >&2
-    echo "Please try manually: curl -fsSL -o webmin-setup-repo.sh https://raw.githubusercontent.com/webmin/webmin/master/webmin-setup-repo.sh && sudo sh webmin-setup-repo.sh" >&2
+    echo "Please try manually: curl -fsSL -o webmin-setup-repo.sh https://raw.githubusercontent.com/webmin/webmin/master/webmin-setup-repo.sh && sudo sh webmin-setup-repo.sh -f" >&2
     rm -f "$TMP_SETUP"
     exit 1
   fi
@@ -122,7 +123,7 @@ if [ "$INSTALL_WEBMIN" = "true" ] || [ "$INSTALL_USERMIN" = "true" ]; then
       echo "================================================================" >&2
       echo "sudo rm -f /etc/apt/sources.list.d/webmin.list /etc/apt/sources.list.d/webmin.list.disabled /usr/share/keyrings/webmin.gpg /etc/apt/keyrings/webmin.gpg" >&2
       echo "curl -fsSL -o webmin-setup-repo.sh https://raw.githubusercontent.com/webmin/webmin/master/webmin-setup-repo.sh" >&2
-      echo "sudo sh webmin-setup-repo.sh" >&2
+      echo "sudo sh webmin-setup-repo.sh -f" >&2
       echo "sudo apt-get update -y --allow-releaseinfo-change" >&2
       echo "sudo apt-get install -y webmin${INSTALL_USERMIN:+ usermin}" >&2
       echo "================================================================" >&2
