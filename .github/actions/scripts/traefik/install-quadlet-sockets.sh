@@ -28,6 +28,23 @@ TRAEFIK_EMAIL="${TRAEFIK_EMAIL:-}"
 TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-traefik-network}"
 QUADLET_ENABLE_HTTP3="${QUADLET_ENABLE_HTTP3:-false}"
 
+# Decide which host resolv.conf to reuse inside the Quadlet-managed Traefik
+# container so that ACME DNS lookups (for example, acme-v02.api.letsencrypt.org)
+# use the same resolvers as the host instead of the Podman bridge DNS. On
+# Ubuntu with systemd-resolved, /run/systemd/resolve/resolv.conf typically
+# contains the real upstream nameservers, while /etc/resolv.conf often points
+# at the 127.0.0.53 stub. Example:
+#   - Host:   nameserver 67.207.67.2  (DigitalOcean)
+#   - Inside: Volume=/run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro
+# This keeps ACME HTTP-01 flows working even when the Podman bridge DNS
+# (for example 10.89.0.1) cannot reach the internet.
+HOST_RESOLV_CONF=""
+if [[ -r /run/systemd/resolve/resolv.conf ]]; then
+  HOST_RESOLV_CONF="/run/systemd/resolve/resolv.conf"
+elif [[ -r /etc/resolv.conf ]]; then
+  HOST_RESOLV_CONF="/etc/resolv.conf"
+fi
+
 if [[ "$TRAEFIK_ENABLE_ACME" == "true" && -z "$TRAEFIK_EMAIL" ]]; then
   echo "Error: TRAEFIK_EMAIL is required when TRAEFIK_ENABLE_ACME=true" >&2
   exit 1
@@ -139,6 +156,12 @@ Volume=%h/.config/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
 Volume=%h/.local/share/traefik/acme.json:/letsencrypt/acme.json:Z
 # Podman (Docker-compatible) socket for provider discovery (user-scoped)
 Volume=%t/podman/podman.sock:/var/run/docker.sock:Z
+# Optional: reuse host DNS configuration inside Traefik so outbound ACME
+# requests resolve correctly. When HOST_RESOLV_CONF is set (for example
+# /run/systemd/resolve/resolv.conf on Ubuntu with systemd-resolved), this
+# line expands to a Volume mount such as:
+#   Volume=/run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro
+${HOST_RESOLV_CONF:+Volume=${HOST_RESOLV_CONF}:/etc/resolv.conf:ro}
 
 # Network join
 Network=${TRAEFIK_NETWORK_NAME}
