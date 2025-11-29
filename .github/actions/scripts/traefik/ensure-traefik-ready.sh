@@ -253,4 +253,14 @@ if command -v podman >/dev/null 2>&1; then
   podman ps --filter name=traefik || true
   podman logs --tail=120 traefik 2>/dev/null || true
 fi
+
+echo "================================================================" >&2
+echo "🔎 Suggested debug commands (run on the server as the deploy user)" >&2
+echo "================================================================" >&2
+echo "export XDG_RUNTIME_DIR=/run/user/\$(id -u)" >&2
+echo "systemctl --user status http.socket https.socket traefik.service --no-pager" >&2
+echo "systemctl --user list-unit-files | grep -E 'traefik|http.socket|https.socket' || true" >&2
+echo "journalctl --user -u http.socket -u https.socket -u traefik.service -n 80 --no-pager || true" >&2
+echo "podman --version || true" >&2
+
 exit 1

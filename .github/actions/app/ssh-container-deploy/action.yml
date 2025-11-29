@@ -652,12 +652,28 @@ runs: # Composite action implementation
           fi
 
           # Prefer Quadlet-managed Traefik when the Quadlet installer is
-          # available on the host and TRAEFIK_MODE was not explicitly set by
-          # the caller. This ensures ensure-traefik-ready.sh reconciles
-          # Traefik via install-quadlet-sockets.sh instead of recreating a
-          # standalone container.
+          # available on the host **and** the host Podman version is new
+          # enough to support Quadlet generators reliably (Podman >= 4.4).
+          # Older Podman releases (for example 3.x on some distributions) do
+          # not ship Quadlet support, which would cause silent failures on
+          # ports 80/443 if we forced TRAEFIK_MODE=quadlet.
           if [ -z "${TRAEFIK_MODE:-}" ] && [ -x "$HOME/uactions/scripts/traefik/install-quadlet-sockets.sh" ]; then
-            export TRAEFIK_MODE='quadlet'
+            podman_ver=""
+            if command -v podman >/dev/null 2>&1; then
+              podman_ver=$(podman --version 2>/dev/null | awk '{print $3}' | cut -d'-' -f1 || echo "")
+            fi
+            if [ -n "$podman_ver" ]; then
+              podman_major="${podman_ver%%.*}"
+              podman_minor_patch="${podman_ver#*.}"
+              podman_minor="${podman_minor_patch%%.*}"
+              if { [ "$podman_major" -gt 4 ] || { [ "$podman_major" -eq 4 ] && [ "$podman_minor" -ge 4 ]; }; }; then
+                export TRAEFIK_MODE='quadlet'
+              else
+                echo "::notice::Podman version $podman_ver does not support Quadlet reliably; keeping container-managed Traefik (TRAEFIK_MODE=container)." >&2
+              fi
+            else
+              echo "::notice::Podman not found or version unknown; leaving TRAEFIK_MODE=container (no Quadlet auto-enable)." >&2
+            fi
           fi
 
           "$HOME/uactions/scripts/app/start-container-deployment.sh"
