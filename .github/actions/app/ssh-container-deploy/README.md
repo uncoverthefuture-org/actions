@@ -92,6 +92,9 @@ All inputs are provided via the `params_json` object. The tables below list each
 | `install_portainer` | `true` | Install Portainer CE as a Quadlet-managed service on the host. When enabled, the deploy flow ensures a persistent Portainer container exists. |
 | `portainer_https_port` | `9443` | Direct HTTPS port for Portainer UI on the host (e.g. `https://server:9443`). |
 | `portainer_domain` | `''` | Optional FQDN to expose Portainer via Traefik (e.g. `portainer.example.com` → `https://portainer.example.com`). When omitted and an app domain is configured, the deploy scripts derive a default of the form `portainer.<apex>`, for example `dev.shakohub.com` → `portainer.shakohub.com`. |
+| `portainer_admin_auto_init` | `true` | When `true`, auto-initialize the Portainer admin user via the HTTPS API on first install using `portainer_admin_password` or the default `12345678`. |
+| `portainer_admin_username` | `admin` | Username for the Portainer admin account during auto-init. |
+| `portainer_admin_password` | `''` | Initial password for the Portainer admin account during auto-init. When empty and `portainer_admin_auto_init` is `true`, a convenience default of `12345678` is used and a warning is emitted in logs; change it immediately in production. |
 | `show_root_install_hints` | `true` | Print manual instructions when root privileges are required. |
 
 ### Environment & app metadata
@@ -183,7 +186,7 @@ All inputs are provided via the `params_json` object. The tables below list each
 
 Portainer and the Traefik dashboard both rely on **server-side state** for credentials. The deploy flow does **not** print any admin passwords into GitHub logs; instead it uses on-host files and in-app configuration.
 
-- **Portainer data directory**
+- **Portainer data directory and admin auto-init**
 
   When `install_portainer=true`, Portainer stores its state (including the admin user and password hash) under:
 
@@ -191,7 +194,24 @@ Portainer and the Traefik dashboard both rely on **server-side state** for crede
   $HOME/.local/share/portainer
   ```
 
-  The `install-portainer.sh` script surfaces this path in the remote logs as the **Portainer data directory**. Treat this directory as **secret** on the server. Portainer will prompt for an admin account on first login; choose a strong password and rotate it via the UI when needed.
+  The `install-portainer.sh` script surfaces this path in the remote logs as the **Portainer data directory**. Treat this directory as **secret** on the server.
+
+  By default, the script will **auto-initialize** the Portainer admin user via the HTTPS API on first install using:
+
+  - `portainer_admin_username` (default: `admin`)
+  - `portainer_admin_password` when provided, otherwise a bootstrap default of `12345678`
+
+  The password itself is never printed to GitHub logs; it only lives inside Portainer's `/data` state under this directory. You must change this password immediately in production via the Portainer UI or API.
+
+  **Example (custom Portainer admin password)**
+
+  ```jsonc
+  // ...base params_json omitted...
+  "install_portainer": "true",
+  "portainer_admin_auto_init": "true",
+  "portainer_admin_username": "admin",
+  "portainer_admin_password": "${{ secrets.PORTAINER_ADMIN_PASSWORD }}"
+  ```
 
 - **Traefik dashboard users file**
 

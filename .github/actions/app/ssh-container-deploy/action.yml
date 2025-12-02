@@ -191,6 +191,18 @@ inputs: # All parameters accepted by this action
     description: 'FQDN for Portainer behind Traefik (example: portainer.example.com). When set, Portainer is exposed via Traefik on 443 in addition to direct :9443 access.'
     required: false
     default: ''
+  portainer_admin_auto_init:
+    description: "When 'true' (default), auto-initialize the Portainer admin user via the HTTPS API on first install using either portainer_admin_password or the default '12345678'."
+    required: false
+    default: 'true'
+  portainer_admin_username:
+    description: 'Username for the Portainer admin account during auto-init (default: admin).'
+    required: false
+    default: 'admin'
+  portainer_admin_password:
+    description: "Initial password for the Portainer admin account during auto-init. When empty and portainer_admin_auto_init is true, a convenience default of '12345678' is used and a warning is emitted in logs; change it immediately in production."
+    required: false
+    default: ''
   show_root_install_hints:
     description: 'Show explicit manual install instructions when root privileges are required (fail-fast messaging)'
     required: false
@@ -558,6 +570,15 @@ runs: # Composite action implementation
           # reachable via HTTPS on 443 at that host in addition to any direct
           # :9443 binding.
           export PORTAINER_DOMAIN='${{ inputs.portainer_domain }}'
+
+          # Portainer admin auto-init controls. These are passed through to the
+          # install-portainer.sh script so it can bootstrap the initial admin
+          # user via the HTTPS API on first install. Example overrides:
+          #   - portainer_admin_auto_init: 'false' (manual UI/API setup)
+          #   - portainer_admin_password: '${{ secrets.PORTAINER_ADMIN_PASSWORD }}'
+          export PORTAINER_ADMIN_AUTO_INIT='${{ inputs.portainer_admin_auto_init }}'
+          export PORTAINER_ADMIN_USERNAME='${{ inputs.portainer_admin_username }}'
+          export PORTAINER_ADMIN_PASSWORD='${{ inputs.portainer_admin_password }}'
 
           # Quadlet/systemd persistence toggle for app containers. When set to
           # 'false', deploy-container.sh will skip generating a Quadlet

@@ -18,6 +18,20 @@ TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-traefik-network}"
 PORTAINER_DOMAIN="${PORTAINER_DOMAIN:-}"
 PORTAINER_DATA_DIR="${PORTAINER_DATA_DIR:-$HOME/.local/share/portainer}"
 
+# Admin bootstrap controls. When PORTAINER_ADMIN_AUTO_INIT=true (default) the
+# script attempts to initialize the Portainer admin user via the HTTPS API on
+# first install using the /api/users/admin/init endpoint. Callers can override
+# the username/password via environment variables; when no password is
+# provided, a convenience default of 12345678 is used and a prominent warning
+# is emitted so operators know to change it immediately in production.
+PORTAINER_ADMIN_AUTO_INIT="${PORTAINER_ADMIN_AUTO_INIT:-true}"
+PORTAINER_ADMIN_USERNAME="${PORTAINER_ADMIN_USERNAME:-admin}"
+PORTAINER_ADMIN_PASSWORD="${PORTAINER_ADMIN_PASSWORD:-}"
+if [ "$PORTAINER_ADMIN_AUTO_INIT" = "true" ] && [ -z "$PORTAINER_ADMIN_PASSWORD" ]; then
+  echo "::warning::PORTAINER_ADMIN_AUTO_INIT=true and no PORTAINER_ADMIN_PASSWORD provided; using default password '12345678'. Change this in production immediately after first login or override via PORTAINER_ADMIN_PASSWORD." >&2
+  PORTAINER_ADMIN_PASSWORD="12345678"
+fi
+
 if ! command -v podman >/dev/null 2>&1; then
   echo "::error::podman is not installed; Portainer requires Podman on the host" >&2
   exit 1
@@ -40,8 +54,11 @@ elif command -v shasum >/dev/null 2>&1; then
 fi
 
 # Fast path: if an existing Portainer container is running, has a matching
-# config hash label, and responds on the expected HTTPS port, skip any
-# changes to avoid unnecessary reloads.
+# config hash label, and responds on the expected HTTPS port with a 2xx HTTP
+# status code, skip any changes to avoid unnecessary reloads. Non-2xx codes
+# (including the first-time "timed out for security purposes" screen or other
+# error pages) are treated as not healthy so that rerunning the action can
+# safely recreate the service and re-attempt admin initialization.
 if podman container exists portainer >/dev/null 2>&1; then
   status=$(podman inspect -f '{{.State.Status}}' portainer 2>/dev/null || echo "")
   existing_hash=$(podman inspect -f '{{ index .Config.Labels "org.uactions.portainer.confighash" }}' portainer 2>/dev/null || echo "")
@@ -49,14 +66,14 @@ if podman container exists portainer >/dev/null 2>&1; then
     healthy="unknown"
     if command -v curl >/dev/null 2>&1; then
       code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 6 "https://127.0.0.1:${PORTAINER_HTTPS_PORT}" || echo "000")
-      if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
-        healthy="yes"
+      if [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
+        healthy="yes:$code"
       else
         healthy="no:$code"
       fi
     fi
-    if [ "$healthy" = "yes" ]; then
-      echo "✅ Portainer already running and healthy on https://127.0.0.1:${PORTAINER_HTTPS_PORT} (config hash match); skipping reinstall." >&2
+    if [ "${healthy%%:*}" = "yes" ]; then
+      echo "✅ Portainer already running and healthy on https://127.0.0.1:${PORTAINER_HTTPS_PORT} (HTTP ${healthy#*:}, config hash match); skipping reinstall." >&2
       exit 0
     fi
     echo "::notice::Existing Portainer container detected (status=$status, health=$healthy); will recreate unit and container." >&2
@@ -181,6 +198,40 @@ if command -v systemctl >/dev/null 2>&1; then
         code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "https://127.0.0.1:${PORTAINER_HTTPS_PORT}" || echo "000")
         echo "Portainer HTTPS probe on https://127.0.0.1:${PORTAINER_HTTPS_PORT}: HTTP ${code}" >&2
         echo "Note: If this URL is reachable on the host but not from your browser, ensure your cloud firewall/security group allows inbound TCP ${PORTAINER_HTTPS_PORT} to this instance (in addition to UFW rules)." >&2
+
+        # When admin auto-initialization is enabled, bootstrap the Portainer
+        # admin user via the HTTPS API on fresh installations so operators do
+        # not need to race the five-minute UI timeout. The /api/users/admin/init
+        # endpoint only succeeds before an admin user exists; subsequent runs
+        # are idempotent and we treat non-2xx responses as notices instead of
+        # hard failures.
+        if [ "$PORTAINER_ADMIN_AUTO_INIT" = "true" ]; then
+          if [ -z "$PORTAINER_ADMIN_PASSWORD" ]; then
+            echo "::warning::PORTAINER_ADMIN_AUTO_INIT=true but PORTAINER_ADMIN_PASSWORD is empty; skipping admin bootstrap (no password available)." >&2
+          elif [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
+            payload=""
+            if command -v jq >/dev/null 2>&1; then
+              payload=$(jq -nc --arg u "$PORTAINER_ADMIN_USERNAME" --arg p "$PORTAINER_ADMIN_PASSWORD" '{Username:$u,Password:$p}')
+            else
+              # Fallback JSON construction for environments without jq. This
+              # assumes the username/password do not contain double quotes.
+              payload=$(printf '{"Username":"%s","Password":"%s"}' "$PORTAINER_ADMIN_USERNAME" "$PORTAINER_ADMIN_PASSWORD")
+            fi
+
+            admin_code=$(curl -ksS -o /tmp/portainer-admin-init.out -w '%{http_code}' --max-time 10 \
+              -H 'Content-Type: application/json' \
+              -X POST "https://127.0.0.1:${PORTAINER_HTTPS_PORT}/api/users/admin/init" \
+              --data "$payload" || echo "000")
+
+            if [ "$admin_code" -ge 200 ] && [ "$admin_code" -lt 300 ]; then
+              echo "✅ Portainer admin auto-initialized via API for user '${PORTAINER_ADMIN_USERNAME}' (HTTP ${admin_code})." >&2
+            else
+              echo "::notice::Portainer admin auto-init returned HTTP ${admin_code}; this usually means the admin user already exists or the instance is not in initial-setup state. Verify Portainer login manually if unsure." >&2
+            fi
+          else
+            echo "::notice::Skipping Portainer admin auto-init because HTTPS probe did not return 2xx (HTTP ${code})." >&2
+          fi
+        fi
       fi
     else
       echo "::warning::Failed to start ${PORTAINER_SERVICE}; start manually with: systemctl --user start ${PORTAINER_SERVICE}" >&2
@@ -193,7 +244,14 @@ else
 fi
 
 # Surface the Portainer data directory and security expectations in logs so
-# operators know where credentials live and that no default password is
-# generated by these scripts.
+# operators know where credentials live and how the initial admin user is
+# created. When PORTAINER_ADMIN_AUTO_INIT=true the first admin user is created
+# via the API using either the provided PORTAINER_ADMIN_PASSWORD or the
+# convenience default of 12345678. Operators should treat this directory as
+# sensitive and change the admin password immediately after first login.
 echo " Portainer data directory: ${PORTAINER_DATA_DIR} (treat as secret; contains Portainer state and admin credentials)." >&2
-echo " Portainer admin credentials are created and managed via the Portainer UI and stored under /data in this directory. Set a strong password on first login and rotate it as needed." >&2
+if [ "$PORTAINER_ADMIN_AUTO_INIT" = "true" ]; then
+  echo " Portainer admin auto-init: enabled (initial user '${PORTAINER_ADMIN_USERNAME}', password from PORTAINER_ADMIN_PASSWORD or default '12345678'). Change this password immediately in production." >&2
+else
+  echo " Portainer admin auto-init: disabled (create the admin user via the Portainer UI or API before exposing the service)." >&2
+fi

@@ -171,10 +171,18 @@ if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
   echo "🛠 Installing Portainer (as requested) ..."
   echo "================================================================"
   if [ -x "$HOME/uactions/scripts/infra/install-portainer.sh" ]; then
+    # Pass through admin auto-init controls so install-portainer.sh can
+    # bootstrap the initial Portainer admin user via the HTTPS API on first
+    # install. Example: PORTAINER_ADMIN_AUTO_INIT=true with an explicit
+    # PORTAINER_ADMIN_PASSWORD or the default 12345678 when no password is
+    # provided (see ssh-container-deploy README for overrides).
     INSTALL_PORTAINER="${INSTALL_PORTAINER:-true}" \
       PORTAINER_HTTPS_PORT="${PORTAINER_HTTPS_PORT:-9443}" \
       TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-traefik-network}" \
       PORTAINER_DOMAIN="${PORTAINER_DOMAIN:-}" \
+      PORTAINER_ADMIN_AUTO_INIT="${PORTAINER_ADMIN_AUTO_INIT:-true}" \
+      PORTAINER_ADMIN_USERNAME="${PORTAINER_ADMIN_USERNAME:-admin}" \
+      PORTAINER_ADMIN_PASSWORD="${PORTAINER_ADMIN_PASSWORD:-}" \
       "$HOME/uactions/scripts/infra/install-portainer.sh"
   else
     echo "::warning::install-portainer.sh not found; skipping Portainer installation"
