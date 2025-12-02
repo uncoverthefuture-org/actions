@@ -25,6 +25,14 @@
 #   CPU_LIMIT          - CPU limit (e.g. 0.5)
 #   QUADLET_ENABLED    - 'true' (default) to write Quadlet unit, 'false' to skip
 #
+# Traefik routing inputs (CRITICAL for post-reboot discovery):
+#   ROUTER_NAME        - Traefik router/service name slug (e.g. app-production)
+#   DOMAIN             - Effective domain for Host() rule (e.g. app.example.com)
+#   TRAEFIK_ENABLE_ACME - 'true' to include TLS/certresolver labels
+#   DOMAIN_HOSTS       - Explicit comma-separated host list (overrides DOMAIN)
+#   DOMAIN_ALIASES     - Additional comma-separated domain aliases
+#   INCLUDE_WWW_ALIAS  - 'true' to include www.<apex> in Host() rule
+#
 # Behavior:
 #   - When QUADLET_ENABLED != 'false', writes
 #       $HOME/.config/containers/systemd/<app>-<env>.container
@@ -84,6 +92,16 @@ MEMORY_LIMIT="${MEMORY_LIMIT:-}"
 CPU_LIMIT="${CPU_LIMIT:-}"
 REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-}"
 
+# Traefik routing variables - CRITICAL for post-reboot container discovery
+# Without these labels, Traefik won't know how to route traffic to containers
+# restarted by systemd after a reboot, causing 404 errors.
+ROUTER_NAME="${ROUTER_NAME:-}"
+DOMAIN="${DOMAIN:-}"
+TRAEFIK_ENABLE_ACME="${TRAEFIK_ENABLE_ACME:-true}"
+DOMAIN_HOSTS="${DOMAIN_HOSTS:-}"
+DOMAIN_ALIASES="${DOMAIN_ALIASES:-}"
+INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}"
+
 {
   echo "[Unit]"
   echo "Description=${APP_SLUG} (${ENV_NAME}) container (managed by uactions)"
@@ -136,6 +154,110 @@ REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-}"
   echo "Label=app=${APP_SLUG}"
   echo "Label=env=${ENV_NAME}"
   echo "Label=managed-by=uactions"
+
+  # =========================================================================
+  # TRAEFIK LABELS - CRITICAL for post-reboot container discovery
+  # =========================================================================
+  # When TRAEFIK_ENABLED=true and DOMAIN is set, we must include the same
+  # Traefik labels that were applied during the initial deployment. Without
+  # these labels, Traefik's Docker provider won't discover the container after
+  # a reboot and requests will return 404 errors.
+  #
+  # Example generated labels:
+  #   Label=traefik.enable=true
+  #   Label=traefik.http.routers.myapp-prod.rule=Host("app.example.com")
+  #   Label=traefik.http.routers.myapp-prod.service=myapp-prod
+  #   Label=traefik.http.services.myapp-prod.loadbalancer.server.port=3000
+  # =========================================================================
+  if [[ "${TRAEFIK_ENABLED}" == "true" && -n "${DOMAIN}" && -n "${ROUTER_NAME}" && -n "${CONTAINER_PORT}" ]]; then
+    # Build host list for Traefik rule
+    # Precedence: explicit DOMAIN_HOSTS > DOMAIN + DOMAIN_ALIASES + www variant
+    declare -a _hosts=()
+    if [[ -n "${DOMAIN_HOSTS}" ]]; then
+      IFS=',' read -r -a _hosts <<< "$(echo "${DOMAIN_HOSTS}" | tr ' ' ',')"
+    else
+      _hosts+=("${DOMAIN}")
+      if [[ -n "${DOMAIN_ALIASES}" ]]; then
+        IFS=',' read -r -a _aliases <<< "$(echo "${DOMAIN_ALIASES}" | tr ' ' ',')"
+        for _alias in "${_aliases[@]}"; do
+          [[ -z "$_alias" ]] && continue
+          _hosts+=("$_alias")
+        done
+      fi
+      # Include www.<apex> when INCLUDE_WWW_ALIAS=true and domain is apex
+      if [[ "${INCLUDE_WWW_ALIAS,,}" == "true" ]]; then
+        _dom_lower="$(printf '%s' "${DOMAIN}" | tr '[:upper:]' '[:lower:]')"
+        IFS='.' read -r -a _parts <<< "$_dom_lower"
+        _count=${#_parts[@]}
+        if (( _count >= 2 )); then
+          _apex="${_parts[_count-2]}.${_parts[_count-1]}"
+          if [[ "$_dom_lower" = "$_apex" ]]; then
+            _hosts+=("www.${_apex}")
+          fi
+        fi
+      fi
+      # When domain starts with www., also include the apex
+      _dom_lower="$(printf '%s' "${DOMAIN}" | tr '[:upper:]' '[:lower:]')"
+      if [[ "$_dom_lower" == www.* ]]; then
+        _apex_candidate="${_dom_lower#www.}"
+        [[ -n "$_apex_candidate" ]] && _hosts+=("$_apex_candidate")
+      fi
+    fi
+
+    # De-duplicate hosts while preserving order
+    declare -a _uniq_hosts=()
+    _seen=""
+    for _h in "${_hosts[@]}"; do
+      [[ -z "$_h" ]] && continue
+      if [[ ",${_seen}," != *",${_h},"* ]]; then
+        _uniq_hosts+=("$_h")
+        _seen+="${_seen:+,}${_h}"
+      fi
+    done
+
+    # Build Host("a") || Host("b") expression
+    _host_rule=""
+    for _idx in "${!_uniq_hosts[@]}"; do
+      _hval="${_uniq_hosts[$_idx]}"
+      if [[ $_idx -gt 0 ]]; then _host_rule+=" || "; fi
+      _host_rule+="Host(\"${_hval}\")"
+    done
+
+    # Emit the fundamental traefik.enable label - without this, Traefik ignores the container
+    echo "Label=traefik.enable=true"
+
+    # Router configuration
+    echo "Label=traefik.http.routers.${ROUTER_NAME}.rule=${_host_rule}"
+    echo "Label=traefik.http.routers.${ROUTER_NAME}.service=${ROUTER_NAME}"
+
+    # Service port configuration
+    echo "Label=traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=${CONTAINER_PORT}"
+
+    # TLS configuration when ACME is enabled
+    if [[ "${TRAEFIK_ENABLE_ACME,,}" == "true" ]]; then
+      echo "Label=traefik.http.routers.${ROUTER_NAME}.entrypoints=websecure"
+      echo "Label=traefik.http.routers.${ROUTER_NAME}.tls=true"
+      echo "Label=traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt"
+
+      # HTTP to HTTPS redirect router
+      echo "Label=traefik.http.routers.${ROUTER_NAME}-http.rule=${_host_rule}"
+      echo "Label=traefik.http.routers.${ROUTER_NAME}-http.entrypoints=web"
+      echo "Label=traefik.http.routers.${ROUTER_NAME}-http.service=${ROUTER_NAME}"
+      echo "Label=traefik.http.middlewares.${ROUTER_NAME}-https-redirect.redirectscheme.scheme=https"
+      echo "Label=traefik.http.routers.${ROUTER_NAME}-http.middlewares=${ROUTER_NAME}-https-redirect"
+    else
+      echo "Label=traefik.http.routers.${ROUTER_NAME}.entrypoints=web"
+    fi
+
+    # Network label for Traefik to find the container on the correct network
+    if [[ -n "${TRAEFIK_NETWORK_NAME}" ]]; then
+      echo "Label=traefik.docker.network=${TRAEFIK_NETWORK_NAME}"
+    fi
+
+    echo "::notice::Quadlet unit includes Traefik labels for router '${ROUTER_NAME}' → ${_host_rule}" >&2
+  elif [[ "${TRAEFIK_ENABLED}" == "true" ]]; then
+    echo "::warning::TRAEFIK_ENABLED=true but missing DOMAIN ('${DOMAIN}'), ROUTER_NAME ('${ROUTER_NAME}'), or CONTAINER_PORT ('${CONTAINER_PORT}'); Quadlet unit will NOT include Traefik labels. Container may return 404 after reboot." >&2
+  fi
 
   echo
   echo "[Install]"

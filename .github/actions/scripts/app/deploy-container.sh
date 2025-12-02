@@ -448,7 +448,14 @@ podman ps --filter name="$CONTAINER_NAME" --format 'table {{.ID}}\t{{.Status}}\t
 # so systemd --user can restart the app automatically on reboot using the
 # same image, env file, ports, volume, and resource limits. This is a best
 # effort step; failures are reported as warnings but do not fail the deploy.
+#
+# IMPORTANT: When TRAEFIK_ENABLED=true, we must also export Traefik routing
+# variables (ROUTER_NAME, DOMAIN, TRAEFIK_ENABLE_ACME, etc.) so that the
+# Quadlet unit includes the same Traefik labels as the initial deployment.
+# Without these labels, containers restarted after reboot won't be discovered
+# by Traefik and will return 404 errors.
 if [[ -x "$HOME/uactions/scripts/app/install-app-quadlet.sh" ]]; then
+  # Core container settings
   export IMAGE_REF
   export CONTAINER_NAME
   export HOST_PORT
@@ -460,8 +467,19 @@ if [[ -x "$HOME/uactions/scripts/app/install-app-quadlet.sh" ]]; then
   export APP_SLUG
   export ENV_NAME
   export REMOTE_ENV_FILE
+
+  # Traefik routing settings - CRITICAL for post-reboot label generation
+  # Without these, Quadlet units won't include Traefik labels and containers
+  # will be invisible to Traefik after reboot, causing 404 errors.
   export TRAEFIK_ENABLED
   export TRAEFIK_NETWORK_NAME
+  export ROUTER_NAME                                    # Router/service name for labels
+  export DOMAIN                                         # Effective domain (computed above)
+  export TRAEFIK_ENABLE_ACME="${TRAEFIK_ENABLE_ACME:-true}"  # Whether TLS labels are needed
+  export DOMAIN_HOSTS="${DOMAIN_HOSTS:-}"               # Explicit host list (optional)
+  export DOMAIN_ALIASES="${DOMAIN_ALIASES:-}"           # Additional aliases (optional)
+  export INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS_EFF:-false}" # Include www variant
+
   export QUADLET_ENABLED="${QUADLET_ENABLED:-true}"
   "$HOME/uactions/scripts/app/install-app-quadlet.sh" || echo "::warning::install-app-quadlet.sh failed (Quadlet persistence may be unavailable)" >&2
 else
