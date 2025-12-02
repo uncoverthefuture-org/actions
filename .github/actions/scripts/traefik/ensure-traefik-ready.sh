@@ -26,6 +26,99 @@ ENSURE_TRAEFIK="${ENSURE_TRAEFIK:-true}"
 TRAEFIK_ENABLED="${TRAEFIK_ENABLED:-false}"
 TRAEFIK_MODE="${TRAEFIK_MODE:-container}"
 
+# Helper: Check if Podman version supports Quadlet (>= 4.4)
+# Returns 0 (true) if supported, 1 (false) otherwise
+# Example: Podman 3.4.4 returns 1, Podman 4.4.0 returns 0
+podman_supports_quadlet() {
+  local podman_ver=""
+  if command -v podman >/dev/null 2>&1; then
+    podman_ver=$(podman --version 2>/dev/null | awk '{print $3}' | cut -d'-' -f1 || echo "")
+  fi
+  if [ -z "$podman_ver" ]; then
+    return 1  # Unknown version, assume no Quadlet support
+  fi
+  local podman_major="${podman_ver%%.*}"
+  local podman_minor_patch="${podman_ver#*.}"
+  local podman_minor="${podman_minor_patch%%.*}"
+  if { [ "$podman_major" -gt 4 ] || { [ "$podman_major" -eq 4 ] && [ "$podman_minor" -ge 4 ]; }; }; then
+    return 0  # Podman >= 4.4 supports Quadlet
+  fi
+  return 1  # Podman < 4.4 does not support Quadlet
+}
+
+# Helper: Clean up stale Quadlet files when using container mode
+# This prevents "Socket service traefik.service not loaded, refusing" errors
+cleanup_stale_quadlet_traefik() {
+  local cleaned=false
+  echo "🧹 Cleaning up stale Quadlet Traefik files..."
+
+  # Stop and disable user-level socket units if they exist
+  if command -v systemctl >/dev/null 2>&1; then
+    for unit in http.socket https.socket traefik.service container-traefik.service; do
+      if systemctl --user is-enabled "$unit" >/dev/null 2>&1 || \
+         systemctl --user is-active "$unit" >/dev/null 2>&1; then
+        systemctl --user stop "$unit" >/dev/null 2>&1 || true
+        systemctl --user disable "$unit" >/dev/null 2>&1 || true
+        echo "  ✓ Stopped/disabled $unit"
+        cleaned=true
+      fi
+    done
+  fi
+
+  # Remove socket unit files
+  for f in "$HOME/.config/systemd/user/http.socket" \
+           "$HOME/.config/systemd/user/https.socket"; do
+    if [ -f "$f" ]; then
+      rm -f "$f"
+      echo "  ✓ Removed $f"
+      cleaned=true
+    fi
+  done
+
+  # Remove Quadlet container unit files for Traefik
+  for f in "$HOME/.config/containers/systemd/traefik.container" \
+           "$HOME/.config/containers/systemd/traefik-network.network"; do
+    if [ -f "$f" ]; then
+      rm -f "$f"
+      echo "  ✓ Removed $f"
+      cleaned=true
+    fi
+  done
+
+  # Reload systemd user daemon to pick up removals
+  if $cleaned && command -v systemctl >/dev/null 2>&1; then
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    echo "  ✓ Reloaded systemd --user daemon"
+  fi
+
+  if ! $cleaned; then
+    echo "  ✓ No stale Quadlet files found"
+  fi
+}
+
+# Validate TRAEFIK_MODE against Podman version and clean up stale files if needed
+# This ensures that even if TRAEFIK_MODE=quadlet was requested, we fall back to
+# container mode on old Podman versions that don't support Quadlet properly.
+if [ "$TRAEFIK_MODE" = "quadlet" ]; then
+  if ! podman_supports_quadlet; then
+    echo "::warning::TRAEFIK_MODE=quadlet requested but Podman does not support Quadlet (< 4.4); falling back to container mode."
+    TRAEFIK_MODE="container"
+  fi
+fi
+
+# When using container mode, clean up any stale Quadlet files that might conflict
+if [ "$TRAEFIK_MODE" = "container" ]; then
+  _has_stale_socket_files=false
+  if [ -f "$HOME/.config/systemd/user/http.socket" ] || \
+     [ -f "$HOME/.config/systemd/user/https.socket" ]; then
+    _has_stale_socket_files=true
+  fi
+  if $_has_stale_socket_files; then
+    echo "::notice::TRAEFIK_MODE=container but stale socket files exist; cleaning up to prevent conflicts..."
+    cleanup_stale_quadlet_traefik
+  fi
+fi
+
 # Track whether the ping endpoint responds so we can reconcile when legacy
 # deployments reused without the ping flag enabled still return HTTP 404.
 PING_REACHABILITY="unknown"

@@ -591,6 +591,12 @@ runs: # Composite action implementation
           # guard defaults to the container-managed path inside the scripts.
           export ENSURE_TRAEFIK='${{ inputs.ensure_traefik }}'
 
+          # TRAEFIK_MODE controls whether Traefik is managed via Quadlet/socket-
+          # activation ('quadlet') or as a standalone Podman container ('container').
+          # This variable is computed below based on Podman version and passed to
+          # the remote scripts so they don't override it based on stale file presence.
+          # Example: Podman 3.4.4 cannot use Quadlet reliably, so TRAEFIK_MODE=container.
+
           # Podman storage cleanup controls. When enabled (default),
           # run-deployment.sh will invoke prune-podman-storage.sh after a
           # successful deployment to remove old, unused containers/images and
@@ -678,7 +684,15 @@ runs: # Composite action implementation
           # Older Podman releases (for example 3.x on some distributions) do
           # not ship Quadlet support, which would cause silent failures on
           # ports 80/443 if we forced TRAEFIK_MODE=quadlet.
-          if [ -z "${TRAEFIK_MODE:-}" ] && [ -x "$HOME/uactions/scripts/traefik/install-quadlet-sockets.sh" ]; then
+          #
+          # IMPORTANT: We MUST explicitly export TRAEFIK_MODE so that
+          # run-deployment.sh does not override it based on stale Quadlet
+          # files left from previous failed deployments. Example scenario:
+          #   - Server has Podman 3.4.4 (no Quadlet support)
+          #   - Previous deployment left ~/.config/systemd/user/http.socket
+          #   - Without explicit export, run-deployment.sh would detect files
+          #     and set TRAEFIK_MODE=quadlet, causing socket activation failures
+          if [ -z "${TRAEFIK_MODE:-}" ]; then
             podman_ver=""
             if command -v podman >/dev/null 2>&1; then
               podman_ver=$(podman --version 2>/dev/null | awk '{print $3}' | cut -d'-' -f1 || echo "")
@@ -688,13 +702,28 @@ runs: # Composite action implementation
               podman_minor_patch="${podman_ver#*.}"
               podman_minor="${podman_minor_patch%%.*}"
               if { [ "$podman_major" -gt 4 ] || { [ "$podman_major" -eq 4 ] && [ "$podman_minor" -ge 4 ]; }; }; then
-                export TRAEFIK_MODE='quadlet'
+                # Podman >= 4.4 supports Quadlet; check if installer is available
+                if [ -x "$HOME/uactions/scripts/traefik/install-quadlet-sockets.sh" ]; then
+                  export TRAEFIK_MODE='quadlet'
+                  echo "::notice::Podman $podman_ver supports Quadlet; using TRAEFIK_MODE=quadlet." >&2
+                else
+                  export TRAEFIK_MODE='container'
+                  echo "::notice::Podman $podman_ver supports Quadlet but installer not found; using TRAEFIK_MODE=container." >&2
+                fi
               else
-                echo "::notice::Podman version $podman_ver does not support Quadlet reliably; keeping container-managed Traefik (TRAEFIK_MODE=container)." >&2
+                # Podman < 4.4 does NOT support Quadlet reliably
+                export TRAEFIK_MODE='container'
+                echo "::notice::Podman version $podman_ver does not support Quadlet (requires >= 4.4); using TRAEFIK_MODE=container." >&2
               fi
             else
-              echo "::notice::Podman not found or version unknown; leaving TRAEFIK_MODE=container (no Quadlet auto-enable)." >&2
+              # Podman not found or version unknown - default to container mode
+              export TRAEFIK_MODE='container'
+              echo "::notice::Podman not found or version unknown; using TRAEFIK_MODE=container." >&2
             fi
+          else
+            # TRAEFIK_MODE was already set (e.g., by caller); export it as-is
+            export TRAEFIK_MODE
+            echo "::notice::Using caller-provided TRAEFIK_MODE=$TRAEFIK_MODE." >&2
           fi
 
           "$HOME/uactions/scripts/app/start-container-deployment.sh"
