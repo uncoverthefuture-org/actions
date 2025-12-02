@@ -575,7 +575,7 @@ runs: # Composite action implementation
           # install-portainer.sh script so it can bootstrap the initial admin
           # user via the HTTPS API on first install. Example overrides:
           #   - portainer_admin_auto_init: 'false' (manual UI/API setup)
-          #   - portainer_admin_password: '${{ secrets.PORTAINER_ADMIN_PASSWORD }}'
+          #   - portainer_admin_password: '<admin-password-from-workflow-secret>'
           export PORTAINER_ADMIN_AUTO_INIT='${{ inputs.portainer_admin_auto_init }}'
           export PORTAINER_ADMIN_USERNAME='${{ inputs.portainer_admin_username }}'
           export PORTAINER_ADMIN_PASSWORD='${{ inputs.portainer_admin_password }}'

@@ -211,11 +211,11 @@ if command -v systemctl >/dev/null 2>&1; then
           elif [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
             payload=""
             if command -v jq >/dev/null 2>&1; then
-              payload=$(jq -nc --arg u "$PORTAINER_ADMIN_USERNAME" --arg p "$PORTAINER_ADMIN_PASSWORD" '{Username:$u,Password:$p}')
+              payload=$(jq -nc --arg u "$PORTAINER_ADMIN_USERNAME" --arg p "$PORTAINER_ADMIN_PASSWORD" '{username:$u,password:$p}')
             else
               # Fallback JSON construction for environments without jq. This
               # assumes the username/password do not contain double quotes.
-              payload=$(printf '{"Username":"%s","Password":"%s"}' "$PORTAINER_ADMIN_USERNAME" "$PORTAINER_ADMIN_PASSWORD")
+              payload=$(printf '{"username":"%s","password":"%s"}' "$PORTAINER_ADMIN_USERNAME" "$PORTAINER_ADMIN_PASSWORD")
             fi
 
             admin_code=$(curl -ksS -o /tmp/portainer-admin-init.out -w '%{http_code}' --max-time 10 \
