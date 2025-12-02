@@ -54,9 +54,10 @@ This example deploys a production app using Traefik and a base64-encoded `.env` 
 ```
 
 Notes:
+
 - When `enable_traefik` is `true`, the action will probe the server for Traefik and automatically run host preparation if it is missing.
 - If no `domain`/`base_domain` is provided, the action publishes a host port instead (see port mapping below).
- 
+
 ## Inputs
 
 All inputs are provided via the `params_json` object. The tables below list each input, its default, and what it controls.
@@ -105,8 +106,8 @@ All inputs are provided via the `params_json` object. The tables below list each
 | `auto_detect_env` | `true` | Derive `env_name` from branch/tag via `compute-defaults`. |
 | `env_file_path` | – | Base path for `.env` on the host (otherwise derived from `deployment_base_dir`). |
 | `write_env_file` | `false` | When true, write `env_b64`/`env_content` to the remote `.env`. |
-| `env_b64` | – | Base64-encoded `.env` payload to materialize on the host. |
-| `env_content` | – | Raw `.env` content (prefer `env_b64` for secrets). |
+| `env_b64` | – | Base64-encoded `.env` payload to materialize on the host. See [Env file sanitization](#env-file-sanitization) for handling of values with spaces. |
+| `env_content` | – | Raw `.env` content (prefer `env_b64` for secrets). See [Env file sanitization](#env-file-sanitization) for handling of values with spaces. |
 | `auto_fetch_env` | `true` | Resolve `env_b64` automatically from job env (e.g. `PROD_ENV_B64`). |
 | `env_secret_prefix` | `''` | Prefix used when deriving env secret var names from `env_name`. |
 | `env_secret_suffix` | `_ENV_B64` | Suffix used when deriving env secret var names from `env_name`. |
@@ -269,6 +270,62 @@ If the logs show a staging or otherwise untrusted certificate, you can trigger a
 When `ensure_traefik` is `false`, the action still attaches Traefik labels (when `enable_traefik=true`) but **does not** run the Quadlet/setup-traefik flow or the host-side `ensure-traefik-ready.sh`; this is useful when an operations team manages Traefik separately.
 
 The post-deploy probe will also log TLS certificate issuer/subject/validity so you can confirm when a trusted Let’s Encrypt production certificate is in use.
+
+## Env file sanitization
+
+The deployment scripts **automatically sanitize** your `.env` file after writing to ensure it can be sourced by bash without errors. This is important because bash interprets unquoted values with spaces as commands.
+
+**Problem example:**
+
+```env
+ZEPTO_DEFAULT_FROM_NAME=David from EventKaban
+```
+
+Without sanitization, when bash sources this file, it interprets:
+
+- `ZEPTO_DEFAULT_FROM_NAME=David` — set variable to "David"
+- `from EventKaban` — execute command "from" with argument "EventKaban"
+
+This causes the error: `from: command not found`
+
+**Automatic fix:**
+
+The sanitizer detects values with spaces or shell metacharacters and wraps them in double quotes:
+
+```env
+ZEPTO_DEFAULT_FROM_NAME="David from EventKaban"
+```
+
+### What gets quoted
+
+The sanitizer quotes values containing any of these characters:
+
+- Spaces or tabs
+- Shell metacharacters: `$`, `` ` ``, `!`, `(`, `)`, `;`, `&`, `|`, `<`, `>`
+
+### What stays unchanged
+
+- Empty lines and comments (`# ...`)
+- Lines already containing quotes (single `'` or double `"`)
+- Simple `KEY=value` pairs without special characters
+
+### Best practices
+
+While the sanitizer handles most cases automatically, you can also:
+
+1. **Pre-quote values with spaces in your secrets:**
+
+   ```env
+   ZEPTO_DEFAULT_FROM_NAME="David from EventKaban"
+   ```
+
+2. **Use single quotes for values with `$` that shouldn't expand:**
+
+   ```env
+   PASSWORD='my$ecret$pass'
+   ```
+
+The sanitizer preserves any quotes you've already added.
 
 ## SSH reachability failures
 

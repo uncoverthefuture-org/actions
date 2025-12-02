@@ -163,6 +163,73 @@ if [ -n "$ENV_B64" ] || [ -n "$ENV_CONTENT" ]; then
     printf '%s' "$ENV_CONTENT" > "$ENV_FILE"
   fi
   chmod 600 "$ENV_FILE" >/dev/null 2>&1 || true
+
+  # -----------------------------------------------------------------------------
+  # ENV FILE SANITIZATION
+  # -----------------------------------------------------------------------------
+  # Purpose: Ensure values with spaces or special characters are properly quoted
+  # so the file can be sourced by bash without interpreting unquoted words as
+  # commands. Example problem: ZEPTO_DEFAULT_FROM_NAME=David from EventKaban
+  # would cause "from: command not found" because bash sees "from" as a command.
+  #
+  # This sanitizer:
+  #   - Skips empty lines and comment lines (# ...)
+  #   - Skips lines already containing quotes (single or double)
+  #   - Wraps values containing spaces, $, `, !, or other shell metacharacters
+  #     in double quotes
+  #   - Preserves lines that are already safe (simple KEY=value without spaces)
+  # -----------------------------------------------------------------------------
+  if [ -f "$ENV_FILE" ]; then
+    ENV_FILE_TMP="${ENV_FILE}.sanitized"
+    while IFS= read -r line || [ -n "$line" ]; do
+      # Pass through empty lines and comments unchanged
+      case "$line" in
+        ''|\#*)
+          printf '%s\n' "$line"
+          continue
+          ;;
+      esac
+
+      # Skip lines that already have quotes (user explicitly quoted)
+      case "$line" in
+        *\'*|*\"*)
+          printf '%s\n' "$line"
+          continue
+          ;;
+      esac
+
+      # Split into KEY and VALUE at first '='
+      key="${line%%=*}"
+      value="${line#*=}"
+
+      # If no '=' found, pass through unchanged (malformed line)
+      if [ "$key" = "$line" ]; then
+        printf '%s\n' "$line"
+        continue
+      fi
+
+      # Check if value needs quoting (contains space, tab, $, `, !, (, ), etc.)
+      # Using case pattern matching for POSIX compatibility
+      needs_quote=false
+      case "$value" in
+        *\ *|*\	*|*\$*|*\`*|*\!*|*\(*|*\)*|*\;*|*\&*|*\|*|*\<*|*\>*|*\"*|*\'*)
+          needs_quote=true
+          ;;
+      esac
+
+      if $needs_quote; then
+        # Escape any existing double quotes and backslashes in value
+        escaped_value=$(printf '%s' "$value" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        printf '%s="%s"\n' "$key" "$escaped_value"
+      else
+        printf '%s\n' "$line"
+      fi
+    done < "$ENV_FILE" > "$ENV_FILE_TMP"
+    mv "$ENV_FILE_TMP" "$ENV_FILE"
+    chmod 600 "$ENV_FILE" >/dev/null 2>&1 || true
+    echo "  • Environment file sanitized (values with spaces quoted)"
+  fi
+
   echo "  • Environment file written to $ENV_FILE (600)"
   echo "================================================================"
   echo ""
