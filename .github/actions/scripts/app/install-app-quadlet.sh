@@ -109,6 +109,9 @@ INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}"
   echo
   echo "[Container]"
   echo "Image=${IMAGE_REF}"
+  # Prevent pulling from registry on restart - use only locally cached images.
+  # This is critical because auth tokens are not available after server reboot.
+  echo "Pull=never"
   echo "ContainerName=${CONTAINER_NAME}"
 
   if [[ -n "${REMOTE_ENV_FILE}" ]]; then
