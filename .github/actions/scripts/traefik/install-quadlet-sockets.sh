@@ -148,6 +148,8 @@ Wants=${TRAEFIK_NETWORK_NAME}-network.service http.socket https.socket
 [Container]
 Image=docker.io/traefik:${TRAEFIK_VERSION}
 ContainerName=traefik
+# Prevent pulling from registry on restart - use only locally cached images.
+Pull=never
 # SELinux: disable label separation for socket volume access under rootless
 SecurityLabelDisable=true
 

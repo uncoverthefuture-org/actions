@@ -107,6 +107,16 @@ if command -v ss >/dev/null 2>&1; then
   fi
 fi
 
+# Allow Portainer port in UFW if UFW is installed and active
+if command -v ufw >/dev/null 2>&1; then
+  echo "🔓 Allowing Portainer HTTPS port ${PORTAINER_HTTPS_PORT}/tcp in UFW ..." >&2
+  if command -v sudo >/dev/null 2>&1; then
+    sudo -n ufw allow "${PORTAINER_HTTPS_PORT}/tcp" >/dev/null 2>&1 || true
+  else
+    ufw allow "${PORTAINER_HTTPS_PORT}/tcp" >/dev/null 2>&1 || true
+  fi
+fi
+
 QUADLET_DIR="${HOME}/.config/containers/systemd"
 mkdir -p "$QUADLET_DIR"
 # Quadlet uses a .container unit file (portainer.container) which systemd
@@ -128,6 +138,10 @@ ContainerName=portainer
 # under the user-scoped data directory. Example:
 #   PORTAINER_DATA_DIR="$HOME/.local/share/portainer" → /data inside container
 # This directory should be treated as sensitive on the host.
+#
+# Prevent pulling from registry on restart - use only locally cached images.
+# This prevents restart failures when the registry is unreachable or unauthenticated.
+Pull=never
 Volume=%h/.local/share/portainer:/data:Z
 Volume=%t/podman/podman.sock:/var/run/docker.sock:Z
 # Publish HTTPS UI directly on the host (e.g. https://server:${PORTAINER_HTTPS_PORT}).
