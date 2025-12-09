@@ -22,6 +22,10 @@
 # ----------------------------------------------------------------------------
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../util/podman.sh
+source "${SCRIPT_DIR}/../util/podman.sh"
+
 TRAEFIK_VERSION="${TRAEFIK_VERSION:-v3.5.4}"
 TRAEFIK_ENABLE_ACME="${TRAEFIK_ENABLE_ACME:-true}"
 TRAEFIK_EMAIL="${TRAEFIK_EMAIL:-}"
@@ -150,9 +154,21 @@ Image=docker.io/traefik:${TRAEFIK_VERSION}
 ContainerName=traefik
 # Prevent pulling from registry on restart - use only locally cached images.
 Pull=never
+
+# Resource Limits: Prevent system crashes by capping usage and disabling swap
+# (so containers are OOM killed instead of locking the OS).
+Memory=512M
+PodmanArgs=--memory-swap=512M
 # SELinux: disable label separation for socket volume access under rootless
 SecurityLabelDisable=true
+EOF
 
+# Append CPU limit if the host supports it
+if podman_cpu_cgroup_available; then
+  echo "PodmanArgs=--cpus=1.0" >>"$CONTAINER_UNIT_PATH"
+fi
+
+cat >>"$CONTAINER_UNIT_PATH" <<EOF
 # Volumes: static config and ACME storage (user-scoped)
 Volume=%h/.config/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
 Volume=%h/.local/share/traefik/acme.json:/letsencrypt/acme.json:Z

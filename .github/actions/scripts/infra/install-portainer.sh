@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../util/podman.sh
+source "${SCRIPT_DIR}/../util/podman.sh"
+
 INSTALL_PORTAINER="${INSTALL_PORTAINER:-true}"
 if [ "$INSTALL_PORTAINER" != "true" ]; then
   echo "::notice::INSTALL_PORTAINER=$INSTALL_PORTAINER; skipping Portainer installation" >&2
@@ -141,7 +145,22 @@ ContainerName=portainer
 #
 # Prevent pulling from registry on restart - use only locally cached images.
 # This prevents restart failures when the registry is unreachable or unauthenticated.
+# Prevent pulling from registry on restart - use only locally cached images.
+# This prevents restart failures when the registry is unreachable or unauthenticated.
 Pull=never
+
+# Resource Limits: Prevent system crashes by capping usage and disabling swap
+# (so containers are OOM killed instead of locking the OS).
+Memory=512M
+PodmanArgs=--memory-swap=512M
+EOF
+
+# Append CPU limit if the host supports it
+if podman_cpu_cgroup_available; then
+  echo "PodmanArgs=--cpus=0.5" >>"$UNIT_PATH"
+fi
+
+cat >>"$UNIT_PATH" <<EOF
 Volume=%h/.local/share/portainer:/data:Z
 Volume=%t/podman/podman.sock:/var/run/docker.sock:Z
 # Publish HTTPS UI directly on the host (e.g. https://server:${PORTAINER_HTTPS_PORT}).
