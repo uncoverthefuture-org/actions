@@ -139,6 +139,34 @@ EOF
 
 # traefik.container
 CONTAINER_UNIT_PATH="${QUADLET_DIR}/traefik.container"
+
+# ---------------------------------------------------------------------------
+# Create required directories and files BEFORE Quadlet generation.
+# These CANNOT be in ExecStartPre because Quadlet does not support that key.
+# ---------------------------------------------------------------------------
+TRAEFIK_CONFIG_DIR="${HOME}/.config/traefik"
+TRAEFIK_DATA_DIR="${HOME}/.local/share/traefik"
+TRAEFIK_ACME_FILE="${TRAEFIK_DATA_DIR}/acme.json"
+TRAEFIK_YML="${TRAEFIK_CONFIG_DIR}/traefik.yml"
+
+mkdir -p "$TRAEFIK_CONFIG_DIR" "$TRAEFIK_DATA_DIR"
+
+# Create acme.json with correct permissions if missing
+if [[ ! -f "$TRAEFIK_ACME_FILE" ]]; then
+  echo '{}' > "$TRAEFIK_ACME_FILE"
+fi
+chmod 600 "$TRAEFIK_ACME_FILE" 2>/dev/null || true
+
+# Create minimal traefik.yml if missing (ACME/dashboard configured via CLI args)
+if [[ ! -f "$TRAEFIK_YML" ]]; then
+  cat > "$TRAEFIK_YML" <<'TRAEFIK_YML_EOF'
+log:
+  level: INFO
+ping:
+  entryPoint: web
+TRAEFIK_YML_EOF
+fi
+
 cat >"$CONTAINER_UNIT_PATH" <<EOF
 [Unit]
 Description=Traefik reverse proxy (socket-activated)
@@ -150,16 +178,9 @@ After=${TRAEFIK_NETWORK_NAME}-network.service http.socket https.socket
 Wants=${TRAEFIK_NETWORK_NAME}-network.service http.socket https.socket
 
 [Service]
-# Ensure config directories and files exist before starting Traefik.
-# This prevents exit 137 (SIGKILL) when config files are missing.
-ExecStartPre=/bin/bash -c 'mkdir -p %h/.config/traefik %h/.local/share/traefik'
-ExecStartPre=/bin/bash -c 'test -f %h/.local/share/traefik/acme.json || echo "{}" > %h/.local/share/traefik/acme.json'
-ExecStartPre=/bin/bash -c 'chmod 600 %h/.local/share/traefik/acme.json 2>/dev/null || true'
-# Create minimal traefik.yml if missing (ACME/dashboard configured via CLI args)
-ExecStartPre=/bin/bash -c 'test -f %h/.config/traefik/traefik.yml || printf "log:\\n  level: INFO\\nping:\\n  entryPoint: web\\n" > %h/.config/traefik/traefik.yml'
-# Give Traefik time to cleanly start before marking ready
+# NOTE: ExecStartPre is NOT supported by Quadlet - directory/file creation
+# is done in the install script instead (see above).
 TimeoutStartSec=60
-# Restart policy with backoff to prevent tight restart loops
 Restart=on-failure
 RestartSec=10
 StartLimitIntervalSec=300
