@@ -170,7 +170,7 @@ inputs: # All parameters accepted by this action
   ufw_allow_ports:
     description: "Space-separated list of ports opened in UFW during host prep (example: '80 443')."
     required: false
-    default: ''
+    default: '80 443'
   install_webmin:
     description: 'Install Webmin during host prep/first-run (requires sudo).'
     required: false

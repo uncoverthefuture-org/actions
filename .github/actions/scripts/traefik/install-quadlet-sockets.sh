@@ -149,6 +149,22 @@ Description=Traefik reverse proxy (socket-activated)
 After=${TRAEFIK_NETWORK_NAME}-network.service http.socket https.socket
 Wants=${TRAEFIK_NETWORK_NAME}-network.service http.socket https.socket
 
+[Service]
+# Ensure config directories and files exist before starting Traefik.
+# This prevents exit 137 (SIGKILL) when config files are missing.
+ExecStartPre=/bin/bash -c 'mkdir -p %h/.config/traefik %h/.local/share/traefik'
+ExecStartPre=/bin/bash -c 'test -f %h/.local/share/traefik/acme.json || echo "{}" > %h/.local/share/traefik/acme.json'
+ExecStartPre=/bin/bash -c 'chmod 600 %h/.local/share/traefik/acme.json 2>/dev/null || true'
+# Create minimal traefik.yml if missing (ACME/dashboard configured via CLI args)
+ExecStartPre=/bin/bash -c 'test -f %h/.config/traefik/traefik.yml || printf "log:\\n  level: INFO\\nping:\\n  entryPoint: web\\n" > %h/.config/traefik/traefik.yml'
+# Give Traefik time to cleanly start before marking ready
+TimeoutStartSec=60
+# Restart policy with backoff to prevent tight restart loops
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
 [Container]
 Image=docker.io/traefik:${TRAEFIK_VERSION}
 ContainerName=traefik
