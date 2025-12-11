@@ -151,8 +151,8 @@ Pull=never
 
 # Resource Limits: Prevent system crashes by capping usage and disabling swap
 # (so containers are OOM killed instead of locking the OS).
-Memory=512M
-PodmanArgs=--memory-swap=512M
+# Memory= key is not supported by Quadlet, must use PodmanArgs
+PodmanArgs=--memory=512M --memory-swap=512M
 EOF
 
 # Append CPU limit if the host supports it
@@ -218,10 +218,14 @@ if command -v systemctl >/dev/null 2>&1; then
   # portainer.container this becomes portainer.service, which is what
   # `systemctl --user` should manage.
   PORTAINER_SERVICE="portainer.service"
-  if systemctl --user daemon-reload >/dev/null 2>&1; then
-    if ! systemctl --user list-unit-files "${PORTAINER_SERVICE}" --no-legend 2>/dev/null | grep -q "${PORTAINER_SERVICE}"; then
+  
+  # Ensure XDG_RUNTIME_DIR is exported for rootless systemctl calls
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  
+  if XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload >/dev/null 2>&1; then
+    if ! XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user list-unit-files "${PORTAINER_SERVICE}" --no-legend 2>/dev/null | grep -q "${PORTAINER_SERVICE}"; then
       echo "::warning::Portainer Quadlet unit ${UNIT_PATH} written but ${PORTAINER_SERVICE} was not registered by systemd generators (no matching unit files). Portainer will not be managed by user-level systemd on this host until Quadlet/user-generator behavior is fixed." >&2
-    elif systemctl --user start "${PORTAINER_SERVICE}" >/dev/null 2>&1; then
+    elif XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user start "${PORTAINER_SERVICE}" >/dev/null 2>&1; then
       echo "Started ${PORTAINER_SERVICE} for user (from Quadlet ${UNIT_PATH})" >&2
       # Best-effort HTTPS probe so operators see whether the UI is reachable
       # on the expected address without failing the script when curl is

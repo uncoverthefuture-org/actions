@@ -57,6 +57,21 @@ fi
 CURRENT_USER="$(id -un)"
 PUID="$(id -u)"
 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$PUID}"
+export XDG_RUNTIME_DIR
+
+# Ensure runtime directory exists (critical for root via SSH)
+if [ ! -d "$XDG_RUNTIME_DIR" ]; then
+  mkdir -p "$XDG_RUNTIME_DIR"
+  chmod 700 "$XDG_RUNTIME_DIR"
+fi
+
+# Enable user lingering so services persist after SSH disconnect
+if command -v loginctl >/dev/null 2>&1; then
+  if ! loginctl show-user "$CURRENT_USER" 2>/dev/null | grep -q "Linger=yes"; then
+    loginctl enable-linger "$CURRENT_USER" >/dev/null 2>&1 || true
+  fi
+fi
+
 QUADLET_DIR="${HOME}/.config/containers/systemd"
 USER_SYSTEMD_DIR="${HOME}/.config/systemd/user"
 SOCK_HOST="${XDG_RUNTIME_DIR}/podman/podman.sock"
@@ -74,9 +89,9 @@ if command -v podman >/dev/null 2>&1; then
 fi
 
 if command -v systemctl >/dev/null 2>&1; then
-  systemctl --user stop traefik.service  >/dev/null 2>&1 || true
-  systemctl --user disable traefik.service >/dev/null 2>&1 || true
-  if systemctl is-active --quiet traefik.service 2>/dev/null; then
+  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user stop traefik.service  >/dev/null 2>&1 || true
+  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable traefik.service >/dev/null 2>&1 || true
+  if XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl is-active --quiet traefik.service 2>/dev/null; then
     echo "::warning::A system-level traefik.service is active; it may conflict with rootless Quadlet Traefik on ports 80/443. Consider disabling the system service or migrating fully to Quadlet." >&2
   fi
 fi
@@ -194,8 +209,8 @@ Pull=never
 
 # Resource Limits: Prevent system crashes by capping usage and disabling swap
 # (so containers are OOM killed instead of locking the OS).
-Memory=512M
-PodmanArgs=--memory-swap=512M
+# Memory= key is not supported by Quadlet, must use PodmanArgs
+PodmanArgs=--memory=512M --memory-swap=512M
 # SELinux: disable label separation for socket volume access under rootless
 SecurityLabelDisable=true
 EOF
