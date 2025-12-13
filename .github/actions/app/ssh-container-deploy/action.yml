@@ -75,6 +75,9 @@ inputs: # All parameters accepted by this action
     description: 'When true and env_b64 not provided, resolve from job env based on env_name'
     required: false
     default: 'true'
+  secrets_json:
+    description: "JSON string containing secrets (e.g., toJSON(secrets)). Used to lookup secrets without exposing them in global env."
+    required: false
   enable_acme:
     description: 'When true (default), attach certresolver label for ACME; set false to skip Let''s Encrypt while debugging.'
     required: false
@@ -414,28 +417,13 @@ runs: # Composite action implementation
     - name: Resolve env secret (optional)
       id: envsel
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.auto_fetch_env == 'true' && (inputs.env_b64 == '' && inputs.env_content == '') }}
-      shell: bash
-      env:
-        ENV_NAME_DEFAULT: ${{ steps.dfl.outputs.env_name_default }}
-        PREFIX: ${{ inputs.env_secret_prefix }}
-        SUFFIX: ${{ inputs.env_secret_suffix }}
-      run: |
-        set -euo pipefail
-        key=""
-        case "${ENV_NAME_DEFAULT:-development}" in
-          production) key="PROD" ;;
-          staging) key="STAGING" ;;
-          *) key="DEV" ;;
-        esac
-        varname="${PREFIX}${key}${SUFFIX}"
-        echo "Looking for env var: $varname"
-        val=${!varname:-}
-        if [ -n "$val" ]; then
-          echo "env_b64 resolved from $varname"
-          printf 'env_b64=%s\n' "$val" >> "$GITHUB_OUTPUT"
-        else
-          echo "env_b64 not found in job env for $varname (will proceed without writing .env)"
-        fi
+      uses: ./.github/actions/common/select-env-secret
+      with:
+        env_name: ${{ steps.dfl.outputs.env_name_default }}
+        secrets_json: ${{ inputs.secrets_json }}
+        secret_prefix: ${{ inputs.env_secret_prefix }}
+        secret_suffix: ${{ inputs.env_secret_suffix }}
+        required: false
 
     - name: Deploy preflight # Validate inputs, optional host prep, write env, registry login
       id: preflight

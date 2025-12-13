@@ -43,6 +43,9 @@ inputs:
   params_json:
     description: "JSON blob of parameters to pass to the selected subaction. Optional. Used for complex parameter passing"
     required: false
+  secrets_json:
+    description: "JSON blob of secrets to pass to the selected subaction. Optional. Example: toJSON(secrets)"
+    required: false
 
   # Common SSH / remote
   ssh_host:
@@ -348,6 +351,7 @@ runs:
         container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.params.outputs.json).container_name }}
         host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
         container_port: ${{ inputs.container_port != '' && inputs.container_port || fromJSON(steps.params.outputs.json).container_port }}
+        secrets_json: ${{ inputs.secrets_json }}
         restart_policy: ${{ inputs.restart_policy != '' && inputs.restart_policy || fromJSON(steps.params.outputs.json).restart_policy }}
         extra_run_args: ${{ inputs.extra_run_args != '' && inputs.extra_run_args || fromJSON(steps.params.outputs.json).extra_run_args }}
         memory_limit: ${{ inputs.memory_limit != '' && inputs.memory_limit || fromJSON(steps.params.outputs.json).memory_limit }}
