@@ -127,6 +127,13 @@ inputs:
       Example: { "ssh_host": "example.com", "ssh_key": "...", "env_name": "production" }
       See the specific action's README for its parameters.
     required: false
+  secrets_json:
+    description: |
+      JSON string containing secrets (e.g., toJSON(secrets)).
+      Passing this prevents having to expose secrets in the global environment variables 
+      (which can leak into logs).
+      Example: secrets_json: ${{ toJSON(secrets) }}
+    required: false
 
 
 # ============================================================================
@@ -221,6 +228,7 @@ runs:
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
+        secrets_json: ${{ inputs.secrets_json }}
 
     - name: Podman dispatch
       id: poddisp
@@ -237,6 +245,7 @@ runs:
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
+        secrets_json: ${{ inputs.secrets_json }}
 
     - name: Infra dispatch
       id: infradisp

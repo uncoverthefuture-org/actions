@@ -27,7 +27,7 @@ description: 'Validates environment-related inputs for specific app subactions.'
 # ============================================================================
 inputs:
   subaction:
-    description: 'App subaction name. Required. Example: ssh-django-deploy'
+    description: 'App subaction name. Required. Example: ssh-container-deploy'
     required: true
   env_name:
     description: 'Environment name. Optional. Example: production, staging, development'

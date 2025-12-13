@@ -45,7 +45,7 @@ runs:
       run: |
         set -euo pipefail
         case "$SUBACTION" in
-          ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file)
+          ssh-container-deploy|write-remote-env-file)
             if [ -z "$SSH_HOST" ]; then
               echo '::error::ssh_host is required for app deployment subactions'
               echo 'Error: ssh_host is required for app deployment subactions' >&2

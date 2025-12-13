@@ -33,6 +33,9 @@ inputs:
   env_name:
     description: 'Environment name. Required. Example: prod, staging, dev'
     required: true
+  secrets_json:
+    description: "JSON string containing secrets (e.g., toJSON(secrets)). Used to lookup secrets without exposing them in global env."
+    required: false
   secret_prefix:
     description: "Secret name prefix. Default: empty. Final secret: <prefix><UPPERCASE env_name><suffix>"
     required: false
@@ -67,6 +70,7 @@ runs:
       id: resolve
       shell: bash
       env:
+        SECRETS_JSON: ${{ inputs.secrets_json }}
         SECRET_PREFIX: ${{ inputs.secret_prefix }}
         SECRET_SUFFIX: ${{ inputs.secret_suffix }}
         ENV_NAME_RAW: ${{ inputs.env_name }}
@@ -92,7 +96,23 @@ runs:
         fi
 
         secret_name="${prefix}${env_upper}${suffix}"
-        secret_value="$(printenv "${secret_name}" 2>/dev/null || true)"
+        
+        # Try to get secret from JSON input first
+        secret_value=""
+        if [ -n "${SECRETS_JSON}" ]; then
+          # Use jq to extract the secret safely
+          # We escape the secret name to prevent injection/errors if it has weird chars (unlikely for env keys)
+          if command -v jq >/dev/null 2>&1; then
+             secret_value=$(echo "${SECRETS_JSON}" | jq -r --arg key "$secret_name" '.[$key] // empty')
+          else
+             echo "::warning::jq not found, cannot parse secrets_json. Falling back to environment lookup."
+          fi
+        fi
+
+        # Fallback to environment variable if not found in JSON
+        if [ -z "${secret_value}" ]; then
+          secret_value="$(printenv "${secret_name}" 2>/dev/null || true)"
+        fi
 
         if [ -z "${secret_value}" ]; then
           if [ "${REQUIRED}" = "true" ]; then

@@ -67,6 +67,9 @@ inputs:
   # ========================================================================
   # SECRET RESOLUTION
   # ========================================================================
+  secrets_json:
+    description: "JSON string containing secrets. Passed to select-env-secret."
+    required: false
   secret_prefix:
     description: "Secret name prefix. Final secret: <prefix><UPPERCASE env_key><suffix>. Example: '' results in PROD_ENV_B64"
     required: false
@@ -146,6 +149,7 @@ runs:
       uses: ./.github/actions/common/select-env-secret
       with:
         env_name: ${{ steps.context.outputs.env_key }}
+        secrets_json: ${{ inputs.secrets_json }}
         secret_prefix: ${{ inputs.secret_prefix }}
         secret_suffix: ${{ inputs.secret_suffix }}
         required: ${{ inputs.secret_required }}
@@ -202,9 +206,6 @@ runs:
 
         # Resolve absolute path to the env file
         env_file_path="$(cd "$(dirname "$dest")" && pwd)/$(basename "$dest")"
-
-        # Export variables from the .env file to GitHub Actions environment
-        grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$env_file_path" | sed 's/\r$//' >> "$GITHUB_ENV" || true
 
         # Output the resolved env file path to GITHUB_OUTPUT
         printf 'env_file=%s\n' "$env_file_path" >> "$GITHUB_OUTPUT"

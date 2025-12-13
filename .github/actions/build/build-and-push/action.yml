@@ -53,6 +53,9 @@ inputs:
   image_tag:
     description: 'Override image tag to publish. Usually auto-generated from commit SHA'
     required: false
+  secrets_json:
+    description: "JSON string containing secrets. Passed to prepare-app-env."
+    required: false
 
 # ============================================================================
 # OUTPUTS - Values returned by this action
@@ -162,6 +165,7 @@ runs:
       with:
         env_name: ${{ inputs.env_name }}
         env_key: ${{ inputs.env_key }}
+        secrets_json: ${{ inputs.secrets_json }}
         export_to_github_env: 'true'
         secret_required: 'false'
 

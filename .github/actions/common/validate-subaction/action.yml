@@ -27,10 +27,10 @@ description: 'Validates that a provided subaction matches an allow list.'
 # ============================================================================
 inputs:
   subaction:
-    description: 'Subaction name to validate. Required. Example: ssh-django-deploy'
+    description: 'Subaction name to validate. Required. Example: build-and-push'
     required: true
   allowed:
-    description: 'Pipe-delimited list of allowed subaction names. Required. Example: ssh-django-deploy|ssh-nextjs-deploy'
+    description: 'Pipe-delimited list of allowed subaction names. Required. Example: build-and-push|prepare-ubuntu-host'
     required: true
 
 # ============================================================================

@@ -38,7 +38,7 @@ inputs:
   # ROUTING
   # ========================================================================
   subaction:
-    description: "Subaction to route to. Required. Options: ssh-django-deploy, ssh-django-api-deploy, ssh-nextjs-deploy, ssh-container-deploy, doctl-container-deploy, aws-ssm-container-deploy, ssh-react-deploy, ssh-laravel-deploy, write-remote-env-file"
+    description: "Subaction to route to. Required. Options: ssh-container-deploy, doctl-container-deploy, aws-ssm-container-deploy, write-remote-env-file"
     required: true
   params_json:
     description: "JSON blob of parameters to pass to the selected subaction. Optional. Used for complex parameter passing"
@@ -277,10 +277,10 @@ runs:
       uses: ./.github/actions/common/validate-subaction
       with:
         subaction: ${{ inputs.subaction }}
-        allowed: ssh-django-deploy|ssh-django-api-deploy|ssh-nextjs-deploy|ssh-container-deploy|doctl-container-deploy|aws-ssm-container-deploy|ssh-react-deploy|ssh-laravel-deploy|write-remote-env-file
+        allowed: ssh-container-deploy|doctl-container-deploy|aws-ssm-container-deploy|write-remote-env-file
 
     - name: Validate base SSH for app subactions
-      if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-django-api-deploy' || inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-nextjs-deploy' || inputs.subaction == 'ssh-container-deploy' || inputs.subaction == 'doctl-container-deploy' || inputs.subaction == 'ssh-react-deploy' || inputs.subaction == 'ssh-laravel-deploy' }}
+      if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-container-deploy' || inputs.subaction == 'doctl-container-deploy' }}
       uses: ./.github/actions/app/common/validate-base-ssh
       with:
         subaction: ${{ inputs.subaction }}
@@ -288,7 +288,7 @@ runs:
         ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
 
     - name: Validate subaction-specific inputs
-      if: ${{ inputs.subaction == 'write-remote-env-file' }}
+      if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-container-deploy' || inputs.subaction == 'doctl-container-deploy' || inputs.subaction == 'aws-ssm-container-deploy' }}
       uses: ./.github/actions/app/common/validate-env-inputs
       with:
         subaction: ${{ inputs.subaction }}
@@ -296,18 +296,7 @@ runs:
         env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
         env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
 
-    - name: django validate
-      if: ${{ inputs.subaction == 'ssh-django-deploy' || inputs.subaction == 'ssh-django-api-deploy' }}
-      uses: ./.github/actions/app/django/validate
-      with:
-        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
-        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
-        registry: ${{ inputs.registry != '' && inputs.registry || fromJSON(steps.params.outputs.json).registry }}
-        registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
-        registry_username: ${{ inputs.registry_username != '' && inputs.registry_username || fromJSON(steps.params.outputs.json).registry_username }}
-        registry_token: ${{ inputs.registry_token != '' && inputs.registry_token || fromJSON(steps.params.outputs.json).registry_token }}
-        write_env_file: ${{ (inputs.env_b64 != '' || inputs.env_content != '') || fromJSON(steps.params.outputs.json).write_env_file }}
-        env_b64: ${{ inputs.env_b64 != '' && inputs.env_b64 || fromJSON(steps.params.outputs.json).env_b64 }}
+
         env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
         image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
 

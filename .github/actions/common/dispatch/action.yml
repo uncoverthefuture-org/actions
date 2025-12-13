@@ -42,6 +42,9 @@ inputs:
   params_json:
     description: 'JSON blob of parameters to pass to the selected subaction. Optional. Used for complex parameter passing'
     required: false
+  secrets_json:
+    description: "JSON string containing secrets. Passed to select-env-secret."
+    required: false
   env_name:
     required: false
   secret_prefix:
@@ -106,6 +109,7 @@ runs:
       uses: ./.github/actions/common/select-env-secret
       with:
         env_name: ${{ inputs.env_name != '' && inputs.env_name || fromJSON(steps.pjson.outputs.json).env_name }}
+        secrets_json: ${{ inputs.secrets_json }}
         secret_prefix: ${{ inputs.secret_prefix != '' && inputs.secret_prefix || fromJSON(steps.pjson.outputs.json).secret_prefix }}
         secret_suffix: ${{ inputs.secret_suffix != '' && inputs.secret_suffix || fromJSON(steps.pjson.outputs.json).secret_suffix }}
         required: ${{ inputs.required != '' && inputs.required || (fromJSON(steps.pjson.outputs.json).required != '' && fromJSON(steps.pjson.outputs.json).required || 'false') }}
@@ -123,6 +127,7 @@ runs:
         fallback_env_name: ${{ inputs.fallback_env_name != '' && inputs.fallback_env_name || fromJSON(steps.pjson.outputs.json).fallback_env_name }}
         fallback_env_key: ${{ inputs.fallback_env_key != '' && inputs.fallback_env_key || fromJSON(steps.pjson.outputs.json).fallback_env_key }}
         fallback_deploy_enabled: ${{ inputs.fallback_deploy_enabled != '' && inputs.fallback_deploy_enabled || fromJSON(steps.pjson.outputs.json).fallback_deploy_enabled }}
+        secrets_json: ${{ inputs.secrets_json }}
         secret_prefix: ${{ inputs.secret_prefix != '' && inputs.secret_prefix || fromJSON(steps.pjson.outputs.json).secret_prefix }}
         secret_suffix: ${{ inputs.secret_suffix != '' && inputs.secret_suffix || fromJSON(steps.pjson.outputs.json).secret_suffix }}
         secret_required: ${{ inputs.required != '' && inputs.required || fromJSON(steps.pjson.outputs.json).required }}
