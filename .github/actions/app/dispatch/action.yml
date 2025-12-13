@@ -297,9 +297,6 @@ runs:
         env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
 
 
-        env_content: ${{ inputs.env_content != '' && inputs.env_content || fromJSON(steps.params.outputs.json).env_content }}
-        image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
-
     - name: write-remote-env-file
       if: ${{ inputs.subaction == 'write-remote-env-file' }}
       uses: ./.github/actions/app/write-remote-env-file
