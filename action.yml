@@ -132,7 +132,7 @@ inputs:
       JSON string containing secrets (e.g., toJSON(secrets)).
       Passing this prevents having to expose secrets in the global environment variables 
       (which can leak into logs).
-      Example: secrets_json: ${{ toJSON(secrets) }}
+      Example: secrets_json: (secrets object)
     required: false
 
 
