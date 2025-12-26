@@ -292,24 +292,32 @@ echo "🔒 Configuring firewall (UFW) ..."
 echo "================================================================"
 UFW_PORTS_INPUT="${UFW_ALLOW_PORTS_INPUT:-}"
 UFW_PORTS="$UFW_PORTS_INPUT"
-if [ -z "$UFW_PORTS" ]; then
-  SSH_PORT_EFF="${SSH_PORT:-22}"
-  UFW_PORTS="$SSH_PORT_EFF"
-  if [ "${TRAEFIK_ENABLED:-false}" = "true" ]; then
-    UFW_PORTS="$UFW_PORTS 80 443"
-  else
-    if [ -n "${HOST_PORT_IN:-}" ]; then
-      UFW_PORTS="$UFW_PORTS ${HOST_PORT_IN}"
+
+# Safeguard: Ensure core ports are present even if UFW_ALLOW_PORTS_INPUT is custom
+# This prevents accidental lockout or service isolation when using Traefik.
+SSH_PORT_EFF="${SSH_PORT:-22}"
+if [[ ! " $UFW_PORTS " =~ [[:space:]]${SSH_PORT_EFF}([[:space:]]|$) ]]; then
+  UFW_PORTS="${UFW_PORTS:+$UFW_PORTS }$SSH_PORT_EFF"
+fi
+
+if [ "${TRAEFIK_ENABLED:-false}" = "true" ]; then
+  for p in 80 443; do
+    if [[ ! " $UFW_PORTS " =~ [[:space:]]${p}([[:space:]]|$) ]]; then
+      UFW_PORTS="$UFW_PORTS $p"
     fi
-  fi
-  if [ "${INSTALL_WEBMIN:-false}" = "true" ]; then
+  done
+fi
+
+if [ -z "$UFW_PORTS_INPUT" ]; then
+  # If the user didn't provide custom ports, add management tool defaults
+  if [ "${INSTALL_WEBMIN:-false}" = "true" ] && [[ ! " $UFW_PORTS " =~ [[:space:]]10000([[:space:]]|$) ]]; then
     UFW_PORTS="$UFW_PORTS 10000"
   fi
-  if [ "${INSTALL_USERMIN:-false}" = "true" ]; then
+  if [ "${INSTALL_USERMIN:-false}" = "true" ] && [[ ! " $UFW_PORTS " =~ [[:space:]]20000([[:space:]]|$) ]]; then
     UFW_PORTS="$UFW_PORTS 20000"
   fi
-  if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
-    UFW_PORTS="$UFW_PORTS ${PORTAINER_HTTPS_PORT}"
+  if [ "${INSTALL_PORTAINER:-false}" = "true" ] && [[ ! " $UFW_PORTS " =~ [[:space:]]${PORTAINER_HTTPS_PORT:-9443}([[:space:]]|$) ]]; then
+    UFW_PORTS="$UFW_PORTS ${PORTAINER_HTTPS_PORT:-9443}"
   fi
 fi
 

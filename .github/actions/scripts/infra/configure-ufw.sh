@@ -41,6 +41,16 @@ rule_exists() {
   $SUDO ufw status | grep -Fq "$needle"
 }
 
+# Helper to check if a specific inbound port is allowed for 'Anywhere'
+# This prevents 'ALLOW FWD' rules from being confused with 'ALLOW (inbound)'
+port_allowed_anywhere() {
+  local p="$1"
+  # Match: "<port> ALLOW Anywhere" or "<port>/tcp ALLOW Anywhere"
+  # Look for lines starting with the port, then whitespace, then 'ALLOW', then 'Anywhere'
+  # We use grep -iE for case-insensitive extended regex
+  $SUDO ufw status | grep -iE "^\s*${p}(/tcp|/udp)?\s+ALLOW\s+Anywhere" >/dev/null 2>&1
+}
+
 # Detect interfaces if not provided
 detect_wan_iface() {
   local wan
@@ -77,7 +87,9 @@ if [ "${DEBUG:-false}" = "true" ]; then echo "➡️ Ports requested to allow: $
 if [ -n "$UFW_ALLOW_PORTS" ]; then
   for port in $UFW_ALLOW_PORTS; do
     [ -z "$port" ] && continue
-    if ! rule_exists "$port"; then
+    # Use the more specific port_allowed_anywhere check to avoid false positives
+    # from forward (route) rules.
+    if ! port_allowed_anywhere "$port"; then
       [ "${DEBUG:-false}" = "true" ] && echo "🔓 Allowing port $port"
       $SUDO ufw allow "$port" || true
     fi

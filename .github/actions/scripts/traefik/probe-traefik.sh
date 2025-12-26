@@ -50,6 +50,50 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || { err "Required command '$1' not found"; exit 1; }
 }
 
+emit_repair_suggestion() {
+  local type="${1:-}" # 'acme_missing', 'acme_perms', 'tls_fail', 'ufw_fail'
+  
+  echo "================================================================"
+  echo "🛠️  RECOMMENDED REPAIR STEPS"
+  echo "================================================================"
+  case "$type" in
+    acme_missing|acme_perms)
+      echo "It looks like Traefik's certificate storage (acme.json) is missing or misconfigured."
+      echo "Run these commands on the server to fix it:"
+      echo ""
+      echo "  mkdir -p ~/.local/share/traefik"
+      echo "  touch ~/.local/share/traefik/acme.json"
+      echo "  chmod 600 ~/.local/share/traefik/acme.json"
+      echo "  systemctl --user restart traefik.service"
+      ;;
+    tls_fail|tls_reset)
+      echo "HTTPS is reachable but the certificate is invalid or not yet issued."
+      echo "If issuance is stuck, you can force a reset of Let's Encrypt data:"
+      echo ""
+      echo "  # ⚠️ This will delete all cached certificates and request new ones"
+      echo "  mv ~/.local/share/traefik/acme.json ~/.local/share/traefik/acme.json.bak"
+      echo "  systemctl --user restart traefik.service"
+      echo ""
+      echo "Alternatively, re-run deployment with: traefik_reset_acme: 'true'"
+      ;;
+    ufw_fail)
+      echo "External access to port 443 (HTTPS) appears to be blocked by a firewall."
+      echo "Run this to ensure UFW allows HTTPS traffic:"
+      echo ""
+      echo "  sudo ufw allow 443/tcp"
+      echo "  sudo ufw reload"
+      ;;
+    *)
+      echo "General Traefik health issues detected."
+      echo "Check service status and logs:"
+      echo ""
+      echo "  systemctl --user status traefik.service"
+      echo "  podman logs traefik"
+      ;;
+  esac
+  echo "================================================================"
+}
+
 # Prefer ss, fallback to netstat
 have_ss=false
 if command -v ss >/dev/null 2>&1; then have_ss=true; fi
@@ -109,6 +153,23 @@ preflight() {
     err "Ports 80/443 are not listening"
     ss -ltn 2>/dev/null | head -n 80 || netstat -ltn 2>/dev/null | head -n 80 || true
     exit 2
+  fi
+
+  notice "Verifying ACME storage for certificates ..."
+  local acme_file="$HOME/.local/share/traefik/acme.json"
+  if [ ! -f "$acme_file" ]; then
+    # In Quadlet mode, the container unit has a mount for this file.
+    # If it's missing, the service will fail with "no such file or directory".
+    notice "⚠️  ACME storage file $acme_file not found."
+    emit_repair_suggestion "acme_missing"
+  else
+    local perm=$(stat -c '%a' "$acme_file" 2>/dev/null || echo "unknown")
+    if [ "$perm" != "600" ]; then
+      notice "⚠️  ACME storage file has insecure permissions ($perm); expected 600."
+      emit_repair_suggestion "acme_perms"
+    else
+      notice "✅ ACME storage file exists with correct permissions (600)"
+    fi
   fi
 
   # Optional API probe if dashboard/API is exposed locally
@@ -198,6 +259,7 @@ post() {
     if ! curl -fsS -o /dev/null --max-time "$timeout" "https://$domain$path" 2>/dev/null; then
       notice "TLS validation failed for https://$domain$path (certificate not trusted yet)."
       notice "Hints: ensure TRAEFIK_ENABLE_ACME=true and TRAEFIK_EMAIL is set; include both apex and www hosts; wait up to a minute for issuance."
+      emit_repair_suggestion "tls_fail"
     else
       notice "TLS validation OK for https://$domain$path"
     fi
@@ -259,7 +321,16 @@ post() {
     done
   fi
 
+  # Identify likely cause for specific repair suggestion
+  local cause="general"
+  if [[ "$code" == "000" ]]; then
+    cause="ufw_fail" # Timeout usually implies firewall
+  elif [[ "$code" == "404" ]]; then
+    cause="tls_reset" # 404 might mean router exists but backend is bad or cert is not showing
+  fi
+
   err "Domain probe failed after $tries attempts (last HTTP $code)"
+  emit_repair_suggestion "$cause"
   notice "--- Probe Summary ---"
   notice "URL: https://$domain$path"
   notice "Tries: $tries, Delay: ${delay}s, Last code: $code"
