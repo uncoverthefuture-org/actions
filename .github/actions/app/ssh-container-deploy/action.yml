@@ -465,6 +465,14 @@ runs: # Composite action implementation
         image_tag: ${{ inputs.version != '' && inputs.version || (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default) }} # Tag
 
 
+    - name: Deployment Banner
+      shell: bash
+      run: |
+        TAG="${{ inputs.version != '' && inputs.version || (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default) }}"
+        echo "::notice::🚀 Starting Deployment to ${{ inputs.ssh_host }}"
+        echo "::notice::📦 Image: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:$TAG"
+
+
     - name: Deploy container # Start/replace container with Traefik or port mapping
       if: ${{ steps.reach.outputs.reachable == 'true' }}
       uses: appleboy/ssh-action@v1.0.3
