@@ -27,7 +27,7 @@
 # ============================================================================
 
 name: 'common: print help'
-description: 'Prints available subactions and usage with default @v1.0.219 ref.'
+description: 'Prints available subactions and usage with default @v1.0.220 ref.'
 
 # ============================================================================
 # EXECUTION
@@ -95,7 +95,7 @@ runs:
         
         # Print usage instructions
         echo "\nUsage:"
-        echo "- uses: uncoverthefuture-org/actions@v1.0.219"
+        echo "- uses: uncoverthefuture-org/actions@v1.0.220"
         echo "  with:"
         echo "    subaction: <one-of-the-above>"
         echo "    # optional: category: build|podman|infra|app\n"
