@@ -135,7 +135,9 @@ runs:
       with:
         images: ${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || github.repository }}
         tags: |
-          type=raw,value=${{ inputs.version != '' && inputs.version || inputs.image_tag }}
+          type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+          type=raw,value=latest,enable=${{ inputs.version != '' }}
+          type=raw,value=${{ inputs.image_tag }},enable=${{ inputs.version == '' && inputs.image_tag != '' }}
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
