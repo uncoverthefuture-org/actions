@@ -53,6 +53,9 @@ inputs:
   image_tag:
     description: 'Override image tag to publish. Usually auto-generated from commit SHA'
     required: false
+  version:
+    description: 'Explicit version/tag to publish (overrides image_tag). Example: v1.2.3'
+    required: false
   secrets_json:
     description: "JSON string containing secrets. Passed to prepare-app-env."
     required: false
@@ -132,7 +135,7 @@ runs:
       with:
         images: ${{ inputs.registry }}/${{ inputs.image_name != '' && inputs.image_name || github.repository }}
         tags: |
-          type=raw,value=${{ inputs.image_tag }}
+          type=raw,value=${{ inputs.version != '' && inputs.version || inputs.image_tag }}
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3

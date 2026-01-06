@@ -242,7 +242,10 @@ inputs: # All parameters accepted by this action
     description: "Repository and image path without tag (example: org/app)."
     required: false
   image_tag:
-    description: "Image tag to deploy (example: v1.2.3 or production-abcdef)."
+    description: "Image tag to deploy (example: v1.2.3 or production-abcdef). Lower priority than version."
+    required: false
+  version:
+    description: "Explicit version/tag to deploy (overrides image_tag). Example: v1.2.3"
     required: false
   registry_username:
     description: "Registry username for authenticated pulls (example: CI user or bot account)."
@@ -459,7 +462,7 @@ runs: # Composite action implementation
         registry_login: ${{ inputs.registry_login }} # Login before pull
         perform_pull: 'false'
         image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }} # Image path
-        image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }} # Tag
+        image_tag: ${{ inputs.version != '' && inputs.version || (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default) }} # Tag
 
 
     - name: Deploy container # Start/replace container with Traefik or port mapping
@@ -485,7 +488,7 @@ runs: # Composite action implementation
           # Registry & image
           export IMAGE_REGISTRY='${{ inputs.registry }}'
           export IMAGE_NAME='${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}'
-          export IMAGE_TAG='${{ inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default }}'
+          export IMAGE_TAG='${{ inputs.version != '' && inputs.version || (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default) }}'
           export REGISTRY_LOGIN='${{ inputs.registry_login }}'
           if [ '${{ inputs.registry }}' = 'ghcr.io' ]; then
             export REGISTRY_USERNAME='${{ inputs.registry_username != '' && inputs.registry_username || github.actor }}'
