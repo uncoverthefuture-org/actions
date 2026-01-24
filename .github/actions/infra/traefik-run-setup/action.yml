@@ -70,6 +70,9 @@ inputs:
   force_restart:
     required: false
     default: 'false'
+  reset_acme:
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -132,6 +135,7 @@ runs:
           export DASHBOARD_USERS_B64='${{ inputs.dashboard_users_b64 }}'
           export QUADLET_ENABLE_HTTP3='${{ inputs.quadlet_enable_http3 }}'
           export TRAEFIK_FORCE_RESTART='${{ inputs.force_restart }}'
+          export TRAEFIK_RESET_ACME='${{ inputs.reset_acme }}'
 
           if [ -x "$HOME/uactions/scripts/traefik/ensure-traefik-config.sh" ]; then
             "$HOME/uactions/scripts/traefik/ensure-traefik-config.sh"
