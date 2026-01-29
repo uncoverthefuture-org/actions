@@ -81,7 +81,7 @@ runs:
             env_key='dev'
             deploy='true'
             ;;
-          refs/tags/*)
+          v*)
             env_name='production'
             env_key='prod'
             deploy='true'

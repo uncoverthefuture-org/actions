@@ -60,6 +60,9 @@ inputs:
   secrets_json:
     description: "JSON string containing secrets. Passed to global env helper."
     required: false
+  version:
+    description: "Explicit version/tag to publish (overrides image_tag). Example: v1.2.3"
+    required: false
 
 outputs:
   env_name:
@@ -120,4 +123,5 @@ runs:
         env_key: ${{ steps.environment.outputs.env_key }}
         deploy_enabled: ${{ steps.environment.outputs.deploy_enabled }}
         image_tag: ${{ steps.environment.outputs.image_tag }}
+        version: ${{ inputs.version != '' && inputs.version || fromJSON(steps.pjson.outputs.json).version }}
         secrets_json: ${{ inputs.secrets_json }}

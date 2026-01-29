@@ -146,6 +146,9 @@ inputs:
   registry_token:
     description: "Password or token for the registry account (example: a repository/organization secret token)."
     required: false
+  version:
+    description: "Explicit version/tag to deploy (example: v1.2.3)."
+    required: false
 
   # Runtime
   app_slug:
@@ -347,6 +350,7 @@ runs:
         registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
         image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
         image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag }}
+        version: ${{ inputs.version != '' && inputs.version || fromJSON(steps.params.outputs.json).version }}
         app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
         container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.params.outputs.json).container_name }}
         host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
@@ -399,6 +403,7 @@ runs:
         registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
         image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
         image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag || steps.defaults.outputs.image_tag_default }}
+        version: ${{ inputs.version != '' && inputs.version || fromJSON(steps.params.outputs.json).version }}
 
         # Runtime & ports
         app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
@@ -468,6 +473,7 @@ runs:
         registry_login: ${{ inputs.registry_login != '' && inputs.registry_login || fromJSON(steps.params.outputs.json).registry_login }}
         image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
         image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag || steps.defaults.outputs.image_tag_default }}
+        version: ${{ inputs.version != '' && inputs.version || fromJSON(steps.params.outputs.json).version }}
 
         # Runtime & ports
         app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
