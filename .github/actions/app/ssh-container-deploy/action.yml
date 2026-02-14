@@ -163,13 +163,17 @@ inputs: # All parameters accepted by this action
     required: false
     default: 'true'
   podman_cleanup_min_age_days:
-    description: 'Minimum age in days before Podman containers/images become eligible for pruning (example: 15).'
+    description: 'Minimum age in days before Podman containers/images become eligible for pruning. Default is 1 day for automatic cleanup. Change via this input or PODMAN_PRUNE_MIN_AGE_DAYS env variable.'
     required: false
-    default: '15'
+    default: '1'
   podman_cleanup_keep_recent_images:
     description: 'Hint for how many recent images to keep per host. Currently used for logging alongside the age-based prune (example: 2).'
     required: false
     default: '2'
+  podman_cleanup_aggressive:
+    description: 'When true (default), aggressively prune ALL stopped containers and unused images immediately after deployment, not just old ones. This prevents storage accumulation between deployments.'
+    required: false
+    default: 'true'
   ufw_allow_ports:
     description: "Space-separated list of ports opened in UFW during host prep (example: '80 443')."
     required: false
@@ -603,6 +607,7 @@ runs: # Composite action implementation
           export PODMAN_PRUNE_ENABLED='${{ inputs.enable_podman_cleanup }}'
           export PODMAN_PRUNE_MIN_AGE_DAYS='${{ inputs.podman_cleanup_min_age_days }}'
           export PODMAN_PRUNE_KEEP_RECENT_IMAGES='${{ inputs.podman_cleanup_keep_recent_images }}'
+          export PODMAN_PRUNE_AGGRESSIVE='${{ inputs.podman_cleanup_aggressive }}'
 
 
           echo "================================================================"

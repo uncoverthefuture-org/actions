@@ -155,14 +155,55 @@ if [ -n "$ENV_B64" ] || [ -n "$ENV_CONTENT" ]; then
   echo " Preparing to write env file"
   echo "================================================================"
   echo "  • Target: $ENV_FILE"
-  if [ -n "$ENV_B64" ]; then
-    echo "  • Source: base64 payload (content will not be printed)"
-    printf '%s' "$ENV_B64" | base64 -d > "$ENV_FILE"
-  else
-    echo "  • Source: raw content (content will not be printed)"
-    printf '%s' "$ENV_CONTENT" > "$ENV_FILE"
+  echo "  • Directory: $ENV_DIR"
+  
+  # Ensure the directory exists before writing
+  if [ ! -d "$ENV_DIR" ]; then
+    echo "  • Creating directory: $ENV_DIR"
+    mkdir -p "$ENV_DIR" || {
+      echo "::error::Failed to create directory: $ENV_DIR" >&2
+      exit 1
+    }
   fi
+  
+  if [ -n "$ENV_B64" ]; then
+    echo "  • Source: base64 payload (${#ENV_B64} chars)"
+    # Validate base64 before writing
+    if ! printf '%s' "$ENV_B64" | base64 -d > /dev/null 2>&1; then
+      echo "::error::ENV_B64 contains invalid base64 data" >&2
+      exit 1
+    fi
+    printf '%s' "$ENV_B64" | base64 -d > "$ENV_FILE"
+    WRITE_STATUS=$?
+  else
+    echo "  • Source: raw content (${#ENV_CONTENT} chars)"
+    printf '%s' "$ENV_CONTENT" > "$ENV_FILE"
+    WRITE_STATUS=$?
+  fi
+  
+  if [ $WRITE_STATUS -ne 0 ]; then
+    echo "::error::Failed to write environment file to $ENV_FILE" >&2
+    exit 1
+  fi
+  
   chmod 600 "$ENV_FILE" >/dev/null 2>&1 || true
+  
+  # Sync to ensure data is written to disk (important for container reads)
+  sync "$ENV_FILE" 2>/dev/null || sync 2>/dev/null || true
+  
+  # Verify the file was written
+  if [ -f "$ENV_FILE" ]; then
+    FILE_SIZE=$(stat -c%s "$ENV_FILE" 2>/dev/null || stat -f%z "$ENV_FILE" 2>/dev/null || echo "unknown")
+    echo "  • File written successfully (${FILE_SIZE} bytes)"
+    
+    # Verify file is not empty (unless that's intended)
+    if [ "$FILE_SIZE" = "0" ] || [ "$FILE_SIZE" = "unknown" ]; then
+      echo "  ⚠ Warning: Environment file appears to be empty"
+    fi
+  else
+    echo "::error::Environment file was not created at $ENV_FILE" >&2
+    exit 1
+  fi
 
   # -----------------------------------------------------------------------------
   # ENV FILE SANITIZATION
@@ -242,10 +283,16 @@ fi
 # Source environment variables if file exists (using the freshly written file
 # when ENV_B64/ENV_CONTENT was provided).
 if [ -f "$ENV_FILE" ]; then
-  # shellcheck disable=SC1090
   if [ "${DEBUG:-false}" = "true" ]; then
-    echo "🔄 Sourcing environment variables"
+    echo "🔄 Sourcing environment variables from $ENV_FILE"
   fi
+  
+  # Verify file is readable
+  if [ ! -r "$ENV_FILE" ]; then
+    echo "::error::Environment file $ENV_FILE exists but is not readable" >&2
+    exit 1
+  fi
+  
   # When run under a parent script that enables `set -u` (nounset), a single
   # reference to an undefined variable inside the .env file (for example,
   # PASSWORD=$MISSING_SECRET) would normally abort the entire deployment.
@@ -259,11 +306,25 @@ if [ -f "$ENV_FILE" ]; then
   fi
 
   set -a
-  . "$ENV_FILE"
+  # Source the file and capture any errors
+  if ! . "$ENV_FILE"; then
+    echo "::error::Failed to source environment file $ENV_FILE" >&2
+    if [ "$nounset_was_on" = true ]; then
+      set -u
+    fi
+    exit 1
+  fi
   set +a
 
   if [ "$nounset_was_on" = true ]; then
     set -u
+  fi
+  
+  if [ "${DEBUG:-false}" = "true" ]; then
+    echo "  ✓ Environment sourced successfully"
+    # Count variables that were set
+    ENV_VAR_COUNT=$(grep -cE '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" 2>/dev/null || echo "0")
+    echo "  • Approximately $ENV_VAR_COUNT variables loaded"
   fi
 else
   echo "::warning::Environment file $ENV_FILE not found; continuing without sourcing"

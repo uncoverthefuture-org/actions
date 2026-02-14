@@ -521,10 +521,36 @@ echo "  Script: $HOME/uactions/scripts/app/deploy-container.sh"
 echo "  App: $APP_SLUG"
 echo "  Image: $IMAGE_REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
 echo "  Traefik: $TRAEFIK_ENABLED"
-if [ "${DEBUG:-false}" = "true" ]; then
-  echo "📄 Using env file: $REMOTE_ENV_FILE"
+echo "  Env Directory: ${REMOTE_ENV_DIR:-'(not set)'}"
+echo "  Env File: ${REMOTE_ENV_FILE:-'(not set)'}"
+
+# Verify environment is properly set up before deployment
+if [ -n "$REMOTE_ENV_FILE" ]; then
+  if [ -f "$REMOTE_ENV_FILE" ]; then
+    echo "  ✓ Environment file exists"
+    if [ "${DEBUG:-false}" = "true" ]; then
+      echo "  • File size: $(stat -c%s "$REMOTE_ENV_FILE" 2>/dev/null || stat -f%z "$REMOTE_ENV_FILE" 2>/dev/null || echo 'unknown') bytes"
+      echo "  • Last modified: $(stat -c%y "$REMOTE_ENV_FILE" 2>/dev/null || stat -f%Sm "$REMOTE_ENV_FILE" 2>/dev/null || echo 'unknown')"
+    fi
+  else
+    echo "  ⚠ Environment file does not exist at: $REMOTE_ENV_FILE"
+  fi
+else
+  echo "  ⚠ REMOTE_ENV_FILE is not set"
 fi
 echo "================================================================"
+
+# Ensure all environment variables are exported for deploy-container.sh
+export APP_SLUG
+export ENV_NAME
+export IMAGE_REGISTRY
+export IMAGE_NAME
+export IMAGE_TAG
+export REMOTE_ENV_DIR
+export REMOTE_ENV_FILE
+export ENV_FILE_PATH_BASE
+export TRAEFIK_ENABLED
+export TRAEFIK_NETWORK_NAME
 
 "$HOME/uactions/scripts/app/deploy-container.sh"
 
@@ -534,19 +560,40 @@ echo "================================================================"
 # and unused images, leaving running workloads intact. Callers can tune or
 # disable via environment variables, for example:
 #   PODMAN_PRUNE_ENABLED=false
-#   PODMAN_PRUNE_MIN_AGE_DAYS=30
+#   PODMAN_PRUNE_MIN_AGE_DAYS=1 (default: 1 day for automatic cleanup)
 #   PODMAN_PRUNE_KEEP_RECENT_IMAGES=5
+#   PODMAN_PRUNE_AGGRESSIVE=true (default: true - removes ALL stopped containers immediately)
 PODMAN_PRUNE_ENABLED="${PODMAN_PRUNE_ENABLED:-true}"
-PODMAN_PRUNE_MIN_AGE_DAYS="${PODMAN_PRUNE_MIN_AGE_DAYS:-15}"
+PODMAN_PRUNE_MIN_AGE_DAYS="${PODMAN_PRUNE_MIN_AGE_DAYS:-1}"
 PODMAN_PRUNE_KEEP_RECENT_IMAGES="${PODMAN_PRUNE_KEEP_RECENT_IMAGES:-2}"
+PODMAN_PRUNE_AGGRESSIVE="${PODMAN_PRUNE_AGGRESSIVE:-true}"
+
+# Compute container name for preservation during pruning
+CONTAINER_NAME_FOR_PRUNE="${CONTAINER_NAME_IN:-}"
+if [ -z "$CONTAINER_NAME_FOR_PRUNE" ]; then
+  CONTAINER_NAME_FOR_PRUNE="${APP_SLUG}-${ENV_NAME}"
+fi
+
+# Compute image ref for preservation during pruning
+IMAGE_REF_FOR_PRUNE="${IMAGE_REGISTRY:+$IMAGE_REGISTRY/}${IMAGE_NAME}:${IMAGE_TAG}"
+
 if [ "$PODMAN_PRUNE_ENABLED" = "true" ]; then
   if [ -f "$HOME/uactions/scripts/infra/prune-podman-storage.sh" ]; then
     echo "================================================================"
-    echo "🧹 Running Podman storage cleanup (age>=${PODMAN_PRUNE_MIN_AGE_DAYS} days, keep_recent_images=${PODMAN_PRUNE_KEEP_RECENT_IMAGES})"
+    echo "🧹 Running Podman storage cleanup"
+    echo "   Mode: ${PODMAN_PRUNE_AGGRESSIVE:+AGGRESSIVE (remove all stopped containers immediately)}${PODMAN_PRUNE_AGGRESSIVE:-age-based (${PODMAN_PRUNE_MIN_AGE_DAYS} days)}"
+    echo "   App: ${APP_SLUG}"
+    echo "   Env: ${ENV_NAME}"
+    echo "   Preserving: ${CONTAINER_NAME_FOR_PRUNE}"
     echo "================================================================"
     PODMAN_PRUNE_ENABLED="$PODMAN_PRUNE_ENABLED" \
       PODMAN_PRUNE_MIN_AGE_DAYS="$PODMAN_PRUNE_MIN_AGE_DAYS" \
       PODMAN_PRUNE_KEEP_RECENT_IMAGES="$PODMAN_PRUNE_KEEP_RECENT_IMAGES" \
+      PODMAN_PRUNE_AGGRESSIVE="$PODMAN_PRUNE_AGGRESSIVE" \
+      APP_SLUG="$APP_SLUG" \
+      ENV_NAME="$ENV_NAME" \
+      CONTAINER_NAME="$CONTAINER_NAME_FOR_PRUNE" \
+      IMAGE_REF="$IMAGE_REF_FOR_PRUNE" \
       bash "$HOME/uactions/scripts/infra/prune-podman-storage.sh" || echo "::warning::prune-podman-storage.sh reported an error; continuing deployment"
   else
     echo "::notice::PODMAN_PRUNE_ENABLED=true but prune-podman-storage.sh not found; skipping Podman storage cleanup" >&2

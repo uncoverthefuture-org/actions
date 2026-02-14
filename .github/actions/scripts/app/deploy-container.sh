@@ -134,13 +134,54 @@ fi
 # These exports ensure downstream scripts operate on the same resolved paths.
 ENV_DIR="${REMOTE_ENV_DIR:-}"
 ENV_FILE="${REMOTE_ENV_FILE:-}"
+
+# Verify and source the environment file if available
 if [[ -z "$ENV_DIR" || -z "$ENV_FILE" ]]; then
   echo "================================================================" >&2
   echo "::warning::Remote environment payload missing" >&2
   echo "  • REMOTE_ENV_DIR='${REMOTE_ENV_DIR:-}'" >&2
   echo "  • REMOTE_ENV_FILE='${REMOTE_ENV_FILE:-}'" >&2
   echo "  • ENV_B64='${ENV_B64:-<empty>}' / ENV_CONTENT='${ENV_CONTENT:-<empty>}'" >&2
-  echo "  → Skipping env-dependent operations; run-deployment.sh should invoke setup-env-file before deploy-container." >&2
+  echo "  → Attempting to resolve env file from deployment directory..." >&2
+  echo "================================================================" >&2
+  
+  # Attempt to reconstruct ENV_DIR and ENV_FILE from known values
+  if [[ -n "$APP_SLUG" && -n "$ENV_NAME" ]]; then
+    ENV_DIR="${HOME}/deployments/${ENV_NAME}/${APP_SLUG}"
+    ENV_FILE="${ENV_DIR}/.env"
+    echo "  → Resolved fallback path: $ENV_FILE" >&2
+  fi
+fi
+
+# Verify the env file exists and source it
+if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
+  echo "================================================================" >&2
+  echo "📄 Loading environment from: $ENV_FILE" >&2
+  
+  # Show file info for debugging
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "  • File size: $(stat -c%s "$ENV_FILE" 2>/dev/null || stat -f%z "$ENV_FILE" 2>/dev/null || echo "unknown") bytes" >&2
+    echo "  • Last modified: $(stat -c%y "$ENV_FILE" 2>/dev/null || stat -f%Sm "$ENV_FILE" 2>/dev/null || echo "unknown")" >&2
+  fi
+  
+  # Source the environment file to ensure all variables are loaded
+  # Use set -a to export all variables automatically
+  set -a
+  # shellcheck source=/dev/null
+  source "$ENV_FILE" || {
+    echo "::warning::Failed to source environment file: $ENV_FILE" >&2
+  }
+  set +a
+  
+  echo "  ✓ Environment loaded successfully" >&2
+  echo "================================================================" >&2
+else
+  echo "================================================================" >&2
+  echo "::warning::Environment file not found or not specified" >&2
+  if [[ -n "$ENV_FILE" ]]; then
+    echo "  • Expected path: $ENV_FILE" >&2
+    echo "  • Directory exists: $([[ -d "$(dirname "$ENV_FILE")" ]] && echo 'yes' || echo 'no')" >&2
+  fi
   echo "================================================================" >&2
 fi
 
@@ -412,7 +453,17 @@ echo "DNS args: ${DNS_ARGS}"
 echo "Network args: ${NETWORK_ARGS[*]}"
 echo "Label args: ${LABEL_ARGS[*]}"
 echo "Volume args: ${VOLUME_ARGS[*]}"
-echo "Env file: $ENV_FILE"
+
+# Verify env file before passing to container
+if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
+  echo "Env file: $ENV_FILE (exists)"
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "  • File contents preview (first 10 lines):" >&2
+    head -n 10 "$ENV_FILE" | sed 's/=.*/=***/' >&2
+  fi
+else
+  echo "Env file: $ENV_FILE (NOT FOUND - container may use default values)"
+fi
 echo "================================================================" >&2
 
 # When CPU_LIMIT is provided, append an explicit --cpus constraint so the
