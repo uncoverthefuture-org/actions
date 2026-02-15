@@ -227,9 +227,9 @@ inputs: # All parameters accepted by this action
     description: "Remote base path where the .env file should be written (example: /opt/uactions/envs/app.env)."
     required: false
   write_env_file:
-    description: "When true, write env_b64 or env_content to the remote server before deployment (example: true)."
+    description: "When true, write env_b64 or env_content to the remote server before deployment. Defaults to true when env_b64 or env_content is provided."
     required: false
-    default: 'false'
+    default: 'true'
   env_b64:
     description: "Base64-encoded .env payload to materialize on the host (example: a repository/organization secret)."
     required: false
@@ -440,6 +440,18 @@ runs: # Composite action implementation
         secret_prefix: ${{ inputs.env_secret_prefix }}
         secret_suffix: ${{ inputs.env_secret_suffix }}
         required: false
+
+    - name: Debug env file write decision
+      if: ${{ inputs.debug == 'true' && steps.reach.outputs.reachable == 'true' }}
+      shell: bash
+      run: |
+        echo "=== ENV FILE WRITE DEBUG ==="
+        echo "inputs.write_env_file: ${{ inputs.write_env_file }}"
+        echo "inputs.env_b64 length: ${{ inputs.env_b64 != '' && 'set (' }}${{ inputs.env_b64 != '' && inputs.env_b64.length || 'not set' }}${{ inputs.env_b64 != '' && ' chars)' || '' }}"
+        echo "inputs.env_content length: ${{ inputs.env_content != '' && 'set (' }}${{ inputs.env_content != '' && inputs.env_content.length || 'not set' }}${{ inputs.env_content != '' && ' chars)' || '' }}"
+        echo "steps.envsel.outputs.env_b64: ${{ steps.envsel.outputs.env_b64 != '' && 'set' || 'not set' }}"
+        echo "Computed write_env_file: ${{ (inputs.write_env_file == 'true') || (inputs.env_b64 != '' || inputs.env_content != '' || steps.envsel.outputs.env_b64 != '') }}"
+        echo "============================"
 
     - name: Deploy preflight # Validate inputs, optional host prep, write env, registry login
       id: preflight

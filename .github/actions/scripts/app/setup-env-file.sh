@@ -166,6 +166,15 @@ if [ -n "$ENV_B64" ] || [ -n "$ENV_CONTENT" ]; then
     }
   fi
   
+  # Remove old env file to ensure clean write (avoid file truncation issues)
+  if [ -f "$ENV_FILE" ]; then
+    echo "  • Removing existing env file"
+    rm -f "$ENV_FILE" || {
+      echo "::error::Failed to remove existing env file: $ENV_FILE" >&2
+      exit 1
+    }
+  fi
+  
   if [ -n "$ENV_B64" ]; then
     echo "  • Source: base64 payload (${#ENV_B64} chars)"
     # Validate base64 before writing
@@ -199,6 +208,14 @@ if [ -n "$ENV_B64" ] || [ -n "$ENV_CONTENT" ]; then
     # Verify file is not empty (unless that's intended)
     if [ "$FILE_SIZE" = "0" ] || [ "$FILE_SIZE" = "unknown" ]; then
       echo "  ⚠ Warning: Environment file appears to be empty"
+    else
+      # Show first few lines for verification (with values masked for security)
+      echo "  • File preview (first 5 lines, values masked):"
+      head -n 5 "$ENV_FILE" | sed 's/=.*/=***/' | sed 's/^/    /'
+      
+      # Count variables
+      VAR_COUNT=$(grep -cE '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" 2>/dev/null || echo "0")
+      echo "  • Total variables: $VAR_COUNT"
     fi
   else
     echo "::error::Environment file was not created at $ENV_FILE" >&2
