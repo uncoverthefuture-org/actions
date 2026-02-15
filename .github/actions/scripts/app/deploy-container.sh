@@ -405,6 +405,24 @@ else
   fi
 fi
 
+# --- Mount .env file explicitly for frameworks that expect it at app root --------
+# Many frameworks (Laravel, Django, etc.) expect .env at the application root.
+# This ensures the env file is available even if the deployment directory mount
+# doesn't place it in the correct location.
+ENV_FILE_MOUNT_ENABLED="${ENV_FILE_MOUNT_ENABLED:-true}"
+ENV_FILE_CONTAINER_PATH="${ENV_FILE_CONTAINER_PATH:-/var/www/html/.env}"
+
+if [[ "$ENV_FILE_MOUNT_ENABLED" == "true" && -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
+  echo "📄 Mounting environment file: ${ENV_FILE} -> ${ENV_FILE_CONTAINER_PATH}" >&2
+  VOLUME_ARGS+=(-v "${ENV_FILE}:${ENV_FILE_CONTAINER_PATH}:ro")
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "  • Host env file size: $(stat -c%s "$ENV_FILE" 2>/dev/null || stat -f%z "$ENV_FILE" 2>/dev/null || echo 'unknown') bytes" >&2
+    echo "  • Mounted as read-only to prevent container modifications" >&2
+  fi
+elif [[ "$ENV_FILE_MOUNT_ENABLED" == "true" && -n "$ENV_FILE" ]]; then
+  echo "::warning::ENV_FILE_MOUNT_ENABLED=true but env file not found at: ${ENV_FILE}" >&2
+fi
+
 # --- Login and pull (optional login, always pull) -----------------------------------
 # Authenticate with the registry when credentials exist, then ensure the latest
 # image is available locally. Consider relocating this block into a shared

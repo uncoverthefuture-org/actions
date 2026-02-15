@@ -255,6 +255,10 @@ export RESTART_POLICY
 export MEMORY_LIMIT
 export CPU_LIMIT
 
+# Environment file mount settings (for frameworks like Laravel)
+export ENV_FILE_MOUNT_ENABLED
+export ENV_FILE_CONTAINER_PATH
+
 # Traefik settings
 export TRAEFIK_ENABLED
 export DOMAIN_INPUT

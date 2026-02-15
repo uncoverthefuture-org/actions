@@ -291,6 +291,15 @@ inputs: # All parameters accepted by this action
     required: false
     default: '0.5'
 
+  env_file_mount_enabled:
+    description: "When true (default), explicitly mount the .env file into the container at the path specified by env_file_container_path. Required for frameworks like Laravel that expect .env at the application root."
+    required: false
+    default: 'true'
+  env_file_container_path:
+    description: "Path inside the container where the .env file should be mounted (default: /var/www/html/.env for Laravel apps). Change this for other frameworks."
+    required: false
+    default: '/var/www/html/.env'
+
   quadlet_enabled:
     description: "When 'false', skip generating Quadlet .container units for the app (no systemd persistence). Default: true."
     required: false
@@ -609,6 +618,9 @@ runs: # Composite action implementation
           export PODMAN_PRUNE_KEEP_RECENT_IMAGES='${{ inputs.podman_cleanup_keep_recent_images }}'
           export PODMAN_PRUNE_AGGRESSIVE='${{ inputs.podman_cleanup_aggressive }}'
 
+          # Environment file mount configuration for frameworks expecting .env at app root
+          export ENV_FILE_MOUNT_ENABLED='${{ inputs.env_file_mount_enabled }}'
+          export ENV_FILE_CONTAINER_PATH='${{ inputs.env_file_container_path }}'
 
           echo "================================================================"
           echo "Installing server-managed scripts bundle on remote host"
