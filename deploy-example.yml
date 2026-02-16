@@ -1,0 +1,89 @@
+# ============================================================================
+# CI/CD Workflow: Build and Deploy Container App
+# ============================================================================
+# PURPOSE:
+# Automated pipeline to build, test, and deploy the Laravel application
+# to a remote server via SSH using Podman containers with Traefik routing.
+#
+# FLOW:
+# 1. Checkout code
+# 2. Resolve environment (dev/staging/production) from branch
+# 3. Fetch environment secrets (DEV_ENV_B64, STAGING_ENV_B64, PROD_ENV_B64)
+# 4. Build and push Docker image to registry
+# 5. Deploy container to remote server with Traefik reverse proxy
+#
+# TRIGGERS: Push to main, staging, or develop branches
+# ============================================================================
+
+
+name: CI/CD — Build and Deploy Container App
+
+
+on:
+  push:
+    branches: [ main, staging, develop ]
+
+
+permissions:
+  contents: read
+  packages: write
+
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    # ========================================================================
+    # ENVIRONMENT VARIABLES - GitHub Secrets for each environment
+    # ========================================================================
+    # These secrets contain base64-encoded .env files for each deployment env.
+    # They are exposed to the job so select-env-secret can access them.
+    # Format: <ENV_KEY>_ENV_B64 (e.g., PROD_ENV_B64, STAGING_ENV_B64, DEV_ENV_B64)
+    # ========================================================================
+    env:
+      DEV_ENV_B64: ${{ secrets.DEV_ENV_B64 }}
+      STAGING_ENV_B64: ${{ secrets.STAGING_ENV_B64 }}
+      PROD_ENV_B64: ${{ secrets.PROD_ENV_B64 }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # ====================================================================
+      # STEP: Build and Push Docker Image
+      # ====================================================================
+      - name: Build and Push Container
+        id: build
+        uses: uncoverthefuture-org/actions@master
+        with:
+          subaction: build-and-push
+          params_json: |
+            {}
+
+
+      # ====================================================================
+      # STEP: Deploy Container to Remote Server
+      # ====================================================================
+      # CRITICAL: Must pass secrets_json so the deploy action can access
+      # the environment variables (DEV_ENV_B64, STAGING_ENV_B64, PROD_ENV_B64)
+      # to write the .env file on the server and mount it into the container.
+      # Without this, the container uses old env vars baked into the image.
+      # ====================================================================
+      - name: Deploy Container
+        if: ${{ success() }}
+        uses: uncoverthefuture-org/actions@master
+        with:
+          subaction: ssh-container-deploy
+          secrets_json: ${{ toJSON(secrets) }}
+          params_json: |
+            {
+              "ssh_host": "${{ secrets.SERVER_IP }}",
+              "ssh_user": "${{ secrets.SSH_USERNAME }}",
+              "ssh_key": "${{ secrets.SSH_PRIVATE_KEY }}",
+              "prepare_host": "true",
+              "enable_traefik": "true",
+              "enable_acme": "true",
+              "traefik_email": "traefik@shakohub.com",
+              "base_domain": "shakohub.com",
+              "domain_prefix_prod": "api",
+              "container_port": "8000",
+              "debug": "true"
+            }
