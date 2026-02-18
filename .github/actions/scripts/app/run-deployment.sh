@@ -215,6 +215,28 @@ else
   exit 1
 fi
 
+# --- Verify Environment File (Strict Update Check) -----------------------------------
+echo "================================================================"
+echo "🔍 Verifying environment file update..."
+echo "================================================================"
+if [ -f "$HOME/uactions/scripts/app/verify-env-file.sh" ]; then
+  # Pass the original inputs to verification script
+  export ENV_FILE_PATH="$HOME/uactions/scripts/app/verify-env-file.sh"
+  # Use the same ENV_B64 / ENV_CONTENT variables as setup-env-file.sh used
+  
+  # Note: setup-env-file.sh exports REMOTE_ENV_FILE which points to the actual file
+  CHECK_FILE="${REMOTE_ENV_FILE:-$ENV_FILE}"
+  
+  if ENV_FILE_PATH="$CHECK_FILE" ENV_B64="${ENV_B64:-}" ENV_CONTENT="${ENV_CONTENT:-}" "$HOME/uactions/scripts/app/verify-env-file.sh"; then
+    echo "  ✓ Verification successful"
+  else
+    echo "::error::Environment file verification failed! Aborting deployment." >&2
+    exit 1
+  fi
+else
+  echo "::warning::verify-env-file.sh not found; skipping strict verification"
+fi
+
 # --- Export Deployment Variables -----------------------------------------------------
 echo "================================================================"
 echo "📤 Exporting deployment variables..."
