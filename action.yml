@@ -6,8 +6,8 @@
 #
 # WHY THIS DESIGN?
 # - Keeps the main action.yml small and maintainable
-# - Allows versioning the entire action suite with a single tag (e.g., @v1.0.226)
-# - Provides a consistent interface for users: uncoverthefuture-org/actions@v1.0.226
+# - Allows versioning the entire action suite with a single tag (e.g., @v1.0.227)
+# - Provides a consistent interface for users: uncoverthefuture-org/actions@v1.0.227
 # - Automatically restores bundled actions after any checkout step
 #
 # HOW IT WORKS?
@@ -97,7 +97,7 @@ outputs:
 # ACTION METADATA
 # ============================================================================
 name: 'Uncover Actions'
-description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@v1.0.226'
+description: 'Aggregator entrypoint to call sub-actions via a short ref: uncoverthefuture-org/actions@v1.0.227'
 
 # ============================================================================
 # INPUTS - Parameters passed by the user
