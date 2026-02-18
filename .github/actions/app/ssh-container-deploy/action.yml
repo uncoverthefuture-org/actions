@@ -18,136 +18,136 @@
 # - First-time host prep (prepare_host: true) or repeat deploys
 # ============================================================================
 
-name: 'SSH Container Deploy' # Action name as shown in logs/marketplace
-description: 'Deploy a container via Podman over SSH with optional Traefik routing and/or port mapping.' # High-level summary
+name: "SSH Container Deploy" # Action name as shown in logs/marketplace
+description: "Deploy a container via Podman over SSH with optional Traefik routing and/or port mapping." # High-level summary
 
 inputs: # All parameters accepted by this action
   # SSH / Remote
   ssh_host:
-    description: 'SSH host (IP or DNS) of the remote server (example: deploy.example.com)'
+    description: "SSH host (IP or DNS) of the remote server (example: deploy.example.com)"
     required: true
   ssh_user:
-    description: 'SSH username used for remote execution (example: deploy)'
+    description: "SSH username used for remote execution (example: deploy)"
     required: true
   ssh_key:
-    description: 'Private key for ssh_user (PEM). Provide via repository/organization secret.'
+    description: "Private key for ssh_user (PEM). Provide via repository/organization secret."
     required: true
   root_ssh_key:
-    description: 'Optional private key for root for privileged operations (provide via secret)'
+    description: "Optional private key for root for privileged operations (provide via secret)"
     required: false
   ssh_port:
-    description: 'SSH port on remote host (default 22)'
+    description: "SSH port on remote host (default 22)"
     required: false
-    default: '22'
+    default: "22"
   ssh_fingerprint:
-    description: 'Optional host key fingerprint for trust pinning (example: ssh-ed25519 AAAAC3Nza...)'
+    description: "Optional host key fingerprint for trust pinning (example: ssh-ed25519 AAAAC3Nza...)"
     required: false
   skip_upload:
-    description: 'Skip staging/upload of deploy-container.sh (assumes scripts deployed via infra/deploy-server-scripts)'
+    description: "Skip staging/upload of deploy-container.sh (assumes scripts deployed via infra/deploy-server-scripts)"
     required: false
-    default: 'true'
+    default: "true"
   ensure_scripts_deployed:
-    description: 'Automatically deploy the server scripts bundle before any remote steps'
+    description: "Automatically deploy the server scripts bundle before any remote steps"
     required: false
-    default: 'true'
+    default: "true"
 
   # Smart defaults
   default_host_port:
-    description: 'Default host port when not using Traefik and no host_port provided'
+    description: "Default host port when not using Traefik and no host_port provided"
     required: false
-    default: '8080'
+    default: "8080"
   default_container_port:
-    description: 'Default container port when not provided'
+    description: "Default container port when not provided"
     required: false
     # NOTE: Project standard default is 8080 (consistent across actions and scripts).
     # Example: if your app listens on 4000, set `container_port: '4000'` (or define
     # WEB_CONTAINER_PORT/TARGET_PORT/PORT in the remote .env) so labels map correctly.
-    default: '8080'
+    default: "8080"
 
   # Deployment directories
   deployment_base_dir:
-    description: 'Base directory for deployments on remote server. Default: ~/deployments (user-writable, no sudo required)'
+    description: "Base directory for deployments on remote server. Default: ~/deployments (user-writable, no sudo required)"
     required: false
-    default: '~/deployments'
+    default: "~/deployments"
 
   # Auto env secret resolution (reads job env like PROD_ENV_B64/STAGING_ENV_B64/DEV_ENV_B64)
   auto_fetch_env:
-    description: 'When true and env_b64 not provided, resolve from job env based on env_name'
+    description: "When true and env_b64 not provided, resolve from job env based on env_name"
     required: false
-    default: 'true'
+    default: "true"
   secrets_json:
     description: "JSON string containing secrets (e.g., toJSON(secrets)). Used to lookup secrets without exposing them in global env."
     required: false
   enable_acme:
-    description: 'When true (default), attach certresolver label for ACME; set false to skip Let''s Encrypt while debugging.'
+    description: "When true (default), attach certresolver label for ACME; set false to skip Let's Encrypt while debugging."
     required: false
-    default: 'true'
+    default: "true"
   traefik_reset_acme:
     description: "When 'true', reset Traefik ACME storage on the next run (clears acme.json so new certificates are requested)."
     required: false
-    default: 'false'
+    default: "false"
   traefik_network_name:
-    description: 'Podman network to connect service containers to when Traefik is enabled (default: traefik-network).'
+    description: "Podman network to connect service containers to when Traefik is enabled (default: traefik-network)."
     required: false
-    default: 'traefik-network'
+    default: "traefik-network"
   traefik_use_host_network:
-    description: 'Run Traefik on host network to avoid CNI DNS issues (true recommended).'
+    description: "Run Traefik on host network to avoid CNI DNS issues (true recommended)."
     required: false
-    default: 'false'
+    default: "false"
   traefik_skip_upload:
-    description: 'Skip uploading Traefik scripts (assumes scripts already installed on server).'
+    description: "Skip uploading Traefik scripts (assumes scripts already installed on server)."
     required: false
-    default: 'true'
+    default: "true"
   enable_dashboard:
-    description: 'Enable Traefik dashboard exposure (paired with dashboard_publish_modes)'
+    description: "Enable Traefik dashboard exposure (paired with dashboard_publish_modes)"
     required: false
-    default: 'true'
+    default: "true"
   dashboard_publish_modes:
-    description: 'CSV of dashboard modes: http8080, https8080, subdomain, or both'
+    description: "CSV of dashboard modes: http8080, https8080, subdomain, or both"
     required: false
-    default: ''
+    default: ""
   dashboard_host:
-    description: 'FQDN for dashboard when using subdomain mode'
+    description: "FQDN for dashboard when using subdomain mode"
     required: false
-    default: ''
+    default: ""
   dashboard_password:
-    description: 'Plain password for admin user (hashed on host). Use dashboard_users_b64 for pre-hashed.'
+    description: "Plain password for admin user (hashed on host). Use dashboard_users_b64 for pre-hashed."
     required: false
-    default: ''
+    default: ""
   dashboard_users_b64:
-    description: 'Base64-encoded htpasswd-style users file for dashboard auth. Overrides dashboard_password when set.'
+    description: "Base64-encoded htpasswd-style users file for dashboard auth. Overrides dashboard_password when set."
     required: false
-    default: ''
+    default: ""
   dns_servers:
-    description: 'Optional comma or space-separated DNS servers for Traefik container (passed as --dns).'
+    description: "Optional comma or space-separated DNS servers for Traefik container (passed as --dns)."
     required: false
-    default: ''
+    default: ""
   env_secret_prefix:
-    description: 'Prefix for env secret env var name'
+    description: "Prefix for env secret env var name"
     required: false
-    default: ''
+    default: ""
   env_secret_suffix:
-    description: 'Suffix for env secret env var name'
+    description: "Suffix for env secret env var name"
     required: false
-    default: '_ENV_B64'
+    default: "_ENV_B64"
 
   # Host prep
   prepare_host:
     description: "When true, prepare a fresh Ubuntu host (install Podman, create directories, manage users)."
     required: false
-    default: 'true'
+    default: "true"
   install_podman:
     description: "Install Podman during host preparation when not already available (example: true)."
     required: false
-    default: 'true'
+    default: "true"
   create_podman_user:
     description: "Create the podman_user account during host prep when it does not exist (example: false)."
     required: false
-    default: 'false'
+    default: "false"
   install_traefik:
     description: "Install or reconcile the Traefik reverse proxy during host preparation (example: true)."
     required: false
-    default: 'true'
+    default: "true"
   traefik_email:
     description: "Email passed to Traefik's ACME integration for certificate registration (example: ops@example.com)."
     required: false
@@ -157,63 +157,63 @@ inputs: # All parameters accepted by this action
   additional_packages:
     description: "Extra apt packages installed during host preparation (space separated, example: 'jq curl ca-certificates')."
     required: false
-    default: 'jq curl ca-certificates'
+    default: "jq curl ca-certificates"
   enable_podman_cleanup:
-    description: 'When true, run a safe Podman storage cleanup after successful deploys to prevent overlay bloat (age-based prune of stopped containers and unused images).'
+    description: "When true, run a safe Podman storage cleanup after successful deploys to prevent overlay bloat (age-based prune of stopped containers and unused images)."
     required: false
-    default: 'true'
+    default: "true"
   podman_cleanup_min_age_days:
-    description: 'Minimum age in days before Podman containers/images become eligible for pruning. Default is 1 day for automatic cleanup. Change via this input or PODMAN_PRUNE_MIN_AGE_DAYS env variable.'
+    description: "Minimum age in days before Podman containers/images become eligible for pruning. Default is 1 day for automatic cleanup. Change via this input or PODMAN_PRUNE_MIN_AGE_DAYS env variable."
     required: false
-    default: '1'
+    default: "1"
   podman_cleanup_keep_recent_images:
-    description: 'Hint for how many recent images to keep per host. Currently used for logging alongside the age-based prune (example: 2).'
+    description: "Hint for how many recent images to keep per host. Currently used for logging alongside the age-based prune (example: 2)."
     required: false
-    default: '2'
+    default: "2"
   podman_cleanup_aggressive:
-    description: 'When true (default), aggressively prune ALL stopped containers and unused images immediately after deployment, not just old ones. This prevents storage accumulation between deployments.'
+    description: "When true (default), aggressively prune ALL stopped containers and unused images immediately after deployment, not just old ones. This prevents storage accumulation between deployments."
     required: false
-    default: 'true'
+    default: "true"
   ufw_allow_ports:
     description: "Space-separated list of ports opened in UFW during host prep (example: '80 443')."
     required: false
-    default: '80 443'
+    default: "80 443"
   install_webmin:
-    description: 'Install Webmin during host prep/first-run (requires sudo).'
+    description: "Install Webmin during host prep/first-run (requires sudo)."
     required: false
-    default: 'true'
+    default: "true"
   install_usermin:
-    description: 'Install Usermin alongside Webmin when enabled (requires sudo).'
+    description: "Install Usermin alongside Webmin when enabled (requires sudo)."
     required: false
-    default: 'false'
+    default: "false"
   install_portainer:
-    description: 'Install Portainer CE (container management UI) on the host as a Quadlet-managed service.'
+    description: "Install Portainer CE (container management UI) on the host as a Quadlet-managed service."
     required: false
-    default: 'true'
+    default: "true"
   portainer_https_port:
-    description: 'Host HTTPS port for Portainer UI (default: 9443).'
+    description: "Host HTTPS port for Portainer UI (default: 9443)."
     required: false
-    default: '9443'
+    default: "9443"
   portainer_domain:
-    description: 'FQDN for Portainer behind Traefik (example: portainer.example.com). When set, Portainer is exposed via Traefik on 443 in addition to direct :9443 access.'
+    description: "FQDN for Portainer behind Traefik (example: portainer.example.com). When set, Portainer is exposed via Traefik on 443 in addition to direct :9443 access."
     required: false
-    default: ''
+    default: ""
   portainer_admin_auto_init:
     description: "When 'true' (default), auto-initialize the Portainer admin user via the HTTPS API on first install using either portainer_admin_password or the default '12345678'."
     required: false
-    default: 'true'
+    default: "true"
   portainer_admin_username:
-    description: 'Username for the Portainer admin account during auto-init (default: admin).'
+    description: "Username for the Portainer admin account during auto-init (default: admin)."
     required: false
-    default: 'admin'
+    default: "admin"
   portainer_admin_password:
     description: "Initial password for the Portainer admin account during auto-init. When empty and portainer_admin_auto_init is true, a convenience default of '12345678' is used and a warning is emitted in logs; change it immediately in production."
     required: false
-    default: ''
+    default: ""
   show_root_install_hints:
-    description: 'Show explicit manual install instructions when root privileges are required (fail-fast messaging)'
+    description: "Show explicit manual install instructions when root privileges are required (fail-fast messaging)"
     required: false
-    default: 'true'
+    default: "true"
 
   # Env file
   env_name:
@@ -222,14 +222,14 @@ inputs: # All parameters accepted by this action
   auto_detect_env:
     description: "When true, derive env_name from branch or tag using compute-defaults (example: true)."
     required: false
-    default: 'true'
+    default: "true"
   env_file_path:
     description: "Remote base path where the .env file should be written (example: /opt/uactions/envs/app.env)."
     required: false
   write_env_file:
     description: "When true, write env_b64 or env_content to the remote server before deployment. Defaults to true when env_b64 or env_content is provided."
     required: false
-    default: 'true'
+    default: "true"
   env_b64:
     description: "Base64-encoded .env payload to materialize on the host (example: a repository/organization secret)."
     required: false
@@ -241,7 +241,7 @@ inputs: # All parameters accepted by this action
   registry:
     description: "Container registry hostname used for image pulls (example: ghcr.io)."
     required: false
-    default: 'ghcr.io'
+    default: "ghcr.io"
   image_name:
     description: "Repository and image path without tag (example: org/app)."
     required: false
@@ -260,7 +260,7 @@ inputs: # All parameters accepted by this action
   registry_login:
     description: "Attempt Podman login before pulling when credentials exist (example: true)."
     required: false
-    default: 'true'
+    default: "true"
 
   # Runtime
   app_slug:
@@ -278,64 +278,64 @@ inputs: # All parameters accepted by this action
   restart_policy:
     description: "Podman restart policy applied to the container (example: unless-stopped)."
     required: false
-    default: 'unless-stopped'
+    default: "unless-stopped"
   extra_run_args:
     description: "Additional flags appended to podman run, provided as a quoted string (example: '--cap-add NET_ADMIN')."
     required: false
   memory_limit:
     description: "Memory limit (and swap) applied to the container (example: 512m)."
     required: false
-    default: '512m'
+    default: "512m"
   cpu_limit:
     description: "CPU limit passed as --cpus to podman. Default: 0.5 (half a CPU)."
     required: false
-    default: '0.5'
+    default: "0.5"
 
   env_file_mount_enabled:
     description: "When true (default), explicitly mount the .env file into the container at the path specified by env_file_container_path. Required for frameworks like Laravel that expect .env at the application root."
     required: false
-    default: 'true'
+    default: "true"
   env_file_container_path:
     description: "Path inside the container where the .env file should be mounted (default: /var/www/html/.env for Laravel apps). Change this for other frameworks."
     required: false
-    default: '/var/www/html/.env'
+    default: "/var/www/html/.env"
 
   quadlet_enabled:
     description: "When 'false', skip generating Quadlet .container units for the app (no systemd persistence). Default: true."
     required: false
-    default: 'true'
+    default: "true"
 
   # Logging / Debugging
   debug:
-    description: 'Enable verbose logging, including env paths and user info (default: false)'
+    description: "Enable verbose logging, including env paths and user info (default: false)"
     required: false
-    default: 'false'
+    default: "false"
 
   # Summary & diagnostics verbosity
   summary_mode:
-    description: 'Controls deployment summary: full|light|off. full runs diagnostics + whoami probe; light skips diagnostics; off skips summary.'
+    description: "Controls deployment summary: full|light|off. full runs diagnostics + whoami probe; light skips diagnostics; off skips summary."
     required: false
-    default: 'full'
+    default: "full"
 
   # Env sourcing for deployment
   source_env:
     description: "When true, source the remote .env before executing deployment scripts so exports are available (example: true)."
     required: false
-    default: 'true'
+    default: "true"
   fail_if_env_missing:
     description: "If source_env=true, halt the deployment when the .env file cannot be sourced; set false to proceed without env exports (example: true)."
     required: false
-    default: 'true'
+    default: "true"
 
   # Domain / Traefik
   enable_traefik:
     description: "When true, attach Traefik labels and network when a domain is provided (example: true)."
     required: false
-    default: 'true'
+    default: "true"
   ensure_traefik:
-    description: 'Run infra/setup-traefik to reconcile Traefik (probe-first fast-path). Set false to skip entirely.'
+    description: "Run infra/setup-traefik to reconcile Traefik (probe-first fast-path). Set false to skip entirely."
     required: false
-    default: 'true'
+    default: "true"
   domain:
     description: "Explicit domain to route the deployment (example: api.example.com)."
     required: false
@@ -345,7 +345,7 @@ inputs: # All parameters accepted by this action
   domain_prefix_prod:
     description: "Prefix to prepend for production environments when base_domain is used (example: '')."
     required: false
-    default: ''
+    default: ""
   domain_prefix_staging:
     description: "Prefix applied to the staging environment when base_domain is set (example: staging)."
     required: false
@@ -355,26 +355,26 @@ inputs: # All parameters accepted by this action
   require_dns_match:
     description: "Reserved flag to gate changes behind DNS validation (example: true)."
     required: false
-    default: 'true'
+    default: "true"
   domain_aliases:
     description: "Optional comma or space-separated aliases routed to the service (example: 'www.example.com api.example.com')."
     required: false
-    default: ''
+    default: ""
   include_www_alias:
     description: "When true and domain is set, also include www.<domain> as an alias (example: false)."
     required: false
-    default: 'false'
+    default: "false"
   domain_hosts:
-    description: 'CSV of hostnames to route (preferred). Overrides aliases when provided.'
+    description: "CSV of hostnames to route (preferred). Overrides aliases when provided."
     required: false
-    default: ''
+    default: ""
   probe_path:
     description: "Path used by Traefik probe to validate deployment readiness (example: /health)."
     required: false
-    default: '/'
+    default: "/"
 
 runs: # Composite action implementation
-  using: 'composite'
+  using: "composite"
   steps:
     - name: Compute derived defaults # Derive slug, env, domain, tags, etc.
       id: dfl
@@ -447,22 +447,22 @@ runs: # Composite action implementation
       run: |
         echo "=== ENV FILE WRITE DEBUG ==="
         echo "inputs.write_env_file: ${{ inputs.write_env_file }}"
-        echo "inputs.env_b64: ${{ inputs.env_b64 != '' && 'set (' || 'not set' }}${{ inputs.env_b64 != '' && inputs.env_b64.length || '' }}${{ inputs.env_b64 != '' && ' chars)' || '' }}"
+        echo "inputs.env_b64: ${{ inputs.env_b64 != '' && 'set' || 'not set' }}"
         echo "inputs.env_content: ${{ inputs.env_content != '' && 'set' || 'not set' }}"
         echo "steps.envsel.outputs.env_b64: ${{ steps.envsel.outputs.env_b64 != '' && 'set' || 'not set' }}"
         echo "steps.envsel.outputs.secret_name: ${{ steps.envsel.outputs.secret_name }}"
         echo "steps.envsel.outputs.found: ${{ steps.envsel.outputs.found }}"
-        
+
         # Determine if env file will be written
         WILL_WRITE="${{ (inputs.write_env_file == 'true') || (inputs.env_b64 != '' || inputs.env_content != '' || steps.envsel.outputs.env_b64 != '') }}"
         echo "Will write env file: $WILL_WRITE"
-        
+
         if [ "$WILL_WRITE" != "true" ]; then
           echo ""
           echo "⚠️  WARNING: Environment file will NOT be written to the server!"
           echo "    To fix this, either:"
-          echo "    1. Set job-level env var: DEV_ENV_B64: \${{ secrets.DEV_ENV_B64 }}"
-          echo "    2. Pass secrets_json: secrets_json: \${{ toJSON(secrets) }}"
+          echo "    1. Set job-level env var: DEV_ENV_B64: {{ secrets.DEV_ENV_B64 }}"
+          echo "    2. Pass secrets_json: secrets_json: {{ toJSON(secrets) }}"
           echo "    3. Explicitly set env_b64 input"
         fi
         echo "============================"
@@ -505,10 +505,9 @@ runs: # Composite action implementation
         registry_username: ${{ inputs.registry_username }} # Registry user
         registry_token: ${{ inputs.registry_token }} # Registry token
         registry_login: ${{ inputs.registry_login }} # Login before pull
-        perform_pull: 'false'
+        perform_pull: "false"
         image_name: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }} # Image path
         image_tag: ${{ inputs.version != '' && inputs.version || (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default) }} # Tag
-
 
     - name: Deployment Banner
       shell: bash
@@ -516,7 +515,6 @@ runs: # Composite action implementation
         TAG="${{ inputs.version != '' && inputs.version || (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default) }}"
         echo "::notice::🚀 Starting Deployment to ${{ inputs.ssh_host }}"
         echo "::notice::📦 Image: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:$TAG"
-
 
     - name: Deploy container # Start/replace container with Traefik or port mapping
       if: ${{ steps.reach.outputs.reachable == 'true' }}
@@ -776,8 +774,6 @@ runs: # Composite action implementation
 
           "$HOME/uactions/scripts/app/start-container-deployment.sh"
 
-          
-   
     # # Respect summary_mode: full|light|off
     # # - full: run diagnostics + whoami probe
     # # - light: skip diagnostics (fast), still summarize remote state
@@ -794,7 +790,7 @@ runs: # Composite action implementation
     #     ssh_port: ${{ inputs.ssh_port }}
     #     app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}
     #     env_name: ${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}
-        
+
     #     #  Status summary requires the app slug, container name and ports to
     #     #  summarize endpoint reachability among other more detailed metrics
     #     container_name: ${{ inputs.container_name }}
