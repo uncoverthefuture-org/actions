@@ -1,0 +1,114 @@
+# ============================================================================
+# ACTION: Extract Version
+# ============================================================================
+# PURPOSE:
+# Extracts and validates a deployment version from workflow_dispatch inputs 
+# or from a merged release-please PR.
+#
+# WHAT IT DOES:
+# 1. Prioritizes explicit version input (from workflow_dispatch).
+# 2. Validates version format (v*.*.*).
+# 3. If explicit version, verifies the git tag exists.
+# 4. If no explicit version, attempts to extract from a completed release-please PR.
+# 5. Fails if a version cannot be resolved or is invalid.
+# ============================================================================
+
+name: 'version: extract-version'
+description: 'Extracts version from workflow_dispatch inputs or release-please PR title, and validates it.'
+
+inputs:
+  version:
+    description: 'Explicit version to deploy (e.g., from workflow_dispatch inputs)'
+    required: false
+
+outputs:
+  version:
+    description: 'The extracted and validated version (e.g. v1.2.3)'
+    value: ${{ steps.extract.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Analyze Inputs
+      id: decide-source
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        if [[ -n "$INPUT_VERSION" ]]; then
+          echo "source=input" >> "$GITHUB_OUTPUT"
+          echo "raw_version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "ℹ️ Source determined: explicit input version"
+        else
+          echo "source=pr" >> "$GITHUB_OUTPUT"
+          echo "ℹ️ Source determined: pull request context"
+        fi
+
+    - name: Extract from PR Context
+      id: extract-pr
+      if: ${{ steps.decide-source.outputs.source == 'pr' }}
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        PR_MERGED: ${{ github.event.pull_request.merged }}
+        PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+      run: |
+        set -euo pipefail
+        
+        if [[ "$EVENT_NAME" != "pull_request" || "$PR_MERGED" != "true" || "$PR_HEAD_REF" != release-please--* ]]; then
+          echo "❌ Version was not provided and event context is not a merged release-please PR."
+          exit 1
+        fi
+        
+        if [[ ! "$PR_HEAD_REF" =~ ^release-please--branches--.*(--components--.*)?$ ]]; then
+          echo "❌ Invalid branch format: $PR_HEAD_REF"
+          exit 1
+        fi
+        
+        if [[ "$PR_TITLE" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          VERSION="v${BASH_REMATCH[1]}"
+          echo "✅ Version extracted from PR title: $VERSION"
+          echo "raw_version=$VERSION" >> "$GITHUB_OUTPUT"
+        else
+          echo "❌ Could not extract version from PR title: $PR_TITLE"
+          exit 1
+        fi
+
+    - name: Validate Version Format
+      id: extract
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        # Combine possible sources from previous steps
+        VERSION="${{ steps.decide-source.outputs.raw_version || steps.extract-pr.outputs.raw_version }}"
+        
+        if [[ -z "$VERSION" ]]; then
+          echo "❌ No version could be extracted or identified."
+          exit 1
+        fi
+        
+        if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "❌ Invalid selected version format: $VERSION. Expected format: v*.*.*"
+          exit 1
+        fi
+        
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "✅ Final formatted version evaluated: $VERSION"
+
+    - name: Validate Git Tag
+      if: ${{ steps.decide-source.outputs.source == 'input' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        VERSION="${{ steps.extract.outputs.version }}"
+        
+        if ! git tag -l "$VERSION" | grep -q "$VERSION"; then
+          echo "❌ Git tag '$VERSION' does not exist. Create the tag first before deploying."
+          exit 1
+        fi
+        
+        echo "✅ Verified git tag exists: $VERSION"

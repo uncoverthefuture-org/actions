@@ -30,7 +30,8 @@
     "ssh-container-deploy",
     "doctl-container-deploy",
     "aws-ssm-container-deploy",
-    "write-remote-env-file"
+    "write-remote-env-file",
+    "extract-version"
   ],
   "version": [
     "compute-next",

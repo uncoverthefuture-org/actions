@@ -14,6 +14,7 @@ Complete reference for all action files in the Uncover Actions project. This gui
 │   ├── ssh-laravel-deploy/       # Deploy Laravel app
 │   ├── ssh-nextjs-deploy/        # Deploy Next.js app
 │   ├── ssh-react-deploy/         # Deploy React app
+│   ├── extract-version/          # Resolve version from tags/PRs
 │   └── write-remote-env-file/    # Write environment files
 │
 ├── build/                        # Docker image building
@@ -233,6 +234,28 @@ These are the main actions users call directly.
 **When to use**: Manage environment files on remote servers
 
 **Reference**: See GETTING_STARTED.md - Step 2 (GitHub Secrets)
+
+---
+
+#### **extract-version**
+**Location**: `.github/actions/app/extract-version/action.yml`
+
+**Purpose**: Extracts and validates deployment versions from inputs or PRs
+
+**What it does**:
+- Analyzes workflow context
+- Prioritizes explicitly provided versions (`workflow_dispatch`)
+- Falls back to parsing merged `release-please` PR titles
+- Validates semantic versioning format
+- Verifies git tags exist locally
+
+**Key inputs**:
+- `version` - Optional explicit version string
+
+**Key outputs**:
+- `version` - The final validated semantic version string
+
+**Used by**: Deployment pipelines to abstract and standardize version resolution
 
 ---
 

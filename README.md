@@ -29,6 +29,7 @@ The main actions you are expected to use are listed below. Each links to a dedic
 |--------|-------------|------|
 | `ssh-container-deploy` | Generic container deployment over SSH (Traefik by default, host ports fallback). **Start here.** | [SSH Container Deploy README](.github/actions/app/ssh-container-deploy/README.md) |
 | `build-and-push` | Build and push container images with environment context. | [.github/actions/build-and-push/README.md](.github/actions/build-and-push/README.md) |
+| `extract-version` | Extracts and validates the requested version from workflow inputs or Pull Requests. | [.github/actions/app/extract-version/README.md](.github/actions/app/extract-version/README.md) |
 
 For other, more specialized actions (infra helpers, legacy deployers, etc.), see:
 
