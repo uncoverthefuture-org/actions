@@ -49,6 +49,7 @@ Complete reference for all action files in the Uncover Actions project. This gui
 └── version/                      # Semantic versioning
     ├── dispatch/                 # Routes to version actions
     ├── compute-next/             # Calculate next version
+    ├── extract-version/          # Resolve version from tags/PRs
     ├── update-refs/              # Update action references
     └── update-tags/              # Create git tags
 ```
@@ -577,6 +578,28 @@ These actions are used internally by other actions. Users typically don't call t
 ---
 
 ### Version Actions
+
+#### **extract-version**
+**Location**: `.github/actions/version/extract-version/action.yml`
+
+**Purpose**: Extracts and validates deployment versions from inputs or PRs
+
+**What it does**:
+- Analyzes workflow context
+- Prioritizes explicitly provided versions (`workflow_dispatch`)
+- Falls back to parsing merged `release-please` PR titles
+- Validates semantic versioning format
+- Verifies git tags exist locally
+
+**Key inputs**:
+- `version` - Optional explicit version string
+
+**Key outputs**:
+- `version` - The final validated semantic version string
+
+**Used by**: Deployment pipelines to abstract and standardize version resolution
+
+---
 
 #### **compute-next**
 **Location**: `.github/actions/version/compute-next/action.yml`
