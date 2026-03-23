@@ -1,0 +1,28 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+
+      - name: Lint action uses
+        uses: uncoverthefuture-org/actions/.github/actions/common/lint-uses@master
+        with:
+          allow_deep_repo: 'true'
+
+      - name: Test main aggregator action
+        # Verifies the main action.yml and routing dispatchers still work
+        uses: ./
+        with:
+          subaction: help
+
+      - name: Run local bash validation scripts
+        run: |
+          echo "Running bash tests for PR validation..."
+          ./tests/pr-validation/verify-action-files.sh
