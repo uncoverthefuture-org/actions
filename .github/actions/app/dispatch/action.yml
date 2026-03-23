@@ -263,6 +263,11 @@ inputs:
     required: false
     default: 'true'
 
+outputs:
+  version:
+    description: 'Extracted semantic version returned by extract-version.'
+    value: ${{ steps.extract-version.outputs.version }}
+
 runs:
   using: 'composite'
   steps:
@@ -283,7 +288,7 @@ runs:
       uses: ./.github/actions/common/validate-subaction
       with:
         subaction: ${{ inputs.subaction }}
-        allowed: ssh-container-deploy|doctl-container-deploy|aws-ssm-container-deploy|write-remote-env-file
+        allowed: ssh-container-deploy|doctl-container-deploy|aws-ssm-container-deploy|write-remote-env-file|extract-version
 
     - name: Validate base SSH for app subactions
       if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-container-deploy' || inputs.subaction == 'doctl-container-deploy' }}
@@ -515,3 +520,9 @@ runs:
         install_usermin: ${{ fromJSON(steps.params.outputs.json).install_usermin }}
         debug: ${{ inputs.debug != '' && inputs.debug || fromJSON(steps.params.outputs.json).debug }}
     
+    - name: extract-version
+      if: ${{ inputs.subaction == 'extract-version' }}
+      id: extract-version
+      uses: ./.github/actions/app/extract-version
+      with:
+        version: ${{ fromJSON(steps.params.outputs.json).version }}

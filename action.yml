@@ -94,7 +94,7 @@ outputs:
     value: ${{ steps.vdisp.outputs.last }}
   version:
     description: 'Extracted semantic version returned by extract-version.'
-    value: ${{ steps.vdisp.outputs.version }}
+    value: ${{ steps.appdisp.outputs.version }}
 
 # ============================================================================
 # ACTION METADATA

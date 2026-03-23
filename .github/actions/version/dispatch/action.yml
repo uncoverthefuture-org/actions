@@ -56,9 +56,6 @@ outputs:
   last:
     description: 'Previous full tag (vX.Y.Z) returned by compute-next.'
     value: ${{ steps.compute.outputs.last }}
-  version:
-    description: 'Extracted semantic version returned by extract-version.'
-    value: ${{ steps.extract-version.outputs.version }}
 
 runs:
   using: 'composite'
@@ -73,7 +70,7 @@ runs:
       uses: ./.github/actions/common/validate-subaction
       with:
         subaction: ${{ inputs.subaction }}
-        allowed: compute-next|update-tags|update-refs|extract-version
+        allowed: compute-next|update-tags|update-refs
 
     - name: compute-next
       if: ${{ inputs.subaction == 'compute-next' }}
@@ -97,9 +94,3 @@ runs:
       with:
         new_tag: ${{ fromJSON(steps.pjson.outputs.json).new_tag }}
         force: ${{ fromJSON(steps.pjson.outputs.json).force }}
-    - name: extract-version
-      if: ${{ inputs.subaction == 'extract-version' }}
-      id: extract-version
-      uses: ./.github/actions/version/extract-version
-      with:
-        version: ${{ fromJSON(steps.pjson.outputs.json).version }}
