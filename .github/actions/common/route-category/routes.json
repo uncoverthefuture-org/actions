@@ -35,7 +35,8 @@
   "version": [
     "compute-next",
     "update-tags",
-    "update-refs"
+    "update-refs",
+    "extract-version"
   ],
   "common": [
     "select-env-secret",

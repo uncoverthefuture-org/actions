@@ -1,0 +1,92 @@
+# ============================================================================
+# ACTION: Extract Version
+# ============================================================================
+# PURPOSE:
+# Extracts and validates a deployment version from workflow_dispatch inputs 
+# or from a merged release-please PR.
+#
+# WHAT IT DOES:
+# 1. Prioritizes explicit version input (from workflow_dispatch).
+# 2. Validates version format (v*.*.*).
+# 3. If explicit version, verifies the git tag exists.
+# 4. If no explicit version, attempts to extract from a completed release-please PR.
+# 5. Fails if a version cannot be resolved or is invalid.
+# ============================================================================
+
+name: 'version: extract-version'
+description: 'Extracts version from workflow_dispatch inputs or release-please PR title, and validates it.'
+
+inputs:
+  version:
+    description: 'Explicit version to deploy (e.g., from workflow_dispatch inputs)'
+    required: false
+
+outputs:
+  version:
+    description: 'The extracted and validated version (e.g. v1.2.3)'
+    value: ${{ steps.extract.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Extract and Validate Version
+      id: extract
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_MERGED: ${{ github.event.pull_request.merged }}
+        PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+      run: |
+        set -euo pipefail
+        
+        VERSION=""
+        
+        # 1. Attempt to extract from explicit input
+        if [[ -n "$INPUT_VERSION" ]]; then
+          echo "ℹ️ Using explicitly provided version: $INPUT_VERSION"
+          VERSION="$INPUT_VERSION"
+          
+          # Validate format before checking git tags
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid version format: $VERSION. Expected format: v*.*.*"
+            exit 1
+          fi
+          
+          # Ensure git tag exists locally
+          if ! git tag -l "$VERSION" | grep -q "$VERSION"; then
+            echo "❌ Git tag '$VERSION' does not exist. Create the tag first before deploying."
+            exit 1
+          fi
+          
+        # 2. Attempt to extract from Release-Please PR
+        elif [[ "$EVENT_NAME" == "pull_request" && "$PR_MERGED" == "true" && "$PR_HEAD_REF" == release-please--* ]]; then
+          echo "ℹ️ Extracting version from release-please PR"
+          
+          if [[ ! "$PR_HEAD_REF" =~ ^release-please--branches--.*(--components--.*)?$ ]]; then
+            echo "❌ Invalid branch format: $PR_HEAD_REF"
+            exit 1
+          fi
+          
+          if [[ "$PR_TITLE" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            VERSION="v${BASH_REMATCH[1]}"
+            echo "✅ Version extracted from PR title: $VERSION"
+          else
+            echo "❌ Could not extract version from PR title: $PR_TITLE"
+            exit 1
+          fi
+        else
+          echo "❌ Version was not provided and could not be extracted from the event context."
+          echo "Context details: event='$EVENT_NAME', pr_merged='$PR_MERGED', ref='$PR_HEAD_REF'"
+          exit 1
+        fi
+        
+        # 3. Final format validation (covers PR extraction case)
+        if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "❌ Invalid selected version format: $VERSION. Expected format: v*.*.*"
+          exit 1
+        fi
+        
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "✅ Validated and selected version: $VERSION"
