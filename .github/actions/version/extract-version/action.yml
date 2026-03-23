@@ -29,11 +29,27 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Extract and Validate Version
-      id: extract
+    - name: Analyze Inputs
+      id: decide-source
       shell: bash
       env:
         INPUT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        if [[ -n "$INPUT_VERSION" ]]; then
+          echo "source=input" >> "$GITHUB_OUTPUT"
+          echo "raw_version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "ℹ️ Source determined: explicit input version"
+        else
+          echo "source=pr" >> "$GITHUB_OUTPUT"
+          echo "ℹ️ Source determined: pull request context"
+        fi
+
+    - name: Extract from PR Context
+      id: extract-pr
+      if: ${{ steps.decide-source.outputs.source == 'pr' }}
+      shell: bash
+      env:
         EVENT_NAME: ${{ github.event_name }}
         PR_MERGED: ${{ github.event.pull_request.merged }}
         PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -41,52 +57,58 @@ runs:
       run: |
         set -euo pipefail
         
-        VERSION=""
-        
-        # 1. Attempt to extract from explicit input
-        if [[ -n "$INPUT_VERSION" ]]; then
-          echo "ℹ️ Using explicitly provided version: $INPUT_VERSION"
-          VERSION="$INPUT_VERSION"
-          
-          # Validate format before checking git tags
-          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "❌ Invalid version format: $VERSION. Expected format: v*.*.*"
-            exit 1
-          fi
-          
-          # Ensure git tag exists locally
-          if ! git tag -l "$VERSION" | grep -q "$VERSION"; then
-            echo "❌ Git tag '$VERSION' does not exist. Create the tag first before deploying."
-            exit 1
-          fi
-          
-        # 2. Attempt to extract from Release-Please PR
-        elif [[ "$EVENT_NAME" == "pull_request" && "$PR_MERGED" == "true" && "$PR_HEAD_REF" == release-please--* ]]; then
-          echo "ℹ️ Extracting version from release-please PR"
-          
-          if [[ ! "$PR_HEAD_REF" =~ ^release-please--branches--.*(--components--.*)?$ ]]; then
-            echo "❌ Invalid branch format: $PR_HEAD_REF"
-            exit 1
-          fi
-          
-          if [[ "$PR_TITLE" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            VERSION="v${BASH_REMATCH[1]}"
-            echo "✅ Version extracted from PR title: $VERSION"
-          else
-            echo "❌ Could not extract version from PR title: $PR_TITLE"
-            exit 1
-          fi
-        else
-          echo "❌ Version was not provided and could not be extracted from the event context."
-          echo "Context details: event='$EVENT_NAME', pr_merged='$PR_MERGED', ref='$PR_HEAD_REF'"
+        if [[ "$EVENT_NAME" != "pull_request" || "$PR_MERGED" != "true" || "$PR_HEAD_REF" != release-please--* ]]; then
+          echo "❌ Version was not provided and event context is not a merged release-please PR."
           exit 1
         fi
         
-        # 3. Final format validation (covers PR extraction case)
+        if [[ ! "$PR_HEAD_REF" =~ ^release-please--branches--.*(--components--.*)?$ ]]; then
+          echo "❌ Invalid branch format: $PR_HEAD_REF"
+          exit 1
+        fi
+        
+        if [[ "$PR_TITLE" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          VERSION="v${BASH_REMATCH[1]}"
+          echo "✅ Version extracted from PR title: $VERSION"
+          echo "raw_version=$VERSION" >> "$GITHUB_OUTPUT"
+        else
+          echo "❌ Could not extract version from PR title: $PR_TITLE"
+          exit 1
+        fi
+
+    - name: Validate Version Format
+      id: extract
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        # Combine possible sources from previous steps
+        VERSION="${{ steps.decide-source.outputs.raw_version || steps.extract-pr.outputs.raw_version }}"
+        
+        if [[ -z "$VERSION" ]]; then
+          echo "❌ No version could be extracted or identified."
+          exit 1
+        fi
+        
         if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
           echo "❌ Invalid selected version format: $VERSION. Expected format: v*.*.*"
           exit 1
         fi
         
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-        echo "✅ Validated and selected version: $VERSION"
+        echo "✅ Final formatted version evaluated: $VERSION"
+
+    - name: Validate Git Tag
+      if: ${{ steps.decide-source.outputs.source == 'input' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        VERSION="${{ steps.extract.outputs.version }}"
+        
+        if ! git tag -l "$VERSION" | grep -q "$VERSION"; then
+          echo "❌ Git tag '$VERSION' does not exist. Create the tag first before deploying."
+          exit 1
+        fi
+        
+        echo "✅ Verified git tag exists: $VERSION"
