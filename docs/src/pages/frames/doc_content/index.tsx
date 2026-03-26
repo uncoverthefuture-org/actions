@@ -12,6 +12,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import styles from "@pages/frames/doc_content/styles.module.scss";
 import MarkdownViewer, { Heading } from "@components/markdown_viewer";
 import Minimap from "@components/minimap";
+import introductionContent from "@data/introduction.md?raw";
+import containerDeploymentsContent from "@data/container_deployment.md?raw";
 import sshContainerDeployContent from "@data/ssh_container_deploy.md?raw";
 
 interface DocContentInput {
@@ -21,11 +23,15 @@ interface DocContentInput {
 
 const titleMap: Record<string, string> = {
     "/": "Documentation",
+    "/uncover-actions/introduction": "Introduction to Uactions",
+    "/uncover-actions/container-deployments": "Unified Container Deployments",
     "/uncover-actions/ssh-container-deploy": "SSH Container Deploy",
 };
 
 const contentMap: Record<string, string> = {
     "/": "# Welcome to Uncover Docs\n\nSelect a topic from the sidebar to get started.",
+    "/uncover-actions/introduction": introductionContent,
+    "/uncover-actions/container-deployments": containerDeploymentsContent,
     "/uncover-actions/ssh-container-deploy": sshContainerDeployContent,
 };
 
