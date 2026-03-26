@@ -31,11 +31,19 @@ const navItems: NavItem[] = [
         route: "/"
     },
     {
+        label: "Introduction",
+        route: "/uncover-actions/introduction"
+    },
+    {
         label: "Packages",
         children: [
             {
                 label: "@uncover/actions",
                 children: [
+                    {
+                        label: "Container Deployments",
+                        route: "/uncover-actions/container-deployments",
+                    },
                     {
                         label: "SSH Container Deploy",
                         route: "/uncover-actions/ssh-container-deploy",
