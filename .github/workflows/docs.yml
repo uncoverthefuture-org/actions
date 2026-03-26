@@ -25,15 +25,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Enable Corepack for Yarn
+        run: corepack enable
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "yarn"
           cache-dependency-path: docs/yarn.lock
-
-      - name: Enable Corepack for Yarn
-        run: corepack enable
 
       - name: Install dependencies
         working-directory: docs
