@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1](https://github.com/uncoverthefuture-org/actions/compare/v1.1.0...v1.1.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* **docs:** synchronize yarn.lock after package rename to satisfy stri… ([f71fb8a](https://github.com/uncoverthefuture-org/actions/commit/f71fb8a97745179cd4753f9ac3c4605a8b75b98e))
+* **docs:** synchronize yarn.lock after package rename to satisfy strict CI execution ([27b3cb1](https://github.com/uncoverthefuture-org/actions/commit/27b3cb1189cbce81816bae47c5e28078e46b2ee5))
+
 ## [1.1.0](https://github.com/uncoverthefuture-org/actions/compare/v1.0.231...v1.1.0) (2026-03-26)
 
 
