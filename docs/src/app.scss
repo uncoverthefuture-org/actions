@@ -1,0 +1,48 @@
+// import all dependencies
+@use "utilities/scss/variable" as *;
+@import "animate.css/animate.min.css";
+@import "bootstrap/scss/bootstrap";
+@import url("http://fonts.cdnfonts.com/css/avenir-lt-std");
+@import "./assets/css/responsive.scss";
+
+body,
+html {
+   height: 100%;
+   font-size: 93.7%;
+   overflow: hidden;
+   font-family: "Avenir LT Std", sans-serif;
+   -webkit-font-smoothing: antialiased;
+   background-color: #0a0a0a;
+}
+
+.base-color {
+   color: $base-color !important;
+}
+
+.bg-primary {
+   color: #fff !important;
+   background: $green-gradient !important;
+}
+
+.bg-secondary {
+   color: $base-color !important;
+   background: $yellow-gradient !important;
+}
+
+main {
+   min-height: 100%;
+   overflow-y: auto;
+   background-color: #0a0a0a;
+}
+
+.page-container {
+   min-height: 100%;
+}
+
+.spaced-container {
+   padding: 0 6em;
+}
+
+.border-top {
+   border-top: 1px solid #a7acad !important;
+}

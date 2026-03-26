@@ -1,0 +1,25 @@
+@import "../../utilities/scss/variable";
+
+@media (min-width: 768px) {
+   .nav-menu {
+      z-index: 0 !important;
+      display: block !important;
+      background: none !important;
+   }
+   #navbarNav {
+      height: 15.5% !important;
+   }
+}
+
+@media (max-width: 768px) {
+   #navbarNav .nav-link {
+      color: $base-color;
+      text-align: right;
+      font-weight: 700;
+      margin: 1.5em 0 1em;
+   }
+
+   .spaced-container {
+      padding: 10em 2em !important;
+   }
+}

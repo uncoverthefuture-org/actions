@@ -1,0 +1,156 @@
+$bg-color: #fff;
+$bg-color-dark: #1a1a1a;
+$text-color: #333;
+$text-color-dark: #e8e8e8;
+$active-color: #005E5E;
+$active-color-dark: #00A896;
+$hover-bg: rgba(0, 0, 0, 0.04);
+$hover-bg-dark: rgba(255, 255, 255, 0.06);
+$border-color: rgba(0, 0, 0, 0.08);
+$border-color-dark: rgba(255, 255, 255, 0.1);
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: $bg-color;
+    color: $text-color;
+    font-family: "Avenir LT Std", sans-serif;
+    transition: background 0.3s ease, color 0.3s ease;
+
+    &.dark {
+        background: $bg-color-dark;
+        color: $text-color-dark;
+
+        .header {
+            background: $bg-color-dark;
+            border-color: $border-color-dark;
+        }
+
+        .title {
+            color: $text-color-dark;
+        }
+
+        .nav {
+            background: $bg-color-dark;
+        }
+
+        .nav_item {
+            color: rgba(255, 255, 255, 0.7);
+
+            &:hover {
+                background: $hover-bg-dark;
+                color: $text-color-dark;
+            }
+
+            &.active {
+                color: $active-color-dark;
+                background: rgba(0, 168, 150, 0.15);
+
+                &::before {
+                    background: $active-color-dark;
+                }
+            }
+        }
+
+        .depth_indicator {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .chevron {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .children {
+            background: $bg-color-dark;
+        }
+    }
+}
+
+.header {
+    padding: 16px;
+    border-bottom: 1px solid $border-color;
+    flex-shrink: 0;
+    background: $bg-color;
+}
+
+.title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #111;
+    margin: 0;
+}
+
+.nav {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    background: $bg-color;
+}
+
+.nav_item_wrapper {
+    display: block;
+}
+
+.nav_item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #444;
+    transition: background 0.15s ease, color 0.15s ease;
+    position: relative;
+
+    &:hover {
+        background: $hover-bg;
+        color: #111;
+    }
+
+    &.active {
+        color: $active-color;
+        background: rgba(0, 94, 94, 0.08);
+        font-weight: 600;
+
+        &::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: $active-color;
+        }
+    }
+}
+
+.depth_indicator {
+    color: rgba(0, 0, 0, 0.25);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.chevron {
+    font-size: 8px;
+    transition: transform 0.2s ease;
+    color: rgba(0, 0, 0, 0.4);
+
+    &.expanded {
+        transform: rotate(90deg);
+    }
+}
+
+.label {
+    flex: 1;
+}
+
+.children {
+    display: block;
+    background: $bg-color;
+}

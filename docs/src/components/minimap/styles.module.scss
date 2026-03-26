@@ -1,0 +1,157 @@
+$active-color: #005E5E;
+$active-color-dark: #00A896;
+$indicator-color: rgba(0, 0, 0, 0.2);
+$indicator-color-dark: rgba(255, 255, 255, 0.3);
+$bg-color: #fff;
+$bg-color-dark: #1a1a1a;
+$text-color: #444;
+$text-color-dark: #bbb;
+$border-color: rgba(0, 0, 0, 0.08);
+$border-color-dark: rgba(255, 255, 255, 0.1);
+
+.minimap {
+    width: 200px;
+    background: $bg-color;
+    border-left: 1px solid $border-color;
+    overflow-y: auto;
+    flex-shrink: 0;
+    height: 100%;
+    transition: background 0.3s ease;
+
+    &.dark {
+        background: $bg-color-dark;
+        border-color: $border-color-dark;
+
+        .minimap_header {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .minimap_item {
+            &:hover {
+                background: rgba(255, 255, 255, 0.06);
+            }
+
+            &.active {
+                background: rgba(0, 168, 150, 0.15);
+
+                .indicator {
+                    background: $active-color-dark;
+                }
+
+                .text {
+                    color: $active-color-dark;
+                }
+            }
+        }
+
+        .indicator {
+            background: $indicator-color-dark;
+        }
+
+        .text {
+            color: $text-color-dark;
+        }
+    }
+}
+
+.minimap_header {
+    padding: 12px 12px 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.minimap_content {
+    padding: 0 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.minimap_item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+
+    &:hover {
+        background: rgba(0, 0, 0, 0.04);
+    }
+
+    &.active {
+        background: rgba(0, 94, 94, 0.08);
+
+        .indicator {
+            background: $active-color;
+        }
+
+        .text {
+            color: $active-color;
+            font-weight: 600;
+        }
+    }
+}
+
+.indicator {
+    width: 3px;
+    height: 12px;
+    background: $indicator-color;
+    border-radius: 2px;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+}
+
+.text {
+    font-size: 13px;
+    color: $text-color;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.15s ease;
+}
+
+// Indent based on heading level
+.level_1 .indicator {
+    height: 16px;
+}
+
+.level_2 .indicator {
+    height: 12px;
+}
+
+.level_3 {
+    padding-left: 16px;
+}
+
+.level_3 .indicator {
+    height: 10px;
+}
+
+.level_4 {
+    padding-left: 24px;
+}
+
+.level_4 .indicator {
+    height: 8px;
+}
+
+.level_5 {
+    padding-left: 32px;
+}
+
+.level_5 .indicator {
+    height: 6px;
+}
+
+.level_6 {
+    padding-left: 40px;
+}
+
+.level_6 .indicator {
+    height: 4px;
+}
