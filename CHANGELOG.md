@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/uncoverthefuture-org/actions/compare/v1.1.1...v1.1.2) (2026-03-26)
+
+
+### Bug Fixes
+
+* **ci:** re-orient docs deployment evaluation to master push contexts to bypass Pages environment pull_request blocks ([eb880f0](https://github.com/uncoverthefuture-org/actions/commit/eb880f02cf7e9a1ad47bd313e56de46a20e09e22))
+
 ## [1.1.1](https://github.com/uncoverthefuture-org/actions/compare/v1.1.0...v1.1.1) (2026-03-26)
 
 
