@@ -466,7 +466,7 @@ runs:
             "find \"$HOME/uactions/scripts\" -type f -name '*.sh' -exec chmod +x {} +",
             "date -u +'%Y-%m-%d %H:%M:%S UTC' > \"$HOME/uactions/scripts/.deployed_at\"",
             "echo '${GITHUB_SHA}' > \"$HOME/uactions/scripts/.version\"",
-            "if [ -z \"${TRAEFIK_ENABLED}\" ]; then if [ -n \"${DOMAIN_INPUT}\" ] || [ -n \"${DOMAIN_DEFAULT}\" ]; then TRAEFIK_ENABLED='true'; else TRAEFIK_ENABLED='false'; fi; fi",
+            "if [ -z \"${TRAEFIK_ENABLED}\" ]; then TRAEFIK_ENABLED='true'; fi",
             "if [ -z \"${TRAEFIK_ENABLE_ACME}\" ] && [ \"${TRAEFIK_ENABLED}\" = 'true' ]; then TRAEFIK_ENABLE_ACME='true'; fi",
             "if [ -z \"${TRAEFIK_EMAIL}\" ]; then DOMAIN_FOR_EMAIL=\"${DOMAIN_DEFAULT:-${DOMAIN_INPUT:-}}\"; if [ -n \"${DOMAIN_FOR_EMAIL}\" ]; then lower_domain=$(printf '%s' \"${DOMAIN_FOR_EMAIL}\" | tr '[:upper:]' '[:lower:]'); IFS='.' read -r -a email_parts <<<\"${lower_domain#www.}\"; part_count=${#email_parts[@]}; if [ \"$part_count\" -ge 2 ]; then apex=\"${email_parts[part_count-2]}.${email_parts[part_count-1]}\"; else apex=\"${lower_domain#www.}\"; fi; TRAEFIK_EMAIL=\"traefik@${apex}\"; fi; fi",
             "\"$HOME/uactions/scripts/app/start-container-deployment.sh\""

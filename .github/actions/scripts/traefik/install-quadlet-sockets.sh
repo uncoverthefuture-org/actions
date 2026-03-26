@@ -72,6 +72,13 @@ if command -v loginctl >/dev/null 2>&1; then
   fi
 fi
 
+if command -v podman >/dev/null 2>&1; then
+  if ! podman image exists "docker.io/traefik:${TRAEFIK_VERSION}" >/dev/null 2>&1; then
+    echo "📥 Pulling docker.io/traefik:${TRAEFIK_VERSION} ..."
+    podman pull "docker.io/traefik:${TRAEFIK_VERSION}" || true
+  fi
+fi
+
 QUADLET_DIR="${HOME}/.config/containers/systemd"
 USER_SYSTEMD_DIR="${HOME}/.config/systemd/user"
 SOCK_HOST="${XDG_RUNTIME_DIR}/podman/podman.sock"
