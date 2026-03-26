@@ -733,11 +733,7 @@ runs: # Composite action implementation
 
           # Default Traefik toggles to true when domain present and caller omitted explicit values
           if [ -z "${TRAEFIK_ENABLED}" ]; then
-            if [ -n "${DOMAIN_INPUT}" ] || [ -n "${DOMAIN_DEFAULT}" ]; then
-              TRAEFIK_ENABLED='true'
-            else
-              TRAEFIK_ENABLED='false'
-            fi
+            TRAEFIK_ENABLED='true'
           fi
           if [ -z "${TRAEFIK_ENABLE_ACME}" ] && [ "${TRAEFIK_ENABLED}" = "true" ]; then
             TRAEFIK_ENABLE_ACME='true'

@@ -267,7 +267,9 @@ post() {
 
   if command -v openssl >/dev/null 2>&1; then
     notice "Inspecting TLS certificate for $domain:443 ..."
-    cert_info=$(echo | openssl s_client -connect "$domain:443" -servername "$domain" 2>/dev/null | openssl x509 -noout -issuer -subject -dates 2>/dev/null || true)
+    local t_cmd=""
+    if command -v timeout >/dev/null 2>&1; then t_cmd="timeout $timeout "; fi
+    cert_info=$(echo | $t_cmd openssl s_client -connect "$domain:443" -servername "$domain" 2>/dev/null | openssl x509 -noout -issuer -subject -dates 2>/dev/null || true)
     if [ -n "$cert_info" ]; then
       issuer=$(printf '%s\n' "$cert_info" | sed -n 's/^issuer=//p' | head -n1)
       subject=$(printf '%s\n' "$cert_info" | sed -n 's/^subject=//p' | head -n1)

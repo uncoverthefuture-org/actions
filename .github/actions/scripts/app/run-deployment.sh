@@ -166,6 +166,8 @@ else
 fi
 
 # --- Install Portainer (after Traefik ensure) ---------------------------------------
+# PORTAINER SETUP TEMPORARILY DISABLED BY USER REQUEST
+INSTALL_PORTAINER="false"
 if [ "${INSTALL_PORTAINER:-false}" = "true" ]; then
   echo "================================================================"
   echo "🛠 Installing Portainer (as requested) ..."

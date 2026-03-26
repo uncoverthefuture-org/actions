@@ -124,7 +124,7 @@ INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}"
     echo "Network=${TRAEFIK_NETWORK_NAME}"
   fi
 
-  if [[ "${TRAEFIK_ENABLED}" != "true" && -n "${HOST_PORT}" && -n "${CONTAINER_PORT}" ]]; then
+  if [[ ( "${TRAEFIK_ENABLED}" != "true" || -z "${DOMAIN}" ) && -n "${HOST_PORT}" && -n "${CONTAINER_PORT}" ]]; then
     echo "PublishPort=${HOST_PORT}:${CONTAINER_PORT}"
   fi
 
