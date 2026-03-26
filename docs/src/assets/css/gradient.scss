@@ -1,0 +1,14 @@
+@import "../../utilities/scss/variable";
+
+.bg-gradient-1 {
+   background: linear-gradient(180deg, #000 25%, $base-color 68.75%);
+}
+.bg-gradient-2 {
+   background: linear-gradient(180deg, $light-green 0%, $base-color 11.46%, #000000 51.56%);
+}
+.bg-gradient-3 {
+   background: linear-gradient(180deg, $light-green 0%, $base-color 7.29%, #000000 20.31%);
+}
+.bg-gradient-4 {
+   background: linear-gradient(180deg, #000 0%, $base-color 29.69%, $light-green 54.69%);
+}

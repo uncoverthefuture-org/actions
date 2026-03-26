@@ -1,0 +1,9 @@
+// app color variables
+$base-color: #003944;
+$light-green: #007062;
+$dark-yellow: #ffb202;
+$light-yellow: #ffdc06;
+
+// defining backgrounds
+$green-gradient: linear-gradient(180deg, #000 30%, $base-color 100%);
+$yellow-gradient: linear-gradient(180deg, $light-yellow 50%, $dark-yellow 150%);

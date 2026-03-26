@@ -1,0 +1,16 @@
+node_modules
+.git
+.github
+.gitignore
+.env
+.env.*
+!.env.production
+dist
+build
+*.log
+.DS_Store
+.vscode
+.windsurf
+.agent
+.yarn/cache
+.yarn/install-state.gz
