@@ -69,9 +69,10 @@ runs:
         
         # Output normalized JSON using heredoc syntax
         # This preserves multi-line JSON and special characters
+        BND=$(openssl rand -hex 16)
         {
-          printf 'json<<EOF\n'
+          printf "json<<%s\n" "$BND"
           printf '%s\n' "$J"
-          printf 'EOF\n'
+          printf "%s\n" "$BND"
         } >> "$GITHUB_OUTPUT"
       shell: bash

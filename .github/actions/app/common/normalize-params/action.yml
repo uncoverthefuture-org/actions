@@ -23,8 +23,9 @@ runs:
         set -euo pipefail
         J="${INPUT_PARAMS_JSON}"
         if [ -z "$J" ]; then J='{}'; fi
+        BND=$(openssl rand -hex 16)
         {
-          echo 'json<<EOF'
+          echo "json<<$BND"
           printf '%s\n' "$J"
-          echo 'EOF'
+          echo "$BND"
         } >> "$GITHUB_OUTPUT"
