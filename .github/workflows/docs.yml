@@ -1,8 +1,7 @@
 name: Deploy Documentation
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches:
       - master
   workflow_dispatch:
@@ -19,7 +18,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release-please--'))
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'release-please--branches')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
