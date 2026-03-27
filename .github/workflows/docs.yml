@@ -1,4 +1,4 @@
-name: Deploy Documentation
+name: React Documentation
 
 on:
   push:
@@ -6,7 +6,6 @@ on:
       - master
     paths:
       - "docs/**"
-      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -22,26 +21,44 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Actions Project
         uses: actions/checkout@v4
+        with:
+          path: uactions-data
+
+      - name: Checkout Uncover Docs Shell
+        uses: actions/checkout@v4
+        with:
+          repository: uncoverthefuture-org/uncover-docs
+          path: docs-ui
+
+      - name: Inject Target Data and Navigation Routs
+        run: |
+          # The UI Shell provides all react/vite boilerplate natively. We only overlay the project's unique data strings and mapping components.
+          cp -r uactions-data/docs/src/data/* docs-ui/src/data/ || true
+          cp -r uactions-data/docs/src/assets/* docs-ui/src/assets/ || true
+          cp -f uactions-data/docs/src/pages/frames/sidebar/index.tsx docs-ui/src/pages/frames/sidebar/index.tsx || true
+          cp -f uactions-data/docs/src/pages/frames/doc_content/index.tsx docs-ui/src/pages/frames/doc_content/index.tsx || true
+          echo "Injection mapping completed."
 
       - name: Enable Corepack for Yarn
         run: corepack enable
+        working-directory: docs-ui
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "yarn"
-          cache-dependency-path: docs/yarn.lock
+          cache-dependency-path: docs-ui/yarn.lock
 
       - name: Install dependencies
-        working-directory: docs
         run: yarn install
+        working-directory: docs-ui
 
       - name: Build documentation
-        working-directory: docs
         run: yarn build && cp dist/index.html dist/404.html
+        working-directory: docs-ui
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -49,11 +66,11 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/dist
+          path: docs-ui/dist
 
   deploy:
     environment:
-      name: ${{ github.repository != '' && 'github-pages' || 'github-pages' }}
+      name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
