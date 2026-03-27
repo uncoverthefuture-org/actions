@@ -24,7 +24,7 @@ import DocContentFrame from "@pages/frames/doc_content";
  */
 const RootNavigator: React.FC = () => {
   return (
-    <Router>
+    <Router basename="/actions">
       <Routes>
         {/* 
           Main documentation layout route.
