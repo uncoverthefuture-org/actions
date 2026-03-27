@@ -31,6 +31,7 @@ jobs:
         with:
           repository: uncoverthefuture-org/uncover-docs
           path: docs-ui
+          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Inject Target Data and Navigation Routs
         run: |
