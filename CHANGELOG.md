@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.2.0](https://github.com/uncoverthefuture-org/actions/compare/v1.1.2...v1.2.0) (2026-03-27)
+
+
+### Features
+
+* Docs Pipeline Overlay Migration ([18165b8](https://github.com/uncoverthefuture-org/actions/commit/18165b8b9897028c686a440c643288cd7094233a))
+* migrate ui mapping arrays to config ts ([740b6b9](https://github.com/uncoverthefuture-org/actions/commit/740b6b9b1ec01ae416dd7e7a666b7ff3674ece58))
+* restructure docs layout to dynamic overlay ([e76bfc7](https://github.com/uncoverthefuture-org/actions/commit/e76bfc7d1bae99ea9e9967dcdd137f299b48f1b4))
+
+
+### Bug Fixes
+
+* configure PAT for cross-repo sync and set absolute UI routes ([dc19aee](https://github.com/uncoverthefuture-org/actions/commit/dc19aee75230c72d339ce3e443b29cdee60bfce1))
+* **docs:** upgrade CDN fonts to HTTPS to bypass Mixed Content blocks and inject router basename to resolve GitHub Pages blank-screen ([c54518a](https://github.com/uncoverthefuture-org/actions/commit/c54518a20d4d22424f20d86eb13f156eba412b7c))
+* **docs:** upgrade CDN fonts to HTTPS to bypass Mixed Content blocks and inject router basename to resolve GitHub Pages blank-screen ([71e6b55](https://github.com/uncoverthefuture-org/actions/commit/71e6b55df24ead9d173889e55c03b6eaa6f591fe))
+* Enable Cross-Repo Docs Overlay Pipeline ([2b7511f](https://github.com/uncoverthefuture-org/actions/commit/2b7511f729bd87e796090ec06f90147074bd3844))
+
 ## [1.1.2](https://github.com/uncoverthefuture-org/actions/compare/v1.1.1...v1.1.2) (2026-03-26)
 
 
