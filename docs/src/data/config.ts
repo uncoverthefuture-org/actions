@@ -1,8 +1,8 @@
 import sshContainerDeploy from "./ssh_container_deploy.md?raw";
 
 export const UI_CONFIG = {
-  sidebarFrameUrl: "frames/sidebar",
-  docContentFrameUrl: "frames/doc_content",
+  sidebarFrameUrl: `${import.meta.env.BASE_URL}frames/sidebar`,
+  docContentFrameUrl: `${import.meta.env.BASE_URL}frames/doc_content`,
 };
 
 export interface NavItem {
