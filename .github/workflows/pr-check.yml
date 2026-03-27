@@ -1,0 +1,53 @@
+name: PR Build Check
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Actions Project
+        uses: actions/checkout@v4
+        with:
+          path: uactions-data
+
+      - name: Checkout Uncover Docs Shell
+        uses: actions/checkout@v4
+        with:
+          repository: uncoverthefuture-org/uncover-docs
+          path: docs-ui
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Inject Target Data
+        run: |
+          cp -r uactions-data/docs/src/data/* docs-ui/src/data/ || true
+          cp -r uactions-data/docs/src/assets/* docs-ui/src/assets/ || true
+
+      - name: Enable Corepack for Yarn
+        run: corepack enable
+        working-directory: docs-ui
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "yarn"
+          cache-dependency-path: docs-ui/yarn.lock
+
+      - name: Install dependencies
+        run: yarn install
+        working-directory: docs-ui
+
+      - name: Build documentation check
+        run: |
+          yarn build
+          echo "Build check completed successfully."
+        working-directory: docs-ui
