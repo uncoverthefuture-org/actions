@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/uncoverthefuture-org/actions/compare/v1.2.0...v1.2.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* relax nounset during .env sourcing ([d86e073](https://github.com/uncoverthefuture-org/actions/commit/d86e073cb31bfc3f2c7641b8e13c7d06f37068ba))
+* restore deleted docs and deploy-docs.yml changes ([7c908d3](https://github.com/uncoverthefuture-org/actions/commit/7c908d362604c716d9b10e86005316666f0221f1))
+
 ## [1.2.0](https://github.com/uncoverthefuture-org/actions/compare/v1.1.2...v1.2.0) (2026-03-27)
 
 
