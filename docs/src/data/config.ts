@@ -1,8 +1,11 @@
-import sshContainerDeploy from "./ssh_container_deploy.md?raw";
+import introDoc from "./intro.md?raw";
+import buildDoc from "./build_and_push.md?raw";
+import deployDoc from "./ssh_container_deploy.md?raw";
 
 export const UI_CONFIG = {
   sidebarFrameUrl: "frames/sidebar",
   docContentFrameUrl: "frames/doc_content",
+  defaultTheme: "dark" as "light" | "dark",
 };
 
 export interface NavItem {
@@ -13,31 +16,37 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
     {
-        label: "Home",
+        label: "Introduction",
         route: "/"
     },
     {
-        label: "Packages",
+        label: "Build Dispatch",
         children: [
             {
-                label: "@uncover/actions",
-                children: [
-                    {
-                        label: "SSH Container Deploy",
-                        route: "/uncover-actions/ssh-container-deploy",
-                    },
-                ],
+                label: "Build & Push",
+                route: "/actions/build-and-push",
+            },
+        ],
+    },
+    {
+        label: "App Dispatch",
+        children: [
+            {
+                label: "SSH Container Deploy",
+                route: "/actions/ssh-container-deploy",
             },
         ],
     },
 ];
 
 export const titleMap: Record<string, string> = {
-    "/": "Documentation",
-    "/uncover-actions/ssh-container-deploy": "SSH Container Deploy",
+    "/": "Uncover Actions",
+    "/actions/build-and-push": "Build & Push Action",
+    "/actions/ssh-container-deploy": "SSH Deploy Action",
 };
 
 export const contentMap: Record<string, string> = {
-    "/": "# Welcome to Uncover Actions Docs \n Select a function from the sidebar to view usage details.",
-    "/uncover-actions/ssh-container-deploy": sshContainerDeploy,
+    "/": introDoc,
+    "/actions/build-and-push": buildDoc,
+    "/actions/ssh-container-deploy": deployDoc,
 };

@@ -167,10 +167,22 @@ if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
   # Source the environment file to ensure all variables are loaded
   # Use set -a to export all variables automatically
   set -a
+  
+  # Temporarily relax nounset during sourcing to avoid failing on unresolved variables in .env
+  nounset_was_on=false
+  if set -o | grep -q 'nounset[[:space:]]*on'; then
+    nounset_was_on=true
+    set +u
+  fi
+
   # shellcheck source=/dev/null
   source "$ENV_FILE" || {
     echo "::warning::Failed to source environment file: $ENV_FILE" >&2
   }
+  
+  if [ "$nounset_was_on" = true ]; then
+    set -u
+  fi
   set +a
   
   echo "  ✓ Environment loaded successfully" >&2
