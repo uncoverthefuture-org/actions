@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UActions Docs</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg-primary: #0f0f0f;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #252525;
+            --text-primary: #e5e5e5;
+            --text-secondary: #a0a0a0;
+            --accent: #3b82f6;
+            --accent-hover: #60a5fa;
+            --border: #333;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        header {
+            text-align: center;
+            padding: 3rem 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 2rem;
+        }
+        h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+        .nav-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        .nav-tab {
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .nav-tab:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        .nav-tab.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+        .content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            display: none;
+        }
+        .content.active {
+            display: block;
+        }
+        .content h2 {
+            color: var(--accent);
+            margin: 1.5rem 0 1rem;
+            font-size: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+        .content h3 {
+            color: var(--text-primary);
+            margin: 1rem 0 0.5rem;
+        }
+        .content p {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+        .content code {
+            background: var(--bg-tertiary);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.9rem;
+        }
+        .content pre {
+            background: var(--bg-tertiary);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        .content pre code {
+            background: none;
+            padding: 0;
+        }
+        .content ul, .content ol {
+            margin: 1rem 0 1rem 1.5rem;
+            color: var(--text-secondary);
+        }
+        .content li {
+            margin: 0.5rem 0;
+        }
+        .content a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .content a:hover {
+            color: var(--accent-hover);
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: var(--accent);
+            color: white;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+        }
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            border-top: 1px solid var(--border);
+            margin-top: 3rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>UActions</h1>
+            <p class="subtitle">Local Container Deployment with Podman & Traefik</p>
+        </header>
+
+        <nav class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('intro')">Introduction</button>
+            <button class="nav-tab" onclick="showTab('getting-started')">Getting Started</button>
+            <button class="nav-tab" onclick="showTab('configuration')">Configuration</button>
+            <button class="nav-tab" onclick="showTab('deployment')">Deployment</button>
+            <button class="nav-tab" onclick="showTab('cli')">CLI Commands</button>
+        </nav>
+
+        <div id="intro" class="content active">
+            <span class="badge">Overview</span>
+            <h2>What is UActions?</h2>
+            <p>UActions is a lightweight, local container deployment system powered by <strong>Podman</strong> and <strong>Traefik</strong>. It can be used locally or deployed to remote servers via SSH.</p>
+            
+            <h3>Features</h3>
+            <ul>
+                <li><strong>Local Domain Routing</strong> - Deploy apps to custom local domains (e.g., <code>tea.mydomain.pc</code>)</li>
+                <li><strong>Automatic Container Management</strong> - Podman containers with automatic builds</li>
+                <li><strong>Traefik Integration</strong> - Built-in reverse proxy with Let's Encrypt support</li>
+                <li><strong>File Watching</strong> - Auto-deploy when you add new artifacts</li>
+                <li><strong>Two Modes</strong>: Local (Podman on localhost) or Remote (SSH to server)</li>
+                <li><strong>Lightweight</strong> - Minimal resource usage, designed for local development</li>
+            </ul>
+
+            <h3>Quick Example</h3>
+            <pre><code># Install globally
+npm install -g @uncver/actions
+
+# Initialize
+uactions init --domain mydomain.pc
+
+# Deploy an app
+uactions deploy my-app</code></pre>
+        </div>
+
+        <div id="getting-started" class="content">
+            <span class="badge">Setup</span>
+            <h2>Getting Started</h2>
+            
+            <h3>Prerequisites</h3>
+            <ul>
+                <li><strong>macOS</strong> or <strong>Linux</strong></li>
+                <li><strong>Podman</strong> installed
+                    <ul>
+                        <li>macOS: <code>brew install podman</code></li>
+                        <li>Linux: <code>sudo apt-get install podman</code></li>
+                    </ul>
+                </li>
+                <li><strong>Node.js</strong> 18+</li>
+            </ul>
+
+            <h3>Installation</h3>
+            <pre><code># Using npm
+npm install -g @uncver/actions
+
+# Or using yarn
+yarn global add @uncver/actions
+
+# Or run directly with npx
+npx @uncver/actions init --domain mydomain.pc</code></pre>
+
+            <h3>Initialize UActions</h3>
+            <pre><code>uactions init --domain mydomain.pc --yes</code></pre>
+            <p>This creates the necessary directories and configures Traefik for local domain routing.</p>
+        </div>
+
+        <div id="configuration" class="content">
+            <span class="badge">Config</span>
+            <h2>Artifact Configuration</h2>
+            <p>Deployments are configured using <code>artifact.json</code> files in your <code>~/uactions/</code> directory.</p>
+
+            <h3>Example Configuration</h3>
+            <pre><code>{
+  "version": "1.0.0",
+  "name": "My Application",
+  "source": {
+    "url": "https://github.com/user/repo.git",
+    "ref": "main"
+  },
+  "domain": {
+    "subdomain": "myapp",
+    "public": false
+  },
+  "container": {
+    "port": 8080,
+    "dockerfile": "./Dockerfile",
+    "memory": "512m",
+    "cpu": 0.5
+  },
+  "deploy": {
+    "mode": "local"
+  }
+}</code></pre>
+
+            <h3>Configuration Options</h3>
+            <ul>
+                <li><code>version</code> - Semantic version (required)</li>
+                <li><code>name</code> - Application name (required)</li>
+                <li><code>source.url</code> - Git repository URL (required)</li>
+                <li><code>source.ref</code> - Git branch/tag (default: main)</li>
+                <li><code>domain.subdomain</code> - Local subdomain (required)</li>
+                <li><code>domain.public</code> - Enable public HTTPS (default: false)</li>
+                <li><code>container.port</code> - Container port (default: 8080)</li>
+                <li><code>container.dockerfile</code> - Dockerfile path</li>
+                <li><code>container.memory</code> - Memory limit (e.g., "512m")</li>
+                <li><code>container.cpu</code> - CPU limit (e.g., 0.5)</li>
+            </ul>
+        </div>
+
+        <div id="deployment" class="content">
+            <span class="badge">Usage</span>
+            <h2>Deployment Guide</h2>
+
+            <h3>Local Deployment</h3>
+            <pre><code># Deploy an artifact
+uactions deploy my-app
+
+# Or deploy from a specific file
+uactions deploy --file /path/to/artifact.json</code></pre>
+
+            <h3>Remote Deployment</h3>
+            <pre><code># Deploy via SSH
+uactions deploy my-app --remote user@server.com</code></pre>
+
+            <h3>Auto-Deploy with Watch Mode</h3>
+            <pre><code># Watch for changes and auto-deploy
+uactions watch</code></pre>
+            <p>When watch mode is active, any new artifacts added to <code>~/uactions/</code> will be automatically deployed.</p>
+
+            <h3>How It Works</h3>
+            <ol>
+                <li><strong>File Watcher</strong> monitors <code>~/uactions/</code> for <code>artifact.json</code> files</li>
+                <li>When detected, source is pulled to a temp directory</li>
+                <li>Docker image is built with Podman</li>
+                <li>Container is started with Traefik labels</li>
+                <li>Domain is added to <code>/etc/hosts</code></li>
+                <li>Traefik routes traffic from <code>subdomain.your-domain.pc</code> to the container</li>
+            </ol>
+        </div>
+
+        <div id="cli" class="content">
+            <span class="badge">Reference</span>
+            <h2>CLI Commands</h2>
+
+            <h3>uactions init</h3>
+            <pre><code>uactions init [options]
+
+Options:
+  -d, --domain <domain>  Set custom base domain (e.g., mydomain.pc)
+  -e, --email <email>    Email for Let's Encrypt (enables HTTPS)
+  --public               Enable public domain access with Let's Encrypt
+  -y, --yes              Skip confirmation prompts</code></pre>
+
+            <h3>uactions deploy</h3>
+            <pre><code>uactions deploy [name] [options]
+
+Options:
+  -s, --source <url>    Source URL to deploy
+  -d, --domain <sub>    Subdomain for deployment
+  -p, --port <port>     Container port (default: 8080)
+  --file <path>         Path to artifact.json file
+  --create-pr           Create a GitHub PR with Dockerfile</code></pre>
+
+            <h3>uactions watch</h3>
+            <pre><code>uactions watch</code></pre>
+            <p>Watch for file changes and auto-deploy.</p>
+
+            <h3>uactions list</h3>
+            <pre><code>uactions list</code></pre>
+            <p>List all deployments/artifacts.</p>
+
+            <h3>uactions status</h3>
+            <pre><code>uactions status</code></pre>
+            <p>Show system status (Podman, Traefik, deployments).</p>
+        </div>
+
+        <footer>
+            <p>UActions v1.0.0 &bull; <a href="https://github.com/uncoverthefuture-org/actions">GitHub</a> &bull; <a href="https://www.npmjs.com/package/@uncver/actions">NPM</a></p>
+        </footer>
+    </div>
+
+    <script>
+        function showTab(tabId) {
+            // Hide all content
+            document.querySelectorAll('.content').forEach(el => el.classList.remove('active'));
+            // Remove active class from all tabs
+            document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+            // Show selected content
+            document.getElementById(tabId).classList.add('active');
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>
