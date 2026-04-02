@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/uncoverthefuture-org/actions/compare/v1.3.0...v1.3.1) (2026-04-02)
+
+
+### Bug Fixes
+
+* use corepack instead of yarn, skip scripts on install ([#41](https://github.com/uncoverthefuture-org/actions/issues/41)) ([5f38edc](https://github.com/uncoverthefuture-org/actions/commit/5f38edcd02bdf9c8b6507cba1d886561d627d24f))
+
 ## [1.3.0](https://github.com/uncoverthefuture-org/actions/compare/v1.2.1...v1.3.0) (2026-04-02)
 
 
