@@ -1,5 +1,9 @@
 # GitHub Actions Development Patterns
 
+## Related Documentation
+
+- [GitHub Actions Workflow Best Practices](github_actions_workflow.md) - PR creation, cache refresh, and external actions management
+
 ## GITHUB_OUTPUT Delimiters
 **Pattern**: When writing multi-line strings to `$GITHUB_OUTPUT`, NEVER use a static string like `EOF` as the heredoc limit string.
 **Reason**: If the user-supplied string contains the identical limit string (e.g., an environment variable carrying an inline script with its own `EOF`), the GitHub Actions parser will terminate the capture prematurely and bleed the rest of the string into the workflow evaluation process, leading to fatal parsing errors like: `After parsing a value an unexpected character was encountered`.

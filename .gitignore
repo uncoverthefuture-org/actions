@@ -1,1 +1,3 @@
 .windsurf/**
+dist/
+node_modules/
