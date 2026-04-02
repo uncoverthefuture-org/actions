@@ -1,5 +1,5 @@
 {
-  "name": "@uncover/uactions",
+  "name": "@uncover/actions",
   "version": "1.0.0",
   "description": "Local container deployment system with Podman and Traefik - inspired by GitHub Actions SSH Container Deploy",
   "main": "dist/index.js",
