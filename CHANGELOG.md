@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/uncoverthefuture-org/actions/compare/v1.3.1...v1.4.0) (2026-04-02)
+
+
+### Features
+
+* standalone docs widget for GitHub Pages ([#43](https://github.com/uncoverthefuture-org/actions/issues/43)) ([9317202](https://github.com/uncoverthefuture-org/actions/commit/93172026332ee108e3118f6b6e2af5c512ac245f))
+
 ## [1.3.1](https://github.com/uncoverthefuture-org/actions/compare/v1.3.0...v1.3.1) (2026-04-02)
 
 
