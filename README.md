@@ -1,36 +1,139 @@
-# GitHub Actions Collection
+# UActions - Local Container Deployment
 
-Reusable GitHub Actions for deploying containerized applications to remote Linux hosts over SSH using Podman.
+A lightweight, local container deployment system powered by Podman and Traefik. Can be used locally or deployed to remote servers via SSH.
 
-This repository is intentionally documented in depth in per-action READMEs and long-form guides under `docs/`. The main README stays **slim** and only describes what the project is and which actions are available.
+## Features
 
-## What this project is
+- **Local Domain Routing** - Deploy apps to custom local domains (e.g., `tea.sirdavis99.pc`)
+- **Automatic Container Management** - Podman containers with automatic builds
+- **Traefik Integration** - Built-in reverse proxy with Let's Encrypt support
+- **File Watching** - Auto-deploy when you add new artifacts
+- **GitHub PR Creation** - Automatically create PRs with Dockerfile
+- **Two Modes**: Local (Podman on localhost) or Remote (SSH to server)
+- **Lightweight** - Minimal resource usage, designed for local development and CI/CD
 
-- **Purpose**: provide a small, composable set of actions for SSH-based container deployments.
-- **Primary entry point**: use the aggregated action `uncoverthefuture-org/actions@v1` from your workflows.
-- **Default deploy path**: the `ssh-container-deploy` action, which handles generic container deployments (Traefik by default when a domain is available, host ports as a fallback).
-- **Package install behavior**: when actions need to run `apt-get update` on the remote host they include `--allow-releaseinfo-change` so noninteractive installs keep working even if trusted repositories update their Release metadata (for example, a PPA changing its `Label`). If you run manual recovery commands, prefer:
+## Installation
 
-  ```bash
-  sudo apt-get update -y --allow-releaseinfo-change
-  ```
+```bash
+npm install -g @uncover/uactions
+```
 
-For full details of how deployments work, including examples and configuration, open the **SSH Container Deploy** README in a new tab:
+## Prerequisites
 
-- [SSH Container Deploy README](.github/actions/app/ssh-container-deploy/README.md)
+- **macOS** or **Linux**
+- **Podman** installed
+  - macOS: `brew install podman`
+  - Linux: `sudo apt-get install podman`
+- **Node.js** 18+
 
-## Available actions (high level)
+## Quick Start
 
-The main actions you are expected to use are listed below. Each links to a dedicated README with full details.
+### 1. Initialize UActions
 
-### Build & deploy
+```bash
+uactions init
+```
 
-| Action | Description | Docs |
-|--------|-------------|------|
-| `ssh-container-deploy` | Generic container deployment over SSH (Traefik by default, host ports fallback). **Start here.** | [SSH Container Deploy README](.github/actions/app/ssh-container-deploy/README.md) |
-| `build-and-push` | Build and push container images with environment context. | [.github/actions/build-and-push/README.md](.github/actions/build-and-push/README.md) |
-| `extract-version` | Extracts and validates the requested version from workflow inputs or Pull Requests. | [.github/actions/app/extract-version/README.md](.github/actions/app/extract-version/README.md) |
+### 2. Create an Artifact
 
-For other, more specialized actions (infra helpers, legacy deployers, etc.), see:
+```bash
+mkdir ~/uactions/my-app
+cat > ~/uactions/my-app/artifact.json << 'EOF'
+{
+  "version": "1.0.0",
+  "name": "My App",
+  "source": {
+    "url": "https://github.com/user/repo.git"
+  },
+  "domain": {
+    "subdomain": "myapp"
+  }
+}
+EOF
+```
 
-- `docs/ACTION_FILES_GUIDE.md` – catalog of all actions and their roles.
+### 3. Deploy
+
+```bash
+# Deploy locally
+uactions deploy my-app
+
+# Or watch for auto-deployment
+uactions watch
+```
+
+Your app will be available at `http://myapp.<your-domain>.pc`
+
+## Artifact Configuration
+
+```json
+{
+  "version": "1.0.0",
+  "name": "My Application",
+  "source": {
+    "url": "https://github.com/user/repo.git",
+    "ref": "main"
+  },
+  "domain": {
+    "subdomain": "myapp",
+    "public": false
+  },
+  "container": {
+    "port": 8080,
+    "dockerfile": "./Dockerfile",
+    "memory": "512m",
+    "cpu": 0.5
+  },
+  "deploy": {
+    "mode": "local",
+    "sshHost": "user@server.com",
+    "prepareHost": false
+  }
+}
+```
+
+## Remote Server Deployment
+
+Deploy to remote servers via SSH (similar to the original GitHub Action):
+
+```bash
+uactions deploy my-app --remote user@server.com
+```
+
+Or configure in artifact.json:
+
+```json
+{
+  "deploy": {
+    "mode": "remote",
+    "sshHost": "user@server.com",
+    "sshKey": "~/.ssh/id_rsa",
+    "prepareHost": true
+  }
+}
+```
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `uactions init` | Initialize UActions |
+| `uactions deploy [name]` | Deploy an artifact |
+| `uactions watch` | Auto-deploy on file changes |
+| `uactions create <name>` | Create new artifact |
+| `uactions list` | List deployments/artifacts |
+| `uactions status` | Show system status |
+
+## How It Works
+
+1. **File Watcher** monitors `~/uactions/` for `artifact.json` files
+2. When detected:
+   - Source is pulled to temp directory
+   - Docker image is built
+   - Container is started with Traefik labels
+   - Domain is added to `/etc/hosts`
+3. Traefik routes traffic from `subdomain.your-domain.pc` to the container
+
+## License
+
+MIT
