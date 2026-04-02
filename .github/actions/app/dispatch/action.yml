@@ -22,7 +22,7 @@
 # - aws-ssm-container-deploy: Generic AWS EC2 deployment via SSM Run Command (no SSH keys)
 # - write-remote-env-file: Write or update remote .env files on the target host
 #
-# This file was last synced from the actions repo
+# This file was last synced from the actions repo - timestamp marker for cache refresh
 # ============================================================================
 
 name: 'dispatch: app'
