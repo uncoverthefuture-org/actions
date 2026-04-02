@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://github.com/uncoverthefuture-org/actions/compare/v1.4.0...v1.5.0) (2026-04-02)
+
+
+### Features
+
+* add Homebrew tap for UActions ([#47](https://github.com/uncoverthefuture-org/actions/issues/47)) ([c50cc6c](https://github.com/uncoverthefuture-org/actions/commit/c50cc6c3aa5f965290531f7e2a0eab59f0b216ad))
+
+
+### Bug Fixes
+
+* remove docs.yml and add .opencode to gitignore ([#45](https://github.com/uncoverthefuture-org/actions/issues/45)) ([e0e2a35](https://github.com/uncoverthefuture-org/actions/commit/e0e2a3530ff56174bd6ba41d697748184a520e0f))
+
 ## [1.4.0](https://github.com/uncoverthefuture-org/actions/compare/v1.3.1...v1.4.0) (2026-04-02)
 
 
