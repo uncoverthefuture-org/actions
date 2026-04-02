@@ -18,6 +18,7 @@ export function createInitCommand(program: Command): void {
     .option('-e, --email <email>', 'Email for Let\'s Encrypt (enables HTTPS)')
     .option('--public', 'Enable public domain access with Let\'s Encrypt')
     .option('--skip-traefik', 'Skip automatic Traefik setup')
+    .option('-y, --yes', 'Skip confirmation prompts (auto-approve)')
     .action(async (options) => {
       logger.banner('UActions Initialization');
       logger.info('Setting up your local deployment environment...\n');
@@ -26,7 +27,7 @@ export function createInitCommand(program: Command): void {
       const orchestrator = new DeploymentOrchestrator();
       const status = orchestrator.getStatus();
 
-      if (status.initialized) {
+      if (status.initialized && !options.yes) {
         const { proceed } = await inquirer.prompt([{
           type: 'confirm',
           name: 'proceed',
@@ -44,22 +45,29 @@ export function createInitCommand(program: Command): void {
       let baseDomain = options.domain;
       let acmeEmail = options.email;
       let publicEnabled = options.public || false;
+      const autoConfirm = options.yes || false;
 
       if (!baseDomain) {
         const defaultDomain = DomainManager.generateBaseDomain();
-        const { domain } = await inquirer.prompt([{
-          type: 'input',
-          name: 'domain',
-          message: 'Choose your local domain:',
-          default: defaultDomain,
-          validate: (input: string) => {
-            if (!DomainManager.validateBaseDomain(input)) {
-              return 'Invalid domain format (e.g., username.pc)';
-            }
-            return true;
-          },
-        }]);
-        baseDomain = domain;
+        
+        if (autoConfirm) {
+          baseDomain = defaultDomain;
+          logger.info(`Using default domain: ${baseDomain}`);
+        } else {
+          const { domain } = await inquirer.prompt([{
+            type: 'input',
+            name: 'domain',
+            message: 'Choose your local domain:',
+            default: defaultDomain,
+            validate: (input: string) => {
+              if (!DomainManager.validateBaseDomain(input)) {
+                return 'Invalid domain format (e.g., username.pc)';
+              }
+              return true;
+            },
+          }]);
+          baseDomain = domain;
+        }
       }
 
       if (!acmeEmail && publicEnabled) {
@@ -86,14 +94,19 @@ export function createInitCommand(program: Command): void {
       }
       logger.info(`Traefik Dashboard: Enabled`);
 
-      const { confirm } = await inquirer.prompt([{
-        type: 'confirm',
-        name: 'confirm',
-        message: 'Proceed with initialization?',
-        default: true,
-      }]);
+      let shouldProceed = autoConfirm;
+      
+      if (!shouldProceed) {
+        const { confirm } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'confirm',
+          message: 'Proceed with initialization?',
+          default: true,
+        }]);
+        shouldProceed = confirm;
+      }
 
-      if (!confirm) {
+      if (!shouldProceed) {
         logger.info('Initialization cancelled');
         return;
       }
