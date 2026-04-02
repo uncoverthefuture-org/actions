@@ -14,8 +14,36 @@ A lightweight, local container deployment system powered by Podman and Traefik. 
 
 ## Installation
 
+### macOS (Recommended - via Homebrew)
+
 ```bash
-npm install -g @uncover/uactions
+# Install dependencies first
+brew install node podman
+
+# Install UActions via Homebrew
+brew install uncver/actions/uactions
+
+# Or tap first, then install
+brew tap uncver/actions
+brew install uactions
+```
+
+### npm (All platforms)
+
+```bash
+npm install -g @uncver/actions
+```
+
+### npx (Quick test without install)
+
+```bash
+npx @uncver/actions init --domain yourdomain.pc
+```
+
+### yarn
+
+```bash
+yarn global add @uncver/actions
 ```
 
 ## Prerequisites
