@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/uncoverthefuture-org/actions/compare/v1.2.1...v1.3.0) (2026-04-02)
+
+
+### Features
+
+* add yarn + npx support and Jest tests ([#37](https://github.com/uncoverthefuture-org/actions/issues/37)) ([b3cff3e](https://github.com/uncoverthefuture-org/actions/commit/b3cff3e93d66f915c7aa49bc3213d90efacd8dc0))
+
+
+### Bug Fixes
+
+* update package name to @uncver/actions ([bbe60fb](https://github.com/uncoverthefuture-org/actions/commit/bbe60fb82c012c15af8bc4c5c9c0a1fd546d8e6f))
+* update package name to @uncver/actions ([4007f23](https://github.com/uncoverthefuture-org/actions/commit/4007f2324fca4ae8965f55bb5a5da077982d4c4c))
+
 ## [1.2.1](https://github.com/uncoverthefuture-org/actions/compare/v1.2.0...v1.2.1) (2026-04-01)
 
 
