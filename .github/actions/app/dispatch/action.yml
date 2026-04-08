@@ -290,13 +290,19 @@ runs:
         subaction: ${{ inputs.subaction }}
         allowed: ssh-container-deploy|doctl-container-deploy|aws-ssm-container-deploy|write-remote-env-file|extract-version
 
+    - name: Debug - Show params JSON
+      shell: bash
+      run: |
+        echo "Debug: params_json output"
+        echo '${{ steps.params.outputs.json }}'
+
     - name: Validate base SSH for app subactions
       if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-container-deploy' || inputs.subaction == 'doctl-container-deploy' }}
       uses: ./.github/actions/app/common/validate-base-ssh
       with:
         subaction: ${{ inputs.subaction }}
-        ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
-        ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
+        ssh_host: ${{ inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
+        ssh_key: ${{ inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
 
     - name: Validate subaction-specific inputs
       if: ${{ inputs.subaction == 'write-remote-env-file' || inputs.subaction == 'ssh-container-deploy' || inputs.subaction == 'doctl-container-deploy' || inputs.subaction == 'aws-ssm-container-deploy' }}
