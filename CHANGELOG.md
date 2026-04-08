@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/uncoverthefuture-org/actions/compare/v1.5.0...v1.5.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* Simplify expressions to use || fallback pattern instead of && || ternary ([4f610a2](https://github.com/uncoverthefuture-org/actions/commit/4f610a23bb1b364147d7cc7983039351efd67f35))
+
 ## [1.5.0](https://github.com/uncoverthefuture-org/actions/compare/v1.4.0...v1.5.0) (2026-04-02)
 
 
