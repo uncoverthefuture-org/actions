@@ -114,6 +114,14 @@ inputs:
     description: 'Summary rendering mode: on_change|on_failure|always|never'
     required: false
     default: 'on_change'
+  http_port:
+    description: 'Host port for Traefik HTTP entrypoint (default: 80).'
+    required: false
+    default: '80'
+  https_port:
+    description: 'Host port for Traefik HTTPS entrypoint (default: 443).'
+    required: false
+    default: '443'
   force_restart:
     description: 'Force restart/recreate Traefik even if confighash matches'
     required: false
@@ -170,6 +178,8 @@ runs:
         use_host_network: ${{ inputs.use_host_network }}
         network_name: ${{ inputs.network_name }}
         dns_servers: ${{ inputs.dns_servers }}
+        http_port: ${{ inputs.http_port }}
+        https_port: ${{ inputs.https_port }}
 
     # Fast-path: Only upload scripts when we might run setup
     # We probe first, then conditionally upload if force_restart=true or not up_to_date
@@ -215,6 +225,8 @@ runs:
         dashboard_password: ${{ inputs.dashboard_password }}
         dashboard_users_b64: ${{ inputs.dashboard_users_b64 }}
         quadlet_enable_http3: ${{ inputs.quadlet_enable_http3 }}
+        http_port: ${{ inputs.http_port }}
+        https_port: ${{ inputs.https_port }}
         force_restart: ${{ inputs.force_restart }}
 
     - name: Traefik status summary

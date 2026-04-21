@@ -73,6 +73,12 @@ inputs:
   reset_acme:
     required: false
     default: 'false'
+  http_port:
+    required: false
+    default: '80'
+  https_port:
+    required: false
+    default: '443'
 
 runs:
   using: 'composite'
@@ -136,6 +142,8 @@ runs:
           export QUADLET_ENABLE_HTTP3='${{ inputs.quadlet_enable_http3 }}'
           export TRAEFIK_FORCE_RESTART='${{ inputs.force_restart }}'
           export TRAEFIK_RESET_ACME='${{ inputs.reset_acme }}'
+          export TRAEFIK_HTTP_PORT='${{ inputs.http_port }}'
+          export TRAEFIK_HTTPS_PORT='${{ inputs.https_port }}'
 
           if [ -x "$HOME/uactions/scripts/traefik/ensure-traefik-config.sh" ]; then
             "$HOME/uactions/scripts/traefik/ensure-traefik-config.sh"
