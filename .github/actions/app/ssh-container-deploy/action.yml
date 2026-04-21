@@ -373,6 +373,11 @@ inputs: # All parameters accepted by this action
     required: false
     default: "/"
 
+outputs:
+  host_port:
+    description: "The resolved host port assigned to the container (when Traefik is disabled)."
+    value: ${{ steps.resolve_port.outputs.host_port }}
+
 runs: # Composite action implementation
   using: "composite"
   steps:
@@ -798,12 +803,39 @@ runs: # Composite action implementation
               echo "::notice::Podman not found or version unknown; using TRAEFIK_MODE=container." >&2
             fi
           else
-            # TRAEFIK_MODE was already set (e.g., by caller); export it as-is
-            export TRAEFIK_MODE
-            echo "::notice::Using caller-provided TRAEFIK_MODE=$TRAEFIK_MODE." >&2
+          # TRAEFIK_MODE was already set (e.g., by caller); export it as-is
+          export TRAEFIK_MODE
+          echo "::notice::Using caller-provided TRAEFIK_MODE=$TRAEFIK_MODE." >&2
           fi
 
           "$HOME/uactions/scripts/app/start-container-deployment.sh"
+
+    # Resolve the assigned host port when Traefik is disabled.
+    # This reads the .host-port file created by compute-host-port.sh on the server,
+    # ensuring the output is accurate even when ports are dynamically assigned.
+    - name: Resolve assigned host port
+      id: resolve_port
+      if: ${{ steps.reach.outputs.reachable == 'true' && inputs.enable_traefik != 'true' }}
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || inputs.podman_user }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+      run: |
+        KEY_FILE=$(mktemp)
+        echo "$SSH_KEY" > "$KEY_FILE"
+        chmod 600 "$KEY_FILE"
+        APP_SLUG='${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}'
+        ENV_NAME='${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}'
+        # Compute the same deployment directory as run-deployment.sh
+        DEPLOY_DIR="deployments/${ENV_NAME}/${APP_SLUG}"
+        PORT=$(ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 -i "$KEY_FILE" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cat \"\$HOME/$DEPLOY_DIR/.host-port\" 2>/dev/null || echo ''")
+        if [ -n "$PORT" ]; then
+          echo "✅ Resolved host port: $PORT"
+          echo "host_port=$PORT" >> $GITHUB_OUTPUT
+        fi
+        rm -f "$KEY_FILE"
 
     # # Respect summary_mode: full|light|off
     # # - full: run diagnostics + whoami probe
