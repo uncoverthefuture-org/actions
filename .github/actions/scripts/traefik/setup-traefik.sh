@@ -49,6 +49,8 @@ DASHBOARD_PUBLISH_MODES="${DASHBOARD_PUBLISH_MODES:-}"
 DASHBOARD_HOST="${DASHBOARD_HOST:-}"
 DASHBOARD_PASSWORD="${DASHBOARD_PASSWORD:-}"
 DASHBOARD_USERS_B64="${DASHBOARD_USERS_B64:-}"
+TRAEFIK_HTTP_PORT="${TRAEFIK_HTTP_PORT:-80}"
+TRAEFIK_HTTPS_PORT="${TRAEFIK_HTTPS_PORT:-443}"
 
 # Validate required inputs
 if [[ "$TRAEFIK_ENABLE_ACME" == "true" && -z "$TRAEFIK_EMAIL" ]]; then
@@ -318,8 +320,8 @@ else
           podman restart traefik >/dev/null 2>&1 || true
           ok=false
           for i in {1..10}; do
-            if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
-               ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then ok=true; break; fi
+            if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTP_PORT}\$" && \
+               ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTPS_PORT}\$"; then ok=true; break; fi
             sleep 2
           done
           if $ok; then
@@ -348,8 +350,8 @@ else
   fi
 fi
 
-echo "🔍 Checking for existing listeners on ports 80/443 ..."
-CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk '/:(80|443) / {print $0}' || true)"
+echo "🔍 Checking for existing listeners on ports ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT} ..."
+CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk "/:(${TRAEFIK_HTTP_PORT}|${TRAEFIK_HTTPS_PORT}) / {print \$0}" || true)"
 if [[ -n "$CONFLICTING_SERVICES" ]]; then
   echo "⚠️  Detected listeners on 80/443; attempting to stop existing 'traefik' container if running ..." >&2
   if podman container exists traefik >/dev/null 2>&1; then
@@ -360,38 +362,14 @@ if [[ -n "$CONFLICTING_SERVICES" ]]; then
   # Re-check after attempting to stop existing Traefik
   CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk '/:(80|443) / {print $0}' || true)"
   if [[ -n "$CONFLICTING_SERVICES" ]]; then
-    if command -v systemctl >/dev/null 2>&1; then
-      if [ "$(id -u)" -eq 0 ] || [ "$SUDO_AVAILABLE" = "yes" ]; then
-        echo "⚠️  Detected services still listening on 80/443; attempting to stop apache2/nginx via systemctl ..." >&2
-        if systemctl is-active --quiet apache2 2>/dev/null; then
-          if [ "$(id -u)" -eq 0 ]; then
-            systemctl stop apache2 || true
-            systemctl disable apache2 >/dev/null 2>&1 || true
-          else
-            sudo systemctl stop apache2 || true
-            sudo systemctl disable apache2 >/dev/null 2>&1 || true
-          fi
-        fi
-        if systemctl is-active --quiet nginx 2>/dev/null; then
-          if [ "$(id -u)" -eq 0 ]; then
-            systemctl stop nginx || true
-            systemctl disable nginx >/dev/null 2>&1 || true
-          else
-            sudo systemctl stop nginx || true
-            sudo systemctl disable nginx >/dev/null 2>&1 || true
-          fi
-        fi
-        CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk '/:(80|443) / {print $0}' || true)"
-      fi
-    fi
-    if [[ -n "$CONFLICTING_SERVICES" ]]; then
-      echo "❌ ERROR: Detected services still listening on 80/443:" >&2
-      printf '%s\n' "$CONFLICTING_SERVICES" >&2
-      echo "   Stop or reconfigure the conflicting service before continuing." >&2
-      exit 1
-    else
-      echo "  ✓ Ports 80/443 are free after stopping conflicting services"
-    fi
+    echo "❌ ERROR: Detected services still listening on 80/443:" >&2
+    printf '%s\n' "$CONFLICTING_SERVICES" >&2
+    echo "   Traefik cannot start because these ports are occupied by another service (e.g. Apache, Nginx)." >&2
+    echo "   To coexist with an existing web server, you must either:" >&2
+    echo "     1. Stop the conflicting service manually." >&2
+    echo "     2. Configure the other service to use different ports." >&2
+    echo "     3. Disable Traefik in your deployment configuration." >&2
+    exit 1
   else
     echo "  ✓ Ports 80/443 are free after stopping existing traefik"
   fi
@@ -444,7 +422,7 @@ if [[ "$TRAEFIK_USE_HOST_NETWORK" == "true" ]]; then
   echo "🌐 Using host network for Traefik"
   RUN_ARGS+=(--network host)
 else
-  RUN_ARGS+=(-p 80:80 -p 443:443)
+  RUN_ARGS+=(-p "${TRAEFIK_HTTP_PORT}:80" -p "${TRAEFIK_HTTPS_PORT}:443")
   if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
     RUN_ARGS+=(--network "$TRAEFIK_NETWORK_NAME")
   fi
@@ -464,8 +442,8 @@ fi
 RUN_ARGS+=(-v "$HOME/.config/traefik/traefik.yml":/etc/traefik/traefik.yml:ro)
 RUN_ARGS+=(-v "$HOME/.local/share/traefik/acme.json":/letsencrypt/acme.json:Z)
 RUN_ARGS+=(-v "$HOST_SOCK":/var/run/docker.sock:Z)
-RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80)
-RUN_ARGS+=(-e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443)
+RUN_ARGS+=(-e "TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80")
+RUN_ARGS+=(-e "TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443")
 RUN_ARGS+=(--label org.uactions.managed-by=uactions --label "org.uactions.traefik.confighash=${CONFIG_HASH}")
 
 if [[ "$TRAEFIK_ENABLE_ACME" == "true" ]]; then
@@ -711,11 +689,11 @@ fi
 echo "🔎 podman ps --filter name=traefik"
 podman ps --filter name=traefik
 
-echo "⏳ Waiting for Traefik listeners on ports 80/443 ..."
+echo "⏳ Waiting for Traefik listeners on ports ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT} ..."
 ok=false
 for i in {1..10}; do
-  if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
-     ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
+  if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTP_PORT}\$" && \
+     ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTPS_PORT}\$"; then
     ok=true; break
   fi
   sleep 2

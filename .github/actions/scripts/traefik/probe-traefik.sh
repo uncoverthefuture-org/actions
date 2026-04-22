@@ -41,6 +41,8 @@ PROBE_TRIES="${PROBE_TRIES:-12}"
 PROBE_DELAY="${PROBE_DELAY:-5}"
 PROBE_TIMEOUT="${PROBE_TIMEOUT:-8}"
 PROBE_HTTP_FALLBACK="${PROBE_HTTP_FALLBACK:-true}"
+TRAEFIK_HTTP_PORT="${TRAEFIK_HTTP_PORT:-80}"
+TRAEFIK_HTTPS_PORT="${TRAEFIK_HTTPS_PORT:-443}"
 
 log() { printf '%s\n' "$*"; }
 err() { printf '❌ %s\n' "$*" >&2; }
@@ -102,14 +104,14 @@ check_listeners_80_443() {
   if $have_ss; then
     local out
     out=$(ss -ltn 2>/dev/null || true)
-    if ! printf '%s' "$out" | grep -qE '[:\[]80\b'; then return 1; fi
-    if ! printf '%s' "$out" | grep -qE '[:\[]443\b'; then return 1; fi
+    if ! printf '%s' "$out" | grep -qE "[:\[]${TRAEFIK_HTTP_PORT}\b"; then return 1; fi
+    if ! printf '%s' "$out" | grep -qE "[:\[]${TRAEFIK_HTTPS_PORT}\b"; then return 1; fi
     return 0
   fi
   if command -v netstat >/dev/null 2>&1; then
     local out
     out=$(netstat -ltn 2>/dev/null || true)
-    printf '%s' "$out" | grep -qE '[:\[]80\b' && printf '%s' "$out" | grep -qE '[:\[]443\b'
+    printf '%s' "$out" | grep -qE "[:\[]${TRAEFIK_HTTP_PORT}\b" && printf '%s' "$out" | grep -qE "[:\[]${TRAEFIK_HTTPS_PORT}\b"
     return $?
   fi
   # As a last resort, assume listeners unknown (treat as failure)
@@ -148,9 +150,9 @@ preflight() {
     fi
   fi
 
-  notice "Verifying listeners on 80/443 ..."
+  notice "Verifying listeners on ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT} ..."
   if ! check_listeners_80_443; then
-    err "Ports 80/443 are not listening"
+    err "Ports ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT} are not listening"
     ss -ltn 2>/dev/null | head -n 80 || netstat -ltn 2>/dev/null | head -n 80 || true
     exit 2
   fi
