@@ -556,7 +556,7 @@ if [[ -x "$HOME/uactions/scripts/app/install-app-quadlet.sh" ]]; then
   export TRAEFIK_NETWORK_NAME
   export ROUTER_NAME                                    # Router/service name for labels
   export DOMAIN                                         # Effective domain (computed above)
-  export TRAEFIK_ENABLE_ACME="${TRAEFIK_ENABLE_ACME:-false}"  # Whether TLS labels are needed
+  export TRAEFIK_ENABLE_ACME="${TRAEFIK_ENABLE_ACME:-true}"  # Whether TLS labels are needed
   export DOMAIN_HOSTS="${DOMAIN_HOSTS:-}"               # Explicit host list (optional)
   export DOMAIN_ALIASES="${DOMAIN_ALIASES:-}"           # Additional aliases (optional)
   export INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS_EFF:-false}" # Include www variant
