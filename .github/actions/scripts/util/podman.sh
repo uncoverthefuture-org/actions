@@ -71,14 +71,46 @@ podman_resolve_host_port() {
 }
 
 # Build DNS args for podman run
+# Supports custom DNS servers via DNS_SERVERS env var (comma/space-separated)
+# Falls back to host resolv.conf mount ONLY if it has real DNS servers
+# Otherwise uses public DNS to ensure containers never get stranded
 podman_build_dns_args() {
   local debug="${1:-false}"
+  local dns_servers="${DNS_SERVERS:-}"
+  
+  # If custom DNS servers are specified, use them
+  if [[ -n "$dns_servers" ]]; then
+    [[ "$debug" == "true" ]] && echo "🧭 DNS: using custom servers: $dns_servers" >&2
+    # Convert comma or space separated to --dns args
+    local IFS=', '
+    for server in $dns_servers; do
+      [[ -n "$server" ]] && echo "--dns=$server"
+    done
+    return 0
+  fi
+  
+  # Check host's resolv.conf for real (non-localhost) DNS servers
   local src="/run/systemd/resolve/resolv.conf"
+  local has_real_dns=false
+  
   if [[ -s "$src" ]]; then
-    [[ "$debug" == "true" ]] && echo "🧭 DNS: mounting $src" >&2
+    # Count nameservers that are NOT localhost (127.x.x.x) or internal docker (192.168.49.x)
+    local real_dns_count
+    real_dns_count=$(grep -cE '^nameserver\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)' "$src" 2>/dev/null | grep -vE '^(127\.|192\.168\.49\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|0\.0\.0\.0)' || true)
+    
+    # If we have at least one real external DNS server, use it
+    if [[ "$real_dns_count" -gt 0 ]] 2>/dev/null; then
+      has_real_dns=true
+    fi
+  fi
+  
+  # Mount resolv.conf only if it has real DNS servers
+  if [[ "$has_real_dns" == "true" ]]; then
+    [[ "$debug" == "true" ]] && echo "🧭 DNS: mounting $src (has real DNS servers)" >&2
     echo "-v=$src:/etc/resolv.conf:ro"
   else
-    [[ "$debug" == "true" ]] && echo "🧭 DNS: using public resolvers" >&2
+    # Always use public DNS as safe fallback - never get stranded
+    [[ "$debug" == "true" ]] && echo "🧭 DNS: using public resolvers (1.1.1.1, 8.8.8.8)" >&2
     echo "--dns=1.1.1.1" "--dns=8.8.8.8"
   fi
 }
