@@ -44,8 +44,8 @@ runs:
           echo "source=input" >> "$GITHUB_OUTPUT"
           echo "raw_version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
         elif [[ "$BRANCH_NAME" == "develop" ]]; then
-          echo "source=develop" >> "$GITHUB_OUTPUT"
-          echo "raw_version=v0.0.0-dev" >> "$GITHUB_OUTPUT"
+          echo "source=skip" >> "$GITHUB_OUTPUT"
+          echo "raw_version=" >> "$GITHUB_OUTPUT"
         else
           echo "source=resolve" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
@@ -112,6 +112,12 @@ runs:
         # Combine possible sources
         VERSION="${{ steps.decide-source.outputs.raw_version || steps.resolve.outputs.raw_version }}"
         
+        if [[ "${{ steps.decide-source.outputs.source }}" == "skip" ]]; then
+          echo "version=" >> "$GITHUB_OUTPUT"
+          echo "ℹ️ Skipping version resolution for development branch."
+          exit 0
+        fi
+
         if [[ -z "$VERSION" ]]; then
           echo "❌ No version could be resolved."
           exit 1
