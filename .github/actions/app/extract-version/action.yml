@@ -29,52 +29,79 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Analyze Inputs
+    - name: Analyze Context
       id: decide-source
       shell: bash
       env:
         INPUT_VERSION: ${{ inputs.version }}
+        EVENT_NAME: ${{ github.event_name }}
+        # If workflow_run, use its head_branch. Otherwise standard GITHUB_REF_NAME
+        BRANCH_NAME: ${{ github.event.workflow_run.head_branch || github.ref_name }}
       run: |
         set -euo pipefail
+        
         if [[ -n "$INPUT_VERSION" ]]; then
           echo "source=input" >> "$GITHUB_OUTPUT"
           echo "raw_version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
-          echo "ℹ️ Source determined: explicit input version"
+        elif [[ "$BRANCH_NAME" == "develop" ]]; then
+          echo "source=develop" >> "$GITHUB_OUTPUT"
+          echo "raw_version=v0.0.0-dev" >> "$GITHUB_OUTPUT"
         else
-          echo "source=pr" >> "$GITHUB_OUTPUT"
-          echo "ℹ️ Source determined: pull request context"
+          echo "source=resolve" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
         fi
 
-    - name: Extract from PR Context
-      id: extract-pr
-      if: ${{ steps.decide-source.outputs.source == 'pr' }}
+    - name: Resolve Branch Version
+      id: resolve
+      if: ${{ steps.decide-source.outputs.source == 'resolve' }}
       shell: bash
       env:
         EVENT_NAME: ${{ github.event_name }}
-        PR_MERGED: ${{ github.event.pull_request.merged }}
         PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        PR_TITLE: ${{ github.event.pull_request.title }}
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
         
-        if [[ "$EVENT_NAME" != "pull_request" || "$PR_MERGED" != "true" || "$PR_HEAD_REF" != release-please--* ]]; then
-          echo "❌ Version was not provided and event context is not a merged release-please PR."
-          exit 1
-        fi
+        VERSION=""
+        BRANCH=""
         
-        if [[ ! "$PR_HEAD_REF" =~ ^release-please--branches--.*(--components--.*)?$ ]]; then
-          echo "❌ Invalid branch format: $PR_HEAD_REF"
-          exit 1
-        fi
-        
-        if [[ "$PR_TITLE" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-          VERSION="v${BASH_REMATCH[1]}"
-          echo "✅ Version extracted from PR title: $VERSION"
-          echo "raw_version=$VERSION" >> "$GITHUB_OUTPUT"
+        # 1. Try to get branch from direct PR context
+        if [[ -n "$PR_HEAD_REF" ]]; then
+          BRANCH="$PR_HEAD_REF"
+          echo "ℹ️ Using branch from PR context: $BRANCH"
         else
-          echo "❌ Could not extract version from PR title: $PR_TITLE"
+          # 2. If not in PR context (e.g. workflow_run or push), find the most recently merged PR
+          echo "ℹ️ Not in PR context. Checking for merged PR..."
+          MERGED_BRANCH=$(gh pr list --state merged --limit 1 --json headRefName --template '{{range .}}{{ .headRefName }}{{end}}')
+          if [[ -n "$MERGED_BRANCH" ]]; then
+            BRANCH="$MERGED_BRANCH"
+            echo "✅ Identified merged branch: $BRANCH"
+          else
+            echo "❌ Could not identify a merged branch and no version provided."
+            exit 1
+          fi
+        fi
+        
+        # 3. Apply extraction logic (User's prod-release-v logic)
+        # Format: prod-release-v1.9.1 -> v1.9.1
+        if [[ "$BRANCH" == prod-release-v* ]]; then
+          VERSION="${BRANCH#prod-release-}"
+          echo "✅ Version extracted from manual release branch: $VERSION"
+        elif [[ "$BRANCH" == release-please--* ]]; then
+          # Fallback for release-please branch naming (if title extraction is preferred, we could add that)
+          # Format: release-please--branches--main--components--app--v1.9.1
+          if [[ "$BRANCH" =~ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            VERSION="v${BASH_REMATCH[1]}"
+            echo "✅ Version extracted from release-please branch: $VERSION"
+          fi
+        fi
+        
+        if [[ -z "$VERSION" ]]; then
+          echo "❌ Branch '$BRANCH' did not match expected release patterns (prod-release-v* or release-please--*)."
           exit 1
         fi
+        
+        echo "raw_version=$VERSION" >> "$GITHUB_OUTPUT"
 
     - name: Validate Version Format
       id: extract
@@ -82,21 +109,26 @@ runs:
       run: |
         set -euo pipefail
         
-        # Combine possible sources from previous steps
-        VERSION="${{ steps.decide-source.outputs.raw_version || steps.extract-pr.outputs.raw_version }}"
+        # Combine possible sources
+        VERSION="${{ steps.decide-source.outputs.raw_version || steps.resolve.outputs.raw_version }}"
         
         if [[ -z "$VERSION" ]]; then
-          echo "❌ No version could be extracted or identified."
+          echo "❌ No version could be resolved."
           exit 1
         fi
         
-        if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "❌ Invalid selected version format: $VERSION. Expected format: v*.*.*"
+        # Ensure it starts with 'v'
+        if [[ ! "$VERSION" == v* ]]; then
+          VERSION="v$VERSION"
+        fi
+        
+        if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+          echo "❌ Invalid version format resolved: $VERSION. Expected v*.*.*"
           exit 1
         fi
         
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-        echo "✅ Final formatted version evaluated: $VERSION"
+        echo "✅ Final validated version: $VERSION"
 
     - name: Validate Git Tag
       if: ${{ steps.decide-source.outputs.source == 'input' }}
@@ -105,6 +137,7 @@ runs:
         set -euo pipefail
         
         VERSION="${{ steps.extract.outputs.version }}"
+        git fetch --tags --quiet
         
         if ! git tag -l "$VERSION" | grep -q "$VERSION"; then
           echo "❌ Git tag '$VERSION' does not exist. Create the tag first before deploying."
