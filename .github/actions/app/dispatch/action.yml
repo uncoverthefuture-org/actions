@@ -377,6 +377,12 @@ runs:
         domain_prefix_staging: ${{ inputs.domain_prefix_staging != '' && inputs.domain_prefix_staging || fromJSON(steps.params.outputs.json).domain_prefix_staging }}
         domain_prefix_dev: ${{ inputs.domain_prefix_dev != '' && inputs.domain_prefix_dev || fromJSON(steps.params.outputs.json).domain_prefix_dev || steps.defaults.outputs.domain_prefix_dev }}
         enable_traefik: ${{ inputs.enable_traefik != '' && inputs.enable_traefik || fromJSON(steps.params.outputs.json).enable_traefik || 'true' }}
+        enable_acme: ${{ inputs.enable_acme != '' && inputs.enable_acme || fromJSON(steps.params.outputs.json).enable_acme || 'true' }}
+        traefik_reset_acme: ${{ fromJSON(steps.params.outputs.json).traefik_reset_acme }}
+        traefik_network_name: ${{ fromJSON(steps.params.outputs.json).traefik_network_name }}
+        traefik_use_host_network: ${{ fromJSON(steps.params.outputs.json).traefik_use_host_network }}
+        traefik_skip_upload: ${{ fromJSON(steps.params.outputs.json).traefik_skip_upload }}
+        ensure_traefik: ${{ fromJSON(steps.params.outputs.json).ensure_traefik }}
         enable_dashboard: ${{ inputs.enable_dashboard != '' && inputs.enable_dashboard || fromJSON(steps.params.outputs.json).enable_dashboard }}
         dashboard_publish_modes: ${{ inputs.dashboard_publish_modes != '' && inputs.dashboard_publish_modes || fromJSON(steps.params.outputs.json).dashboard_publish_modes }}
         dashboard_host: ${{ inputs.dashboard_host != '' && inputs.dashboard_host || fromJSON(steps.params.outputs.json).dashboard_host }}
@@ -434,6 +440,9 @@ runs:
         traefik_email: ${{ (inputs.traefik_email != '' && inputs.traefik_email) || (fromJSON(steps.params.outputs.json).traefik_email != '' && fromJSON(steps.params.outputs.json).traefik_email) || steps.defaults.outputs.traefik_email_default }}
         traefik_reset_acme: ${{ fromJSON(steps.params.outputs.json).traefik_reset_acme }}
         traefik_network_name: ${{ fromJSON(steps.params.outputs.json).traefik_network_name }}
+        traefik_use_host_network: ${{ fromJSON(steps.params.outputs.json).traefik_use_host_network }}
+        traefik_skip_upload: ${{ fromJSON(steps.params.outputs.json).traefik_skip_upload }}
+        ensure_traefik: ${{ fromJSON(steps.params.outputs.json).ensure_traefik }}
         domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
         base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
         domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
@@ -504,6 +513,9 @@ runs:
         traefik_email: ${{ (inputs.traefik_email != '' && inputs.traefik_email) || (fromJSON(steps.params.outputs.json).traefik_email != '' && fromJSON(steps.params.outputs.json).traefik_email) || steps.defaults.outputs.traefik_email_default }}
         traefik_reset_acme: ${{ fromJSON(steps.params.outputs.json).traefik_reset_acme }}
         traefik_network_name: ${{ fromJSON(steps.params.outputs.json).traefik_network_name }}
+        traefik_use_host_network: ${{ fromJSON(steps.params.outputs.json).traefik_use_host_network }}
+        traefik_skip_upload: ${{ fromJSON(steps.params.outputs.json).traefik_skip_upload }}
+        ensure_traefik: ${{ fromJSON(steps.params.outputs.json).ensure_traefik }}
         domain: ${{ inputs.domain != '' && inputs.domain || fromJSON(steps.params.outputs.json).domain }}
         base_domain: ${{ inputs.base_domain != '' && inputs.base_domain || fromJSON(steps.params.outputs.json).base_domain }}
         domain_prefix_prod: ${{ inputs.domain_prefix_prod != '' && inputs.domain_prefix_prod || fromJSON(steps.params.outputs.json).domain_prefix_prod }}
