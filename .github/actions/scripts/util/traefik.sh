@@ -330,7 +330,7 @@ ensure_traefik_systemd_user_service() {
 #   [debug]
 #   Emits one --label per line that can be consumed via `mapfile -t`.
 #   Example:
-#     mapfile -t LABELS < <(build_traefik_labels_fallback "$ROUTER" "$DOMAIN" 8080 true "" "alt.example.com" false "traefik-network" "${DEBUG:-false}")
+#     mapfile -t LABELS < <(build_traefik_labels_fallback "$ROUTER" "$DOMAIN" 8080 true "" "alt.example.com" false "traefik-network" "http" "${DEBUG:-false}")
 build_traefik_labels_fallback() {
   local router_name="$1"; shift
   local domain="$1"; shift
@@ -338,8 +338,8 @@ build_traefik_labels_fallback() {
   local enable_acme="$1"; shift
   local domain_hosts="$1"; shift
   local domain_aliases="$1"; shift
-  local include_www_alias="$1"; shift
-  local network_name="$1"; shift || true
+  local network_name="$1"; shift
+  local server_scheme="${1:-http}"; shift || true
   local debug="${1:-}"
 
   # Build host list with precedence: explicit hosts, else domain + aliases (+www apex)
@@ -419,6 +419,7 @@ build_traefik_labels_fallback() {
     echo "--label traefik.http.routers.${router_name}.entrypoints=web"
   fi
   echo "--label $service_port"
+  echo "--label traefik.http.services.${router_name}.loadbalancer.server.scheme=${server_scheme}"
   if [[ -n "$network_name" ]]; then
     echo "--label traefik.docker.network=${network_name}"
   fi

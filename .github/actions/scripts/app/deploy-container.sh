@@ -339,6 +339,7 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
       DOMAIN="$DOMAIN" \
       CONTAINER_PORT="$CONTAINER_PORT" \
       ENABLE_ACME="$TRAEFIK_ENABLE_ACME_EFF" \
+      SERVER_SCHEME="${SERVER_SCHEME:-http}" \
       DOMAIN_HOSTS="${DOMAIN_HOSTS:-}" \
       DOMAIN_ALIASES="${DOMAIN_ALIASES:-${ALIASES:-}}" \
       INCLUDE_WWW_ALIAS="$INCLUDE_WWW_ALIAS_EFF" \
@@ -368,7 +369,7 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
     fi
   else
     # Fallback path: build labels via shared helper for consistency
-    mapfile -t FALLBACK_LABELS < <(build_traefik_labels_fallback "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME_EFF}" "${DOMAIN_HOSTS:-}" "${DOMAIN_ALIASES:-${ALIASES:-}}" "$INCLUDE_WWW_ALIAS_EFF" "${TRAEFIK_NETWORK_NAME:-}")
+    mapfile -t FALLBACK_LABELS < <(build_traefik_labels_fallback "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME_EFF}" "${DOMAIN_HOSTS:-}" "${DOMAIN_ALIASES:-${ALIASES:-}}" "$INCLUDE_WWW_ALIAS_EFF" "${TRAEFIK_NETWORK_NAME:-}" "${SERVER_SCHEME:-http}")
     LABEL_ARGS+=("${FALLBACK_LABELS[@]}")
   fi
 else
