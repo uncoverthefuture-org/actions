@@ -253,16 +253,32 @@ fi
 echo "================================================================"
 echo "🔌 Ensuring podman socket is active"
 echo "================================================================"
-if [[ "${SUDO_STATUS:-available}" == "unavailable" ]]; then
-  echo "::error::sudo privileges required to enable podman.socket" >&2
-  exit 1
+# Attempt to enable system-level podman.socket (requires sudo). When that
+# is unavailable or fails, fall back to the user-level socket. Neither
+# being available is non-fatal — rootless Podman operates without a socket
+# for the basic run/stop/rm lifecycle used by this script.
+PODMAN_SOCKET_OK=false
+
+if command -v sudo > /dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  if sudo systemctl enable --now podman.socket > /dev/null 2>&1; then
+    echo "✅ podman.socket (system) enabled"
+    PODMAN_SOCKET_OK=true
+  else
+    echo "::warning::sudo systemctl enable podman.socket failed; trying user-level socket" >&2
+  fi
 fi
 
-if sudo systemctl enable --now podman.socket >/dev/null 2>&1; then
-  echo "✅ podman.socket enabled"
-else
-  echo "::error::Unable to enable podman.socket" >&2
-  exit 1
+if [[ "$PODMAN_SOCKET_OK" != "true" ]] && command -v systemctl > /dev/null 2>&1; then
+  if systemctl --user enable --now podman.socket > /dev/null 2>&1; then
+    echo "✅ podman.socket (user-level) enabled"
+    PODMAN_SOCKET_OK=true
+  else
+    echo "::warning::systemctl --user enable podman.socket also failed; continuing without socket activation" >&2
+  fi
+fi
+
+if [[ "$PODMAN_SOCKET_OK" != "true" ]]; then
+  echo "::warning::Could not enable podman.socket (neither system nor user-level). Podman run/stop/rm will proceed without socket." >&2
 fi
 
 # --- Detect Traefik availability -----------------------------------------------------
