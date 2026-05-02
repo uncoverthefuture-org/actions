@@ -102,7 +102,7 @@ HOST_RULE_EXPR=""
 for idx in "${!UNIQ_HOSTS[@]}"; do
   d="${UNIQ_HOSTS[$idx]}"
   if [[ $idx -gt 0 ]]; then HOST_RULE_EXPR+=" || "; fi
-  HOST_RULE_EXPR+="Host(\"${d}\")"
+  HOST_RULE_EXPR+="Host(\`${d}\`)"
 done
 
 # Emit base labels (newline-separated). TLS labels are gated by ENABLE_ACME.

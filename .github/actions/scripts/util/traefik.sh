@@ -402,7 +402,7 @@ build_traefik_labels_fallback() {
   for i in "${!uniq_hosts[@]}"; do
     val="${uniq_hosts[$i]}"
     if [[ $i -gt 0 ]]; then host_rule_expr+=" || "; fi
-    host_rule_expr+="Host(\"${val}\")"
+    host_rule_expr+="Host(\`${val}\`)"
   done
 
   printf -v router_rule 'traefik.http.routers.%s.rule=%s' "$router_name" "$host_rule_expr"
