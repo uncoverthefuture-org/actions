@@ -223,7 +223,7 @@ INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}"
     for _idx in "${!_uniq_hosts[@]}"; do
       _hval="${_uniq_hosts[$_idx]}"
       if [[ $_idx -gt 0 ]]; then _host_rule+=" || "; fi
-      _host_rule+="Host(\"${_hval}\")"
+      _host_rule+="Host(\`${_hval}\`)"
     done
 
     # Emit the fundamental traefik.enable label - without this, Traefik ignores the container

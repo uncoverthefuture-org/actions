@@ -372,6 +372,14 @@ inputs: # All parameters accepted by this action
     description: "Path used by Traefik probe to validate deployment readiness (example: /health)."
     required: false
     default: "/"
+  traefik_router:
+    description: "Optional explicit Traefik router/service name (defaults to <app_slug>-<env>)."
+    required: false
+    default: ""
+  traefik_server_scheme:
+    description: "Backend protocol for Traefik load balancer (http or https). Default: http."
+    required: false
+    default: "http"
 
 outputs:
   host_port:
@@ -617,7 +625,8 @@ runs: # Composite action implementation
           export TRAEFIK_NETWORK_NAME='${{ inputs.traefik_network_name }}'
           export DOMAIN_INPUT='${{ inputs.domain }}'
           export DOMAIN_DEFAULT='${{ steps.dfl.outputs.domain_default }}'
-          export ROUTER_NAME='${{ steps.dfl.outputs.traefik_router }}'
+          export ROUTER_NAME='${{ inputs.traefik_router != '' && inputs.traefik_router || steps.dfl.outputs.traefik_router }}'
+          export SERVER_SCHEME='${{ inputs.traefik_server_scheme }}'
           export DOMAIN_ALIASES='${{ inputs.domain_aliases }}'
           export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
           export DOMAIN_HOSTS='${{ inputs.domain_hosts }}'

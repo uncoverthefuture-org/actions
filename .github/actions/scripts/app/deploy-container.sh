@@ -253,16 +253,32 @@ fi
 echo "================================================================"
 echo "🔌 Ensuring podman socket is active"
 echo "================================================================"
-if [[ "${SUDO_STATUS:-available}" == "unavailable" ]]; then
-  echo "::error::sudo privileges required to enable podman.socket" >&2
-  exit 1
+# Attempt to enable system-level podman.socket (requires sudo). When that
+# is unavailable or fails, fall back to the user-level socket. Neither
+# being available is non-fatal — rootless Podman operates without a socket
+# for the basic run/stop/rm lifecycle used by this script.
+PODMAN_SOCKET_OK=false
+
+if command -v sudo > /dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  if sudo systemctl enable --now podman.socket > /dev/null 2>&1; then
+    echo "✅ podman.socket (system) enabled"
+    PODMAN_SOCKET_OK=true
+  else
+    echo "::warning::sudo systemctl enable podman.socket failed; trying user-level socket" >&2
+  fi
 fi
 
-if sudo systemctl enable --now podman.socket >/dev/null 2>&1; then
-  echo "✅ podman.socket enabled"
-else
-  echo "::error::Unable to enable podman.socket" >&2
-  exit 1
+if [[ "$PODMAN_SOCKET_OK" != "true" ]] && command -v systemctl > /dev/null 2>&1; then
+  if systemctl --user enable --now podman.socket > /dev/null 2>&1; then
+    echo "✅ podman.socket (user-level) enabled"
+    PODMAN_SOCKET_OK=true
+  else
+    echo "::warning::systemctl --user enable podman.socket also failed; continuing without socket activation" >&2
+  fi
+fi
+
+if [[ "$PODMAN_SOCKET_OK" != "true" ]]; then
+  echo "::warning::Could not enable podman.socket (neither system nor user-level). Podman run/stop/rm will proceed without socket." >&2
 fi
 
 # --- Detect Traefik availability -----------------------------------------------------
@@ -339,6 +355,7 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
       DOMAIN="$DOMAIN" \
       CONTAINER_PORT="$CONTAINER_PORT" \
       ENABLE_ACME="$TRAEFIK_ENABLE_ACME_EFF" \
+      SERVER_SCHEME="${SERVER_SCHEME:-http}" \
       DOMAIN_HOSTS="${DOMAIN_HOSTS:-}" \
       DOMAIN_ALIASES="${DOMAIN_ALIASES:-${ALIASES:-}}" \
       INCLUDE_WWW_ALIAS="$INCLUDE_WWW_ALIAS_EFF" \
@@ -368,7 +385,7 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
     fi
   else
     # Fallback path: build labels via shared helper for consistency
-    mapfile -t FALLBACK_LABELS < <(build_traefik_labels_fallback "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME_EFF}" "${DOMAIN_HOSTS:-}" "${DOMAIN_ALIASES:-${ALIASES:-}}" "$INCLUDE_WWW_ALIAS_EFF" "${TRAEFIK_NETWORK_NAME:-}")
+    mapfile -t FALLBACK_LABELS < <(build_traefik_labels_fallback "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME_EFF}" "${DOMAIN_HOSTS:-}" "${DOMAIN_ALIASES:-${ALIASES:-}}" "$INCLUDE_WWW_ALIAS_EFF" "${TRAEFIK_NETWORK_NAME:-}" "${SERVER_SCHEME:-http}")
     LABEL_ARGS+=("${FALLBACK_LABELS[@]}")
   fi
 else

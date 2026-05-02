@@ -22,6 +22,7 @@ DOMAIN="${DOMAIN:-${2:-}}"
 CONTAINER_PORT="${CONTAINER_PORT:-${3:-}}"
 ENABLE_ACME_RAW="${ENABLE_ACME:-${4:-true}}"
 RESOLVER_NAME="${RESOLVER_NAME:-letsencrypt}"
+SERVER_SCHEME="${SERVER_SCHEME:-http}"
 DOMAIN_ALIASES_RAW="${DOMAIN_ALIASES:-${ALIASES:-}}"
 INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}"
 
@@ -101,7 +102,7 @@ HOST_RULE_EXPR=""
 for idx in "${!UNIQ_HOSTS[@]}"; do
   d="${UNIQ_HOSTS[$idx]}"
   if [[ $idx -gt 0 ]]; then HOST_RULE_EXPR+=" || "; fi
-  HOST_RULE_EXPR+="Host(\"${d}\")"
+  HOST_RULE_EXPR+="Host(\`${d}\`)"
 done
 
 # Emit base labels (newline-separated). TLS labels are gated by ENABLE_ACME.
@@ -110,7 +111,8 @@ printf '%s\n' \
   "--label" "traefik.http.routers.${ROUTER_NAME}.rule=${HOST_RULE_EXPR}" \
   "--label" "traefik.http.routers.${ROUTER_NAME}.service=${ROUTER_NAME}" \
   "--label" "traefik.http.routers.${ROUTER_NAME}.entrypoints=${ENTRYPOINTS_VALUE}" \
-  "--label" "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=${CONTAINER_PORT}"
+  "--label" "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=${CONTAINER_PORT}" \
+  "--label" "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.scheme=${SERVER_SCHEME}"
 
 if [[ "$ENABLE_ACME" == "true" ]]; then
   # With ACME, enable TLS and set the resolver on the primary router.
