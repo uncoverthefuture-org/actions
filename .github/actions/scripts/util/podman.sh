@@ -15,7 +15,19 @@ podman_resolve_container_port() {
     port=$($runner inspect -f "{{ index .Config.Labels \"traefik.http.services.${router_name}.loadbalancer.server.port\" }}" "$container_name" 2>/dev/null || true)
   fi
 
-  port="${port:-${WEB_CONTAINER_PORT:-${TARGET_PORT:-${PORT:-8080}}}}"
+  # When Traefik is enabled, default to port 80 (the standard HTTP port for
+  # containerised web apps — nginx, Apache, static servers, etc.). Backends
+  # that run on a different port (Node, Gunicorn, Uvicorn…) must pass
+  # CONTAINER_PORT_IN explicitly via the workflow.
+  # When Traefik is disabled we fall back to WEB_CONTAINER_PORT / TARGET_PORT /
+  # PORT / 8080 as before, matching the host-port-mapping path.
+  if [[ -z "$port" ]]; then
+    if [[ "$traefik_enabled" == "true" ]]; then
+      port="${WEB_CONTAINER_PORT:-${TARGET_PORT:-${PORT:-80}}}"
+    else
+      port="${WEB_CONTAINER_PORT:-${TARGET_PORT:-${PORT:-8080}}}"
+    fi
+  fi
 
   if ! validate_port_number "$port"; then
     echo "::error::Invalid container port '$port'" >&2
