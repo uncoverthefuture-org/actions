@@ -310,17 +310,21 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -z "$TRAEFIK_NETWORK_NAME" ]]; then
   TRAEFIK_NETWORK_NAME="traefik-network"
 fi
 
-# Whether to auto-include www.<apex> in the Traefik host rule.
-# This is purely caller-controlled via INCLUDE_WWW_ALIAS (default: false).
-#
-# NOTE: We previously auto-detected apex domains and silently set this to
-# true, which caused Let's Encrypt 502s: Traefik added www.<apex> to the
-# host rule and ACME tried to validate it. If www.<apex> has no DNS record
-# pointing to the server, cert resolution fails and Traefik returns 502
-# until the container is manually restarted with correct labels.
-# Subdomains (e.g. api.example.com) were never affected because the auto-
-# detection only triggered for bare apex domains.
+# When routing to an apex (base) domain like example.com, auto-include
+# the www alias so both example.com and www.example.com route to the
+# same container and ACME can validate both, unless the caller provided
+# explicit DOMAIN_HOSTS (which takes precedence).
 INCLUDE_WWW_ALIAS_EFF="${INCLUDE_WWW_ALIAS:-false}"
+if [[ -z "${DOMAIN_HOSTS:-}" ]]; then
+  dom_lower="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')"
+  IFS='.' read -r -a parts <<< "$dom_lower"; count=${#parts[@]}
+  if (( count >= 2 )); then
+    apex="${parts[count-2]}.${parts[count-1]}"
+    if [[ "$dom_lower" = "$apex" ]]; then
+      INCLUDE_WWW_ALIAS_EFF="true"
+    fi
+  fi
+fi
 
 if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
   if [[ "${DEBUG:-false}" == "true" ]]; then
