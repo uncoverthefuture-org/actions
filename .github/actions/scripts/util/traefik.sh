@@ -419,7 +419,10 @@ build_traefik_labels_fallback() {
     echo "--label traefik.http.routers.${router_name}.entrypoints=web"
   fi
   echo "--label $service_port"
-  if [[ -n "$network_name" ]]; then
+  # traefik.docker.network is opt-in via TRAEFIK_DOCKER_NETWORK_LABEL=true.
+  # Off by default because it breaks Podman's Docker socket emulation.
+  # Enable only on native Docker with multi-network containers.
+  if [[ "${TRAEFIK_DOCKER_NETWORK_LABEL:-false}" == "true" && -n "$network_name" ]]; then
     echo "--label traefik.docker.network=${network_name}"
   fi
 

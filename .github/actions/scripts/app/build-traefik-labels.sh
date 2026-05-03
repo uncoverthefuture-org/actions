@@ -119,12 +119,17 @@ if [[ "$ENABLE_ACME" == "true" ]]; then
     "--label" "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=${RESOLVER_NAME}"
 fi
 
-# HTTP redirect router (only when ACME/TLS is enabled)
+# HTTP redirect router (only when ACME/TLS is enabled).
+# NOTE: Do NOT add a .service= label on this router — it is a redirect-only
+# router. Its sole job is to fire the redirectscheme middleware. Adding a
+# .service= causes Traefik to also try to resolve a backend on the web
+# entrypoint, which produces 502 errors when the container is not directly
+# reachable on port 80 from Traefik.
 if [[ "$ENABLE_ACME" == "true" ]]; then
   printf '%s\n' \
     "--label" "traefik.http.routers.${ROUTER_NAME}-http.rule=${HOST_RULE_EXPR}" \
     "--label" "traefik.http.routers.${ROUTER_NAME}-http.entrypoints=web" \
-    "--label" "traefik.http.routers.${ROUTER_NAME}-http.service=${ROUTER_NAME}" \
     "--label" "traefik.http.middlewares.${ROUTER_NAME}-https-redirect.redirectscheme.scheme=https" \
+    "--label" "traefik.http.middlewares.${ROUTER_NAME}-https-redirect.redirectscheme.permanent=true" \
     "--label" "traefik.http.routers.${ROUTER_NAME}-http.middlewares=${ROUTER_NAME}-https-redirect"
 fi

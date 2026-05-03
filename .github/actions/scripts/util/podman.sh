@@ -5,7 +5,16 @@
 
 # Requires: validate_port_number, port_in_use, find_available_port
 
-# Resolve container port from input, Traefik label, or env fallback
+# Resolve container port from input, Traefik label, or env fallback.
+# Resolution order:
+#   1. CONTAINER_PORT_IN (explicit workflow input) — always wins
+#   2. Traefik label on the existing container (reuse on redeploy)
+#   3. WEB_CONTAINER_PORT / TARGET_PORT / PORT env vars
+#   4. Hard default: 8080
+#
+# IMPORTANT: This default (8080) suits backend APIs. If you are deploying
+# a web server container (nginx, Apache, static site) that listens on
+# port 80, set container_port: 80 explicitly in your workflow params_json.
 podman_resolve_container_port() {
   local in_port="$1" traefik_enabled="$2" router_name="$3" container_name="$4" debug="${5:-false}"
   local port="$in_port"

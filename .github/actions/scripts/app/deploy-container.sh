@@ -317,7 +317,7 @@ fi
 INCLUDE_WWW_ALIAS_EFF="${INCLUDE_WWW_ALIAS:-false}"
 if [[ -z "${DOMAIN_HOSTS:-}" ]]; then
   dom_lower="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')"
-  IFS='.' read -r -a parts <<<"$dom_lower"; count=${#parts[@]}
+  IFS='.' read -r -a parts <<< "$dom_lower"; count=${#parts[@]}
   if (( count >= 2 )); then
     apex="${parts[count-2]}.${parts[count-1]}"
     if [[ "$dom_lower" = "$apex" ]]; then
@@ -363,7 +363,12 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
       fi
     fi
     LABEL_ARGS+=("${BUILT_LABELS[@]}")
-    if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
+    # traefik.docker.network tells Traefik which network IP to use for the
+    # backend when a container is on multiple networks. With Podman's Docker
+    # socket emulation this label causes bad backend IP resolution -> 502.
+    # It is therefore opt-in: set TRAEFIK_DOCKER_NETWORK_LABEL=true in your
+    # workflow only if you are on native Docker with multi-network containers.
+    if [[ "${TRAEFIK_DOCKER_NETWORK_LABEL:-false}" == "true" && -n "$TRAEFIK_NETWORK_NAME" ]]; then
       LABEL_ARGS+=(--label "traefik.docker.network=${TRAEFIK_NETWORK_NAME}")
     fi
   else
