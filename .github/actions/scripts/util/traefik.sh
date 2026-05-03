@@ -419,9 +419,7 @@ build_traefik_labels_fallback() {
     echo "--label traefik.http.routers.${router_name}.entrypoints=web"
   fi
   echo "--label $service_port"
-  if [[ -n "$network_name" ]]; then
-    echo "--label traefik.docker.network=${network_name}"
-  fi
+  # NOTE: traefik.docker.network is intentionally omitted (see deploy-container.sh)
 
   # Optional HTTP redirect when TLS enabled
   if [[ "${enable_acme,,}" == "true" ]]; then

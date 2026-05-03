@@ -363,9 +363,11 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
       fi
     fi
     LABEL_ARGS+=("${BUILT_LABELS[@]}")
-    if [[ -n "$TRAEFIK_NETWORK_NAME" ]]; then
-      LABEL_ARGS+=(--label "traefik.docker.network=${TRAEFIK_NETWORK_NAME}")
-    fi
+    # NOTE: traefik.docker.network is intentionally omitted. With Podman's
+    # Docker socket emulation, this label causes Traefik to resolve the
+    # container IP via a network path that is unreachable, producing 502.
+    # The container is already attached to traefik-network via --network,
+    # so Traefik discovers it correctly without this hint.
   else
     # Fallback path: build labels via shared helper for consistency
     mapfile -t FALLBACK_LABELS < <(build_traefik_labels_fallback "$ROUTER_NAME" "$DOMAIN" "$CONTAINER_PORT" "${TRAEFIK_ENABLE_ACME_EFF}" "${DOMAIN_HOSTS:-}" "${DOMAIN_ALIASES:-${ALIASES:-}}" "$INCLUDE_WWW_ALIAS_EFF" "${TRAEFIK_NETWORK_NAME:-}")
