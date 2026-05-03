@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.1](https://github.com/uncoverthefuture-org/actions/compare/v1.6.0...v1.6.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **compat:** make changes backward-safe for open-source users ([9341a02](https://github.com/uncoverthefuture-org/actions/commit/9341a0207a0d57f775c76991489e0425b5483749))
+* **traefik:** default container port to 80 when Traefik is enabled ([d20a054](https://github.com/uncoverthefuture-org/actions/commit/d20a05455be1cfdd386be932000901f86a3a5c2f))
+* **traefik:** remove .service from HTTP redirect router, add permanent redirect ([bcb646a](https://github.com/uncoverthefuture-org/actions/commit/bcb646a817459fc9aa795bf3caa49b4851fa1eae))
+* **traefik:** remove traefik.docker.network label (causes 502 with Podman) ([e36804e](https://github.com/uncoverthefuture-org/actions/commit/e36804e39521cc73b4d9156ecb1985046b29e836))
+* **traefik:** resolve 502 Bad Gateway and optimize Podman labels ([e994a7b](https://github.com/uncoverthefuture-org/actions/commit/e994a7b6867f5b0ab2af177155f0f6afeb50ca74))
+
+
+### Reverts
+
+* restore auto www-alias detection for apex domains ([2027d29](https://github.com/uncoverthefuture-org/actions/commit/2027d29d98dddb4f86e139eec4db6e880cb0662e))
+
 ## [1.6.0](https://github.com/uncoverthefuture-org/actions/compare/v1.5.1...v1.6.0) (2026-04-23)
 
 
