@@ -98,8 +98,8 @@ if command -v podman >/dev/null 2>&1; then
 fi
 
 if command -v systemctl >/dev/null 2>&1; then
-  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user stop traefik.service  >/dev/null 2>&1 || true
-  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable traefik.service >/dev/null 2>&1 || true
+  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user stop traefik.service http.socket https.socket >/dev/null 2>&1 || true
+  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable traefik.service http.socket https.socket >/dev/null 2>&1 || true
   if XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl is-active --quiet traefik.service 2>/dev/null; then
     echo "::warning::A system-level traefik.service is active; it may conflict with rootless Quadlet Traefik on ports 80/443. Consider disabling the system service or migrating fully to Quadlet." >&2
   fi
