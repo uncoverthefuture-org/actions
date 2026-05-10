@@ -90,6 +90,14 @@ inputs: # All parameters accepted by this action
     description: "Podman network to connect service containers to when Traefik is enabled (default: traefik-network)."
     required: false
     default: "traefik-network"
+  http_port:
+    description: "Host port Traefik binds for HTTP traffic (default: 80). Use a non-standard port (e.g. 8080) when another service like Apache already owns port 80."
+    required: false
+    default: "80"
+  https_port:
+    description: "Host port Traefik binds for HTTPS traffic (default: 443). Use a non-standard port (e.g. 8443) when another service like Apache already owns port 443."
+    required: false
+    default: "443"
   traefik_use_host_network:
     description: "Run Traefik on host network to avoid CNI DNS issues (true recommended)."
     required: false
@@ -621,6 +629,10 @@ runs: # Composite action implementation
           export DOMAIN_ALIASES='${{ inputs.domain_aliases }}'
           export INCLUDE_WWW_ALIAS='${{ inputs.include_www_alias }}'
           export DOMAIN_HOSTS='${{ inputs.domain_hosts }}'
+          # Custom Traefik listener ports (default 80/443; override when another
+          # service like Apache already occupies the standard ports).
+          export TRAEFIK_HTTP_PORT='${{ inputs.http_port }}'
+          export TRAEFIK_HTTPS_PORT='${{ inputs.https_port }}'
 
           # Debug & diagnostics toggles
           export DEBUG='${{ inputs.debug }}'

@@ -258,20 +258,22 @@ post() {
 
   # First, attempt a strict TLS request without -k to catch cert errors early
   if [ "${CERT_VALIDATE:-true}" = "true" ]; then
-    if ! curl -fsS -o /dev/null --max-time "$timeout" "https://$domain$path" 2>/dev/null; then
-      notice "TLS validation failed for https://$domain$path (certificate not trusted yet)."
+    local https_url="https://$domain:${TRAEFIK_HTTPS_PORT:-443}$path"
+    if [ "${TRAEFIK_HTTPS_PORT:-443}" = "443" ]; then https_url="https://$domain$path"; fi
+    if ! curl -fsS -o /dev/null --max-time "$timeout" "$https_url" 2>/dev/null; then
+      notice "TLS validation failed for $https_url (certificate not trusted yet)."
       notice "Hints: ensure TRAEFIK_ENABLE_ACME=true and TRAEFIK_EMAIL is set; include both apex and www hosts; wait up to a minute for issuance."
       emit_repair_suggestion "tls_fail"
     else
-      notice "TLS validation OK for https://$domain$path"
+      notice "TLS validation OK for $https_url"
     fi
   fi
 
   if command -v openssl >/dev/null 2>&1; then
-    notice "Inspecting TLS certificate for $domain:443 ..."
+    notice "Inspecting TLS certificate for $domain:${TRAEFIK_HTTPS_PORT:-443} ..."
     local t_cmd=""
     if command -v timeout >/dev/null 2>&1; then t_cmd="timeout $timeout "; fi
-    cert_info=$(echo | $t_cmd openssl s_client -connect "$domain:443" -servername "$domain" 2>/dev/null | openssl x509 -noout -issuer -subject -dates 2>/dev/null || true)
+    cert_info=$(echo | $t_cmd openssl s_client -connect "$domain:${TRAEFIK_HTTPS_PORT:-443}" -servername "$domain" 2>/dev/null | openssl x509 -noout -issuer -subject -dates 2>/dev/null || true)
     if [ -n "$cert_info" ]; then
       issuer=$(printf '%s\n' "$cert_info" | sed -n 's/^issuer=//p' | head -n1)
       subject=$(printf '%s\n' "$cert_info" | sed -n 's/^subject=//p' | head -n1)
@@ -297,9 +299,11 @@ post() {
     notice "TLS inspection: openssl not available on host; skipping certificate inspection."
   fi
 
-  notice "Probing https://$domain$path via Traefik (up to $tries tries) ..."
+  local https_url="https://$domain:${TRAEFIK_HTTPS_PORT:-443}$path"
+  if [ "${TRAEFIK_HTTPS_PORT:-443}" = "443" ]; then https_url="https://$domain$path"; fi
+  notice "Probing $https_url via Traefik (up to $tries tries) ..."
   while [ $i -le $tries ]; do
-    code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time "$timeout" "https://$domain$path" || echo "000")
+    code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time "$timeout" "$https_url" || echo "000")
     if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
       log "✅ Domain probe succeeded (HTTPS, HTTP $code)"
       return 0
@@ -312,9 +316,11 @@ post() {
   # Optional HTTP fallback (useful when ACME/TLS is not yet provisioned or disabled)
   if [ "${PROBE_HTTP_FALLBACK,,}" = "true" ]; then
     i=1; code=""
-    notice "HTTPS probe failed; trying HTTP fallback to http://$domain$path (up to $tries tries) ..."
+    local http_url="http://$domain:${TRAEFIK_HTTP_PORT:-80}$path"
+    if [ "${TRAEFIK_HTTP_PORT:-80}" = "80" ]; then http_url="http://$domain$path"; fi
+    notice "HTTPS probe failed; trying HTTP fallback to $http_url (up to $tries tries) ..."
     while [ $i -le $tries ]; do
-      code=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time "$timeout" "http://$domain$path" || echo "000")
+      code=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time "$timeout" "$http_url" || echo "000")
       if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
         log "✅ Domain probe succeeded (HTTP, HTTP $code)"
         return 0
@@ -336,7 +342,7 @@ post() {
   err "Domain probe failed after $tries attempts (last HTTP $code)"
   emit_repair_suggestion "$cause"
   notice "--- Probe Summary ---"
-  notice "URL: https://$domain$path"
+  notice "URL: $https_url (fallback: ${http_url:-none})"
   notice "Tries: $tries, Delay: ${delay}s, Last code: $code"
   if [ -n "$router" ]; then
     notice "Router: $router (declared service port: $port)"

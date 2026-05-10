@@ -310,8 +310,8 @@ else
     echo "🔎 Remote Traefik confighash: ${EXIST_HASH:-missing} (status: ${STATUS})"
     if [[ "$EXIST_HASH" = "$CONFIG_HASH" ]]; then
       if [[ "$STATUS" = "running" ]]; then
-        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
-           ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
+        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTP_PORT}\$" && \
+           ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTPS_PORT}\$"; then
           echo "✅ Traefik already running and up-to-date (confighash match); skipping restart."
           ensure_traefik_systemd_user_service
           exit 0
@@ -335,8 +335,8 @@ else
       else
         echo "::notice::Traefik container exists but status='${STATUS}'; attempting start ..."
         podman start traefik >/dev/null 2>&1 || true
-        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
-           ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
+        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTP_PORT}\$" && \
+           ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTPS_PORT}\$"; then
           echo "✅ Traefik started and listeners present; skipping recreate."
           ensure_traefik_systemd_user_service
           exit 0
@@ -655,14 +655,14 @@ if ! out=$("${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}" 2>&1); then
       echo "⏳ Waiting for Traefik listeners on ports 80/443 (rootful) ..."
       ok=false
       for i in {1..10}; do
-        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$' && \
-           ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then
+        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTP_PORT}\$" && \
+           ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTPS_PORT}\$"; then
           ok=true; break
         fi
         sleep 2
       done
       if ! $ok; then
-        echo "::error::Rootful Traefik did not open ports 80/443 after start." >&2
+        echo "::error::Rootful Traefik did not open ports ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT} after start." >&2
         sudo podman logs --tail=120 traefik 2>/dev/null || true
         exit 1
       fi
@@ -699,7 +699,7 @@ for i in {1..10}; do
   sleep 2
 done
 if ! $ok; then
-  echo "::error::Traefik did not open ports 80/443 after start."
+  echo "::error::Traefik did not open ports ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT} after start."
   podman logs --tail=120 traefik 2>/dev/null || true
   exit 1
 fi

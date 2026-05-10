@@ -312,6 +312,8 @@ export TRAEFIK_METRICS_ADDRESS
 export TRAEFIK_ACME_DNS_PROVIDER
 export TRAEFIK_ACME_DNS_RESOLVERS
 export TRAEFIK_DNS_SERVERS
+export TRAEFIK_HTTP_PORT
+export TRAEFIK_HTTPS_PORT
 echo "================================================================"
 
 
@@ -329,7 +331,7 @@ if [[ ! " $UFW_PORTS " =~ [[:space:]]${SSH_PORT_EFF}([[:space:]]|$) ]]; then
 fi
 
 if [ "${TRAEFIK_ENABLED:-false}" = "true" ]; then
-  for p in 80 443; do
+  for p in "${TRAEFIK_HTTP_PORT:-80}" "${TRAEFIK_HTTPS_PORT:-443}"; do
     if [[ ! " $UFW_PORTS " =~ [[:space:]]${p}([[:space:]]|$) ]]; then
       UFW_PORTS="$UFW_PORTS $p"
     fi
@@ -353,7 +355,7 @@ if [ -x "$HOME/uactions/scripts/infra/configure-ufw.sh" ]; then
   export SSH_PORT
   export UFW_ALLOW_PORTS="$UFW_PORTS"
   export ENABLE_PODMAN_FORWARD="${TRAEFIK_ENABLED:-false}"
-  export ROUTE_PORTS='80 443'
+  export ROUTE_PORTS="${TRAEFIK_HTTP_PORT:-80} ${TRAEFIK_HTTPS_PORT:-443}"
   export SET_FORWARD_POLICY_ACCEPT='true'
   export WAN_IFACE=''
   export PODMAN_IFACE=''

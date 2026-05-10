@@ -233,7 +233,7 @@ echo "================================================================"
 echo "🔍 Traefik preflight"
 echo "================================================================"
 if probe_preflight; then
-  echo "✅ Traefik preflight OK (listeners on 80/443)"
+  echo "✅ Traefik preflight OK (listeners on ${TRAEFIK_HTTP_PORT:-80}/${TRAEFIK_HTTPS_PORT:-443})"
   if [ "$TRAEFIK_MODE" != "quadlet" ]; then
     # Container-managed path: reconcile configuration even when healthy;
     # setup-traefik.sh performs a fast path when confighash matches and avoids
@@ -341,7 +341,7 @@ if probe_preflight; then
   exit 0
 fi
 
-err "Traefik reconciliation failed; listeners on 80/443 not healthy after setup"
+err "Traefik reconciliation failed; listeners on ${TRAEFIK_HTTP_PORT:-80}/${TRAEFIK_HTTPS_PORT:-443} not healthy after setup"
 if command -v podman >/dev/null 2>&1; then
   podman ps --filter name=traefik || true
   podman logs --tail=120 traefik 2>/dev/null || true

@@ -31,6 +31,8 @@ TRAEFIK_ENABLE_ACME="${TRAEFIK_ENABLE_ACME:-true}"
 TRAEFIK_EMAIL="${TRAEFIK_EMAIL:-}"
 TRAEFIK_NETWORK_NAME="${TRAEFIK_NETWORK_NAME:-traefik-network}"
 QUADLET_ENABLE_HTTP3="${QUADLET_ENABLE_HTTP3:-false}"
+TRAEFIK_HTTP_PORT="${TRAEFIK_HTTP_PORT:-80}"
+TRAEFIK_HTTPS_PORT="${TRAEFIK_HTTPS_PORT:-443}"
 
 # Decide which host resolv.conf to reuse inside the Quadlet-managed Traefik
 # container so that ACME DNS lookups (for example, acme-v02.api.letsencrypt.org)
@@ -122,12 +124,12 @@ EOF
 
 # http.socket (port 80)
 HTTP_SOCKET_PATH="${USER_SYSTEMD_DIR}/http.socket"
-cat >"$HTTP_SOCKET_PATH" <<'EOF'
+cat >"$HTTP_SOCKET_PATH" <<EOF
 [Unit]
-Description=Traefik HTTP socket (port 80)
+Description=Traefik HTTP socket (port ${TRAEFIK_HTTP_PORT})
 
 [Socket]
-ListenStream=80
+ListenStream=${TRAEFIK_HTTP_PORT}
 FileDescriptorName=web
 Service=traefik.service
 Accept=no
@@ -139,17 +141,17 @@ EOF
 # https.socket (port 443)
 HTTPS_SOCKET_PATH="${USER_SYSTEMD_DIR}/https.socket"
 {
-  cat <<'EOF'
+  cat <<EOF
 [Unit]
-Description=Traefik HTTPS socket (port 443)
+Description=Traefik HTTPS socket (port ${TRAEFIK_HTTPS_PORT})
 
 [Socket]
-ListenStream=443
+ListenStream=${TRAEFIK_HTTPS_PORT}
 EOF
   if [[ "${QUADLET_ENABLE_HTTP3}" == "true" ]]; then
-    echo "ListenDatagram=443"  # enable HTTP/3 (QUIC)
+    echo "ListenDatagram=${TRAEFIK_HTTPS_PORT}"  # enable HTTP/3 (QUIC)
   fi
-  cat <<'EOF'
+  cat <<EOF
 FileDescriptorName=websecure
 Service=traefik.service
 Accept=no
@@ -310,7 +312,7 @@ ls -1 "${QUADLET_DIR}" | sed 's/^/  - /'
 
 # Quick probe (best-effort)
 sleep 1
-if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$'; then echo "Port 80 socket active"; else echo "::warning::Port 80 socket not visible yet"; fi
-if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)443$'; then echo "Port 443 socket active"; else echo "::warning::Port 443 socket not visible yet"; fi
+if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTP_PORT}\$"; then echo "Port ${TRAEFIK_HTTP_PORT} socket active"; else echo "::warning::Port ${TRAEFIK_HTTP_PORT} socket not visible yet"; fi
+if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTPS_PORT}\$"; then echo "Port ${TRAEFIK_HTTPS_PORT} socket active"; else echo "::warning::Port ${TRAEFIK_HTTPS_PORT} socket not visible yet"; fi
 
 exit 0
