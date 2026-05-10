@@ -171,12 +171,12 @@ check_local_reachability() {
       # Use -sS (not -f) and ignore curl's exit code so that HTTP 4xx responses
       # still produce a valid status code (e.g. 404) without appending extra
       # digits like "404000". Any 2xx-4xx result is treated as reachable.
-      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "http://127.0.0.1/ping" || true)
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "http://127.0.0.1:${TRAEFIK_HTTP_PORT:-80}/ping" || true)
       if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
-        notice "Traefik ping reachable on http://127.0.0.1/ping (HTTP $code)"
+        notice "Traefik ping reachable on http://127.0.0.1:${TRAEFIK_HTTP_PORT:-80}/ping (HTTP $code)"
         PING_REACHABILITY="ok"
       else
-        notice "Traefik ping not reachable on http://127.0.0.1/ping (HTTP $code)"
+        notice "Traefik ping not reachable on http://127.0.0.1:${TRAEFIK_HTTP_PORT:-80}/ping (HTTP $code)"
         PING_REACHABILITY="fail:$code"
       fi
     fi
@@ -210,10 +210,10 @@ check_ip_reachability() {
     return 0
   fi
   if command -v curl >/dev/null 2>&1; then
-    code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "http://$ip/" || echo "000")
-    notice "Host IP HTTP probe ($ip): HTTP $code"
-    code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "https://$ip/" || echo "000")
-    notice "Host IP HTTPS probe ($ip): HTTP $code"
+    code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "http://$ip:${TRAEFIK_HTTP_PORT:-80}/" || echo "000")
+    notice "Host IP HTTP probe ($ip:${TRAEFIK_HTTP_PORT:-80}): HTTP $code"
+    code=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time "${PROBE_TIMEOUT:-6}" "https://$ip:${TRAEFIK_HTTPS_PORT:-443}/" || echo "000")
+    notice "Host IP HTTPS probe ($ip:${TRAEFIK_HTTPS_PORT:-443}): HTTP $code"
   fi
 }
 

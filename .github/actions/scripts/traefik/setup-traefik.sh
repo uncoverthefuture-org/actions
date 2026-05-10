@@ -353,16 +353,16 @@ fi
 echo "🔍 Checking for existing listeners on ports ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT} ..."
 CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk "/:(${TRAEFIK_HTTP_PORT}|${TRAEFIK_HTTPS_PORT}) / {print \$0}" || true)"
 if [[ -n "$CONFLICTING_SERVICES" ]]; then
-  echo "⚠️  Detected listeners on 80/443; attempting to stop existing 'traefik' container if running ..." >&2
+  echo "⚠️  Detected listeners on ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT}; attempting to stop existing 'traefik' container if running ..." >&2
   if podman container exists traefik >/dev/null 2>&1; then
     podman stop traefik >/dev/null 2>&1 || true
     podman rm traefik   >/dev/null 2>&1 || true
     echo "  ✓ Stopped and removed existing traefik container"
   fi
   # Re-check after attempting to stop existing Traefik
-  CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk '/:(80|443) / {print $0}' || true)"
+  CONFLICTING_SERVICES="$(ss -ltnp 2>/dev/null | awk "/:(${TRAEFIK_HTTP_PORT}|${TRAEFIK_HTTPS_PORT}) / {print \$0}" || true)"
   if [[ -n "$CONFLICTING_SERVICES" ]]; then
-    echo "❌ ERROR: Detected services still listening on 80/443:" >&2
+    echo "❌ ERROR: Detected services still listening on ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT}:" >&2
     printf '%s\n' "$CONFLICTING_SERVICES" >&2
     echo "   Traefik cannot start because these ports are occupied by another service (e.g. Apache, Nginx)." >&2
     echo "   To coexist with an existing web server, you must either:" >&2
@@ -371,7 +371,7 @@ if [[ -n "$CONFLICTING_SERVICES" ]]; then
     echo "     3. Disable Traefik in your deployment configuration." >&2
     exit 1
   else
-    echo "  ✓ Ports 80/443 are free after stopping existing traefik"
+    echo "  ✓ Ports ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT} are free after stopping existing traefik"
   fi
 fi
 
@@ -442,8 +442,13 @@ fi
 RUN_ARGS+=(-v "$HOME/.config/traefik/traefik.yml":/etc/traefik/traefik.yml:ro)
 RUN_ARGS+=(-v "$HOME/.local/share/traefik/acme.json":/letsencrypt/acme.json:Z)
 RUN_ARGS+=(-v "$HOST_SOCK":/var/run/docker.sock:Z)
-RUN_ARGS+=(-e "TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80")
-RUN_ARGS+=(-e "TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443")
+if [[ "$TRAEFIK_USE_HOST_NETWORK" == "true" ]]; then
+  RUN_ARGS+=(-e "TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:${TRAEFIK_HTTP_PORT}")
+  RUN_ARGS+=(-e "TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:${TRAEFIK_HTTPS_PORT}")
+else
+  RUN_ARGS+=(-e "TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80")
+  RUN_ARGS+=(-e "TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443")
+fi
 RUN_ARGS+=(--label org.uactions.managed-by=uactions --label "org.uactions.traefik.confighash=${CONFIG_HASH}")
 
 if [[ "$TRAEFIK_ENABLE_ACME" == "true" ]]; then
@@ -616,8 +621,8 @@ if ! out=$("${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}" 2>&1); then
       if $DASH_AUTH_ENABLED && [[ -n "$DASH_USERS_LOCAL_FILE" ]]; then
         RUN_ARGS_ROOT+=(-v "${DASH_USERS_LOCAL_FILE}:/etc/traefik/dashboard-users:Z")
       fi
-      RUN_ARGS_ROOT+=(-e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80)
-      RUN_ARGS_ROOT+=(-e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443)
+      RUN_ARGS_ROOT+=(-e TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:${TRAEFIK_HTTP_PORT})
+      RUN_ARGS_ROOT+=(-e TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:${TRAEFIK_HTTPS_PORT})
       RUN_ARGS_ROOT+=(--label org.uactions.managed-by=uactions --label "org.uactions.traefik.confighash=${CONFIG_HASH}")
       if [[ "$TRAEFIK_ENABLE_ACME" == "true" ]]; then
         RUN_ARGS_ROOT+=(
@@ -652,7 +657,7 @@ if ! out=$("${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}" 2>&1); then
         exit 1
       fi
       # Quick listener check; then exit early, skipping user-level systemd persistence
-      echo "⏳ Waiting for Traefik listeners on ports 80/443 (rootful) ..."
+      echo "⏳ Waiting for Traefik listeners on ports ${TRAEFIK_HTTP_PORT}/${TRAEFIK_HTTPS_PORT} (rootful) ..."
       ok=false
       for i in {1..10}; do
         if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${TRAEFIK_HTTP_PORT}\$" && \

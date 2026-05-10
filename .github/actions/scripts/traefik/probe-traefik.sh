@@ -79,10 +79,10 @@ emit_repair_suggestion() {
       echo "Alternatively, re-run deployment with: traefik_reset_acme: 'true'"
       ;;
     ufw_fail)
-      echo "External access to port 443 (HTTPS) appears to be blocked by a firewall."
+      echo "External access to port ${TRAEFIK_HTTPS_PORT:-443} (HTTPS) appears to be blocked by a firewall."
       echo "Run this to ensure UFW allows HTTPS traffic:"
       echo ""
-      echo "  sudo ufw allow 443/tcp"
+      echo "  sudo ufw allow ${TRAEFIK_HTTPS_PORT:-443}/tcp"
       echo "  sudo ufw reload"
       ;;
     *)
