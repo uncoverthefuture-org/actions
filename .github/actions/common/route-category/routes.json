@@ -28,6 +28,7 @@
   ],
   "app": [
     "ssh-container-deploy",
+    "ssh-compose-deploy",
     "doctl-container-deploy",
     "aws-ssm-container-deploy",
     "write-remote-env-file",

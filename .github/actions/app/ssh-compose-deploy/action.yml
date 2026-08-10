@@ -1,0 +1,297 @@
+name: "SSH Compose Deploy"
+description: "Deploy an app on a remote host via podman compose with optional env-file write and host-file preflight checks."
+
+inputs:
+  ssh_host:
+    description: "SSH host (IP or DNS) of the remote server."
+    required: true
+  ssh_user:
+    description: "SSH username for remote execution."
+    required: true
+  ssh_key:
+    description: "Private SSH key for ssh_user."
+    required: true
+  root_ssh_key:
+    description: "Optional private key for root for privileged operations."
+    required: false
+  ssh_port:
+    description: "SSH port on remote host."
+    required: false
+    default: "22"
+  ssh_fingerprint:
+    description: "Optional host key fingerprint for trust pinning."
+    required: false
+  connect_mode:
+    description: "How to connect: auto, root, or user."
+    required: false
+    default: "user"
+
+  app_slug:
+    description: "Application slug used to resolve default remote paths."
+    required: false
+  env_name:
+    description: "Environment name (production, staging, development)."
+    required: false
+    default: "development"
+  env_file_path:
+    description: "Base directory for environment files. Final path resolves as <base>/<env>/<app_slug>/.env."
+    required: false
+    default: "~/deployments"
+  deployment_base_dir:
+    description: "Base deployment directory used to resolve default compose project dir."
+    required: false
+    default: "~/deployments"
+
+  write_env_file:
+    description: "When true and env payload exists, writes .env file to the remote host before deploy."
+    required: false
+    default: "true"
+  env_b64:
+    description: "Base64-encoded .env payload."
+    required: false
+  env_content:
+    description: "Raw .env payload."
+    required: false
+
+  compose_project_dir:
+    description: "Remote compose project directory. If empty, defaults to <deployment_base_dir>/<env>/<app_slug>."
+    required: false
+    default: ""
+  compose_file_path:
+    description: "Compose file path. Absolute path or path relative to compose_project_dir."
+    required: false
+    default: "docker-compose.yml"
+  compose_env_file_path:
+    description: "Compose env file path. Absolute path or path relative to compose_project_dir. Defaults to <project_dir>/.env."
+    required: false
+    default: ""
+  compose_pull:
+    description: "When true (default), run compose pull before compose up."
+    required: false
+    default: "true"
+  compose_up_args:
+    description: "Additional args appended to compose up command."
+    required: false
+    default: ""
+
+  required_host_files:
+    description: "Newline-separated list of absolute host file paths that must exist before deploy."
+    required: false
+    default: ""
+
+  registry:
+    description: "Container registry hostname used for optional podman login."
+    required: false
+    default: "ghcr.io"
+  registry_username:
+    description: "Registry username for optional podman login."
+    required: false
+  registry_token:
+    description: "Registry token/password for optional podman login."
+    required: false
+  registry_login:
+    description: "When true (default), attempt podman login when credentials are provided."
+    required: false
+    default: "true"
+
+  image_tag:
+    description: "Optional image tag exported as IMAGE_TAG for compose interpolation."
+    required: false
+  version:
+    description: "Optional version exported as IMAGE_TAG (overrides image_tag)."
+    required: false
+  debug:
+    description: "Enable verbose logs."
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Ensure bundled actions
+      uses: ./.github/actions/common/ensure-bundled-actions
+
+    - name: Validate compose deploy inputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -z "${{ inputs.ssh_host }}" ]; then
+          echo '::error::ssh_host is required'
+          exit 1
+        fi
+        if [ -z "${{ inputs.ssh_user }}" ]; then
+          echo '::error::ssh_user is required'
+          exit 1
+        fi
+        if [ -z "${{ inputs.ssh_key }}" ]; then
+          echo '::error::ssh_key is required'
+          exit 1
+        fi
+        if [ -z "${{ inputs.app_slug }}" ]; then
+          echo '::error::app_slug is required for ssh-compose-deploy'
+          exit 1
+        fi
+
+    - name: Write remote environment file
+      if: ${{ inputs.write_env_file == 'true' && (inputs.env_b64 != '' || inputs.env_content != '') }}
+      uses: ./.github/actions/app/write-remote-env-file
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name }}
+        env_file_path: ${{ inputs.env_file_path }}
+        app_slug: ${{ inputs.app_slug }}
+        env_b64: ${{ inputs.env_b64 }}
+        env_content: ${{ inputs.env_content }}
+
+    - name: Deploy via remote compose
+      uses: ./.github/actions/podman/remote-podman-exec
+      with:
+        ssh_host: ${{ inputs.ssh_host }}
+        ssh_user: ${{ inputs.ssh_user }}
+        ssh_key: ${{ inputs.ssh_key }}
+        root_ssh_key: ${{ inputs.root_ssh_key }}
+        ssh_port: ${{ inputs.ssh_port }}
+        ssh_fingerprint: ${{ inputs.ssh_fingerprint }}
+        connect_mode: ${{ inputs.connect_mode }}
+        env_name: ${{ inputs.env_name }}
+        env_file_path: ${{ inputs.env_file_path }}
+        app_slug: ${{ inputs.app_slug }}
+        source_env: 'false'
+        fail_if_env_missing: 'false'
+        debug: ${{ inputs.debug }}
+        inline_script: |
+          set -euo pipefail
+
+          normalize_home_path() {
+            local p="$1"
+            if [ -z "$p" ]; then
+              echo ""
+              return
+            fi
+            case "$p" in
+              "~/"*) printf '%s/%s\n' "$HOME" "${p#~/}" ;;
+              "/home/runner/"*) printf '%s/%s\n' "$HOME" "${p#/home/runner/}" ;;
+              *) printf '%s\n' "$p" ;;
+            esac
+          }
+
+          APP_SLUG='${{ inputs.app_slug }}'
+          ENV_NAME='${{ inputs.env_name }}'
+
+          DEPLOYMENT_BASE='${{ inputs.deployment_base_dir }}'
+          DEPLOYMENT_BASE="$(normalize_home_path "$DEPLOYMENT_BASE")"
+          if [ -z "$DEPLOYMENT_BASE" ]; then
+            DEPLOYMENT_BASE="$HOME/deployments"
+          fi
+          DEPLOYMENT_BASE="${DEPLOYMENT_BASE%/}"
+
+          PROJECT_DIR='${{ inputs.compose_project_dir }}'
+          PROJECT_DIR="$(normalize_home_path "$PROJECT_DIR")"
+          if [ -z "$PROJECT_DIR" ]; then
+            PROJECT_DIR="${DEPLOYMENT_BASE}/${ENV_NAME}/${APP_SLUG}"
+          elif [ "${PROJECT_DIR#/}" = "$PROJECT_DIR" ]; then
+            PROJECT_DIR="${DEPLOYMENT_BASE}/${ENV_NAME}/${APP_SLUG}/${PROJECT_DIR}"
+          fi
+          PROJECT_DIR="${PROJECT_DIR%/}"
+
+          COMPOSE_FILE_INPUT='${{ inputs.compose_file_path }}'
+          COMPOSE_FILE_INPUT="$(normalize_home_path "$COMPOSE_FILE_INPUT")"
+          if [ -z "$COMPOSE_FILE_INPUT" ]; then
+            COMPOSE_FILE_INPUT='docker-compose.yml'
+          fi
+          if [ "${COMPOSE_FILE_INPUT#/}" = "$COMPOSE_FILE_INPUT" ]; then
+            COMPOSE_FILE="${PROJECT_DIR}/${COMPOSE_FILE_INPUT}"
+          else
+            COMPOSE_FILE="$COMPOSE_FILE_INPUT"
+          fi
+
+          ENV_FILE_INPUT='${{ inputs.compose_env_file_path }}'
+          ENV_FILE_INPUT="$(normalize_home_path "$ENV_FILE_INPUT")"
+          if [ -z "$ENV_FILE_INPUT" ]; then
+            ENV_FILE="${PROJECT_DIR}/.env"
+          elif [ "${ENV_FILE_INPUT#/}" = "$ENV_FILE_INPUT" ]; then
+            ENV_FILE="${PROJECT_DIR}/${ENV_FILE_INPUT}"
+          else
+            ENV_FILE="$ENV_FILE_INPUT"
+          fi
+
+          if [ ! -d "$PROJECT_DIR" ]; then
+            echo "::error::Compose project directory not found: $PROJECT_DIR" >&2
+            exit 1
+          fi
+          if [ ! -f "$COMPOSE_FILE" ]; then
+            echo "::error::Compose file not found: $COMPOSE_FILE" >&2
+            exit 1
+          fi
+          if [ ! -f "$ENV_FILE" ]; then
+            echo "::error::Compose env file not found: $ENV_FILE" >&2
+            exit 1
+          fi
+
+          REQUIRED_FILES='${{ inputs.required_host_files }}'
+          if [ -n "${REQUIRED_FILES//[[:space:]]/}" ]; then
+            while IFS= read -r raw_path || [[ -n "$raw_path" ]]; do
+              check_path="$raw_path"
+              check_path="${check_path%$'\r'}"
+              check_path="${check_path#"${check_path%%[![:space:]]*}"}"
+              check_path="${check_path%"${check_path##*[![:space:]]}"}"
+              [ -z "$check_path" ] && continue
+              case "$check_path" in
+                \#*) continue ;;
+              esac
+              if [ "${check_path#/}" = "$check_path" ]; then
+                echo "::error::required_host_files must use absolute paths. Invalid entry: $check_path" >&2
+                exit 1
+              fi
+              if [ ! -f "$check_path" ]; then
+                echo "::error::Missing required host file: $check_path" >&2
+                exit 1
+              fi
+            done <<< "$REQUIRED_FILES"
+          fi
+
+          if [ '${{ inputs.registry_login }}' = 'true' ]; then
+            if [ -n '${{ inputs.registry_username }}' ] && [ -n '${{ inputs.registry_token }}' ]; then
+              printf '%s' '${{ inputs.registry_token }}' | podman login '${{ inputs.registry }}' -u '${{ inputs.registry_username }}' --password-stdin
+            fi
+          fi
+
+          compose_exec() {
+            if podman compose version >/dev/null 2>&1; then
+              podman compose "$@"
+            elif command -v podman-compose >/dev/null 2>&1; then
+              podman-compose "$@"
+            else
+              echo '::error::Neither podman compose nor podman-compose is available on the remote host.' >&2
+              return 127
+            fi
+          }
+
+          IMAGE_TAG='${{ inputs.version != '' && inputs.version || inputs.image_tag }}'
+          if [ -n "$IMAGE_TAG" ]; then
+            export IMAGE_TAG
+          fi
+          export APP_ENV="$ENV_NAME"
+          export APP_DIR="$PROJECT_DIR"
+
+          COMPOSE_ARGS=(--env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+
+          if [ '${{ inputs.compose_pull }}' = 'true' ]; then
+            compose_exec "${COMPOSE_ARGS[@]}" pull
+          fi
+
+          UP_ARGS_INPUT='${{ inputs.compose_up_args }}'
+          if [ -n "$UP_ARGS_INPUT" ]; then
+            # shellcheck disable=SC2206
+            UP_ARGS=( $UP_ARGS_INPUT )
+          else
+            UP_ARGS=()
+          fi
+
+          compose_exec "${COMPOSE_ARGS[@]}" up -d --remove-orphans "${UP_ARGS[@]}"

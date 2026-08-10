@@ -87,3 +87,28 @@ jobs:
               "container_port": "8000",
               "debug": "true"
             }
+
+      # ====================================================================
+      # OPTIONAL: Compose-native deployment (recommended when your repo is
+      # the source of truth for mounts, services, and runtime config).
+      # ====================================================================
+      # - name: Deploy Compose Project
+      #   if: ${{ success() }}
+      #   uses: uncoverthefuture-org/actions@master
+      #   with:
+      #     subaction: ssh-compose-deploy
+      #     secrets_json: ${{ toJSON(secrets) }}
+      #     params_json: |
+      #       {
+      #         "ssh_host": "${{ secrets.SERVER_IP }}",
+      #         "ssh_user": "${{ secrets.SSH_USERNAME }}",
+      #         "ssh_key": "${{ secrets.SSH_PRIVATE_KEY }}",
+      #         "app_slug": "shako-laravel-api",
+      #         "env_name": "development",
+      #         "compose_project_dir": "~/deployments/development/shako-laravel-api",
+      #         "compose_file_path": "docker-compose.yml",
+      #         "compose_env_file_path": ".env",
+      #         "required_host_files": "/opt/secrets/firebase-service-account.json",
+      #         "compose_pull": "true",
+      #         "debug": "true"
+      #       }

@@ -45,7 +45,7 @@ runs:
       run: |
         set -euo pipefail
         case "$SUBACTION" in
-          ssh-container-deploy|write-remote-env-file)
+          ssh-container-deploy|ssh-compose-deploy|write-remote-env-file)
             if [ -z "$SSH_HOST" ]; then
               echo '::error::ssh_host is required for app deployment subactions'
               echo 'Error: ssh_host is required for app deployment subactions' >&2

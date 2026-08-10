@@ -1,6 +1,7 @@
 import introDoc from "./intro.md?raw";
 import buildDoc from "./build_and_push.md?raw";
 import deployDoc from "./ssh_container_deploy.md?raw";
+import composeDeployDoc from "./ssh_compose_deploy.md?raw";
 
 export const UI_CONFIG = {
   sidebarFrameUrl: "frames/sidebar",
@@ -35,6 +36,10 @@ export const navItems: NavItem[] = [
                 label: "SSH Container Deploy",
                 route: "/actions/ssh-container-deploy",
             },
+            {
+                label: "SSH Compose Deploy",
+                route: "/actions/ssh-compose-deploy",
+            },
         ],
     },
 ];
@@ -43,10 +48,12 @@ export const titleMap: Record<string, string> = {
     "/": "Uncover Actions",
     "/actions/build-and-push": "Build & Push Action",
     "/actions/ssh-container-deploy": "SSH Deploy Action",
+    "/actions/ssh-compose-deploy": "SSH Compose Deploy Action",
 };
 
 export const contentMap: Record<string, string> = {
     "/": introDoc,
     "/actions/build-and-push": buildDoc,
     "/actions/ssh-container-deploy": deployDoc,
+    "/actions/ssh-compose-deploy": composeDeployDoc,
 };
