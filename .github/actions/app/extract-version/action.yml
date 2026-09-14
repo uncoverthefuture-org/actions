@@ -88,11 +88,22 @@ runs:
           VERSION="${BRANCH#prod-release-}"
           echo "✅ Version extracted from manual release branch: $VERSION"
         elif [[ "$BRANCH" == release-please--* ]]; then
-          # Fallback for release-please branch naming (if title extraction is preferred, we could add that)
           # Format: release-please--branches--main--components--app--v1.9.1
           if [[ "$BRANCH" =~ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
             VERSION="v${BASH_REMATCH[1]}"
             echo "✅ Version extracted from release-please branch: $VERSION"
+          else
+            # Branch doesn't contain version, extract from PR title
+            echo "ℹ️ Branch doesn't contain version. Fetching PR title..."
+            PR_NUMBER=$(gh pr list --state merged --limit 1 --json number --template '{{range .}}{{ .number }}{{end}}')
+            if [[ -n "$PR_NUMBER" ]]; then
+              PR_TITLE=$(gh pr view "$PR_NUMBER" --json title --template '{{ .title }}')
+              echo "ℹ️ PR Title: $PR_TITLE"
+              if [[ "$PR_TITLE" =~ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+                VERSION="v${BASH_REMATCH[1]}"
+                echo "✅ Version extracted from PR title: $VERSION"
+              fi
+            fi
           fi
         fi
         
