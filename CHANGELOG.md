@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.2](https://github.com/uncoverthefuture-org/actions/compare/v1.6.1...v1.6.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* extract version from PR title for release-please branches ([9659480](https://github.com/uncoverthefuture-org/actions/commit/9659480d46169cd9b90e7c40d39463e3780fbc8d))
+* extract version from PR title for release-please branches without version in name ([fa09728](https://github.com/uncoverthefuture-org/actions/commit/fa097283f5db8fae5420dd0604910895058fac03))
+
 ## [1.6.1](https://github.com/uncoverthefuture-org/actions/compare/v1.6.0...v1.6.1) (2026-05-03)
 
 
