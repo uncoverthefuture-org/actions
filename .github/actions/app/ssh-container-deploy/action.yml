@@ -237,6 +237,15 @@ inputs: # All parameters accepted by this action
     description: "Raw .env content for the host. Prefer env_b64 for secrets (example: 'KEY=value')."
     required: false
 
+  # Docker Compose support
+  use_compose:
+    description: "When true, deploy using docker-compose.yaml from repository instead of single container"
+    required: false
+    default: "false"
+  compose_env_b64:
+    description: "Base64-encoded .env file for docker-compose deployment"
+    required: false
+
   # Registry & image
   registry:
     description: "Container registry hostname used for image pulls (example: ghcr.io)."
@@ -298,6 +307,21 @@ inputs: # All parameters accepted by this action
   env_file_container_path:
     description: "Path inside the container where the .env file should be mounted (default: /var/www/html/.env for Laravel apps). Change this for other frameworks."
     required: false
+    default: "/var/www/html/.env"
+
+  # Docker Compose support
+  use_compose:
+    description: "When true, deploy using docker-compose.yaml instead of single container. Requires docker-compose.yaml in repository root."
+    required: false
+    default: "false"
+  compose_file:
+    description: "Path to docker-compose file relative to repository root (default: docker-compose.yaml)"
+    required: false
+    default: "docker-compose.yaml"
+  compose_env_file:
+    description: "Path to environment file for compose (default: .env)"
+    required: false
+    default: ".env"
     default: "/var/www/html/.env"
 
   quadlet_enabled:

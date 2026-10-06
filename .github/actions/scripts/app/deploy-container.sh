@@ -571,3 +571,49 @@ if [[ -x "$HOME/uactions/scripts/app/install-app-quadlet.sh" ]]; then
 else
   echo "::notice::install-app-quadlet.sh not found; skipping Quadlet persistence unit" >&2
 fi
+
+# --- Docker Compose deployment mode -------------------------------------------------
+USE_COMPOSE="${USE_COMPOSE:-false}"
+
+if [[ "$USE_COMPOSE" == "true" ]]; then
+  echo "================================================================"
+  echo "🐳 Docker Compose Deployment Mode"
+  echo "================================================================"
+  
+  COMPOSE_DEPLOY_DIR="${COMPOSE_DEPLOY_DIR:-/opt/uactions/${APP_SLUG}}"
+  mkdir -p "$COMPOSE_DEPLOY_DIR"
+  cd "$COMPOSE_DEPLOY_DIR"
+  
+  # Write .env file if provided
+  if [[ -n "${COMPOSE_ENV_B64:-}" ]]; then
+    echo "$COMPOSE_ENV_B64" | base64 -d > .env
+    echo "✓ Decoded .env file"
+  elif [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
+    cp "$ENV_FILE" .env
+    echo "✓ Copied env file"
+  fi
+  
+  # docker-compose.yaml should already be in the working directory from checkout
+  if [[ ! -f "docker-compose.yaml" ]]; then
+    echo "::error::docker-compose.yaml not found. Ensure it exists in the repository root." >&2
+    exit 1
+  fi
+  echo "✓ Using docker-compose.yaml from repository"
+  
+  # Stop existing stack
+  echo ""
+  echo "Stopping existing services..."
+  docker-compose down || true
+  
+  # Pull and start
+  echo "Pulling images..."
+  docker-compose pull
+  
+  echo "Starting services..."
+  docker-compose up -d
+  
+  echo ""
+  echo "✅ Docker Compose deployment complete!"
+  docker-compose ps
+  exit 0
+fi
