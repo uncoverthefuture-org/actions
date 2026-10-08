@@ -584,36 +584,38 @@ if [[ "$USE_COMPOSE" == "true" ]]; then
   mkdir -p "$COMPOSE_DEPLOY_DIR"
   cd "$COMPOSE_DEPLOY_DIR"
   
-  # Write .env file if provided
-  if [[ -n "${COMPOSE_ENV_B64:-}" ]]; then
-    echo "$COMPOSE_ENV_B64" | base64 -d > .env
-    echo "✓ Decoded .env file"
-  elif [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
-    cp "$ENV_FILE" .env
-    echo "✓ Copied env file"
+  # Decode and write docker-compose.yaml
+  if [[ -n "${COMPOSE_YAML_B64:-}" ]]; then
+    echo "$COMPOSE_YAML_B64" | base64 -d > docker-compose.yaml
+    echo "✓ Decoded docker-compose.yaml"
   fi
   
-  # docker-compose.yaml should already be in the working directory from checkout
-  if [[ ! -f "docker-compose.yaml" ]]; then
-    echo "::error::docker-compose.yaml not found. Ensure it exists in the repository root." >&2
-    exit 1
+  # Use the standard ENV_FILE prepared by the action (from env_b64)
+  if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
+    cp "$ENV_FILE" .env
+    echo "✓ Using environment file: $ENV_FILE"
+  else
+    echo "::warning::No environment file found. Ensure env_b64 is provided."
   fi
-  echo "✓ Using docker-compose.yaml from repository"
+  
+  # Export version/tag for use in docker-compose.yaml (e.g., ${IMAGE_TAG} or ${APP_RELEASE})
+  export IMAGE_TAG="${IMAGE_TAG:-latest}"
+  export APP_RELEASE="${IMAGE_TAG:-latest}"
   
   # Stop existing stack
   echo ""
   echo "Stopping existing services..."
-  docker-compose down || true
+  podman-compose down || true
   
   # Pull and start
   echo "Pulling images..."
-  docker-compose pull
+  podman-compose pull
   
   echo "Starting services..."
-  docker-compose up -d
+  podman-compose up -d
   
   echo ""
   echo "✅ Docker Compose deployment complete!"
-  docker-compose ps
+  podman-compose ps
   exit 0
 fi

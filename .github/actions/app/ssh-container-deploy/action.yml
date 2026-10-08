@@ -242,8 +242,8 @@ inputs: # All parameters accepted by this action
     description: "When true, deploy using docker-compose.yaml from repository instead of single container"
     required: false
     default: "false"
-  compose_env_b64:
-    description: "Base64-encoded .env file for docker-compose deployment"
+  compose_yaml_b64:
+    description: "Base64-encoded docker-compose.yaml content to deploy"
     required: false
 
   # Registry & image
@@ -652,6 +652,10 @@ runs: # Composite action implementation
           export PROBE_TIMEOUT=12
           export PROBE_TRIES=12
           export PROBE_DELAY=5
+
+          # Docker Compose support
+          export USE_COMPOSE='${{ inputs.use_compose }}'
+          export COMPOSE_YAML_B64='${{ inputs.compose_yaml_b64 }}'
 
           # Cleanup old script bundles (keep only the current one and the symlink target if different)
           echo "================================================================"
