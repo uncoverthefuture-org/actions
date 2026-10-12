@@ -571,3 +571,51 @@ if [[ -x "$HOME/uactions/scripts/app/install-app-quadlet.sh" ]]; then
 else
   echo "::notice::install-app-quadlet.sh not found; skipping Quadlet persistence unit" >&2
 fi
+
+# --- Docker Compose deployment mode -------------------------------------------------
+USE_COMPOSE="${USE_COMPOSE:-false}"
+
+if [[ "$USE_COMPOSE" == "true" ]]; then
+  echo "================================================================"
+  echo "🐳 Docker Compose Deployment Mode"
+  echo "================================================================"
+  
+  COMPOSE_DEPLOY_DIR="${COMPOSE_DEPLOY_DIR:-/opt/uactions/${APP_SLUG}}"
+  mkdir -p "$COMPOSE_DEPLOY_DIR"
+  cd "$COMPOSE_DEPLOY_DIR"
+  
+  # Decode and write docker-compose.yaml
+  if [[ -n "${COMPOSE_YAML_B64:-}" ]]; then
+    echo "$COMPOSE_YAML_B64" | base64 -d > docker-compose.yaml
+    echo "✓ Decoded docker-compose.yaml"
+  fi
+  
+  # Use the standard ENV_FILE prepared by the action (from env_b64)
+  if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
+    cp "$ENV_FILE" .env
+    echo "✓ Using environment file: $ENV_FILE"
+  else
+    echo "::warning::No environment file found. Ensure env_b64 is provided."
+  fi
+  
+  # Export version/tag for use in docker-compose.yaml (e.g., ${IMAGE_TAG} or ${APP_RELEASE})
+  export IMAGE_TAG="${IMAGE_TAG:-latest}"
+  export APP_RELEASE="${IMAGE_TAG:-latest}"
+  
+  # Stop existing stack
+  echo ""
+  echo "Stopping existing services..."
+  podman-compose down || true
+  
+  # Pull and start
+  echo "Pulling images..."
+  podman-compose pull
+  
+  echo "Starting services..."
+  podman-compose up -d
+  
+  echo ""
+  echo "✅ Docker Compose deployment complete!"
+  podman-compose ps
+  exit 0
+fi
