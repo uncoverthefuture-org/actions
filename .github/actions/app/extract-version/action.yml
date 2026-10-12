@@ -102,6 +102,9 @@ runs:
               if [[ "$PR_TITLE" =~ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
                 VERSION="v${BASH_REMATCH[1]}"
                 echo "✅ Version extracted from PR title: $VERSION"
+              elif [[ "$PR_TITLE" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+                VERSION="v${BASH_REMATCH[1]}"
+                echo "✅ Version extracted from PR title: $VERSION"
               fi
             fi
           fi
