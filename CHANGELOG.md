@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.7.0](https://github.com/uncoverthefuture-org/actions/compare/v1.6.1...v1.7.0) (2026-10-12)
+
+
+### Features
+
+* add Docker Compose deployment support ([ed776be](https://github.com/uncoverthefuture-org/actions/commit/ed776be043a410251b052a0b9083106a3fc49d48))
+* add Docker Compose deployment support ([2ba11b2](https://github.com/uncoverthefuture-org/actions/commit/2ba11b2752317b83db895801d5f46daf1a134e4b))
+* add Docker Compose deployment support to ssh-container-deploy ([28da277](https://github.com/uncoverthefuture-org/actions/commit/28da2771ba8f46903a566433c274098885ee1d16))
+
+
+### Bug Fixes
+
+* extract version from PR title for release-please branches ([9659480](https://github.com/uncoverthefuture-org/actions/commit/9659480d46169cd9b90e7c40d39463e3780fbc8d))
+* extract version from PR title for release-please branches without version in name ([fa09728](https://github.com/uncoverthefuture-org/actions/commit/fa097283f5db8fae5420dd0604910895058fac03))
+
 ## [1.6.1](https://github.com/uncoverthefuture-org/actions/compare/v1.6.0...v1.6.1) (2026-05-03)
 
 
