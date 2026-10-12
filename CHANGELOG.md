@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.1](https://github.com/uncoverthefuture-org/actions/compare/v1.7.0...v1.7.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* extract version from PR title without v prefix ([28551e9](https://github.com/uncoverthefuture-org/actions/commit/28551e9924b7f11c3aa7176a05d3fa0db95b0cfa))
+* extract version from PR title without v prefix (release-please branches) ([4e20c55](https://github.com/uncoverthefuture-org/actions/commit/4e20c554e8c5e422d1940737d6e36e4c15dd11db))
+
 ## [1.7.0](https://github.com/uncoverthefuture-org/actions/compare/v1.6.1...v1.7.0) (2026-10-12)
 
 
