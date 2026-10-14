@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.2](https://github.com/uncoverthefuture-org/actions/compare/v1.7.1...v1.7.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **ssh-container-deploy:** remove duplicate inputs that broke manifest load ([3107190](https://github.com/uncoverthefuture-org/actions/commit/31071905627b371a801eee541730c7159ff258fb))
+* **ssh-container-deploy:** remove duplicate inputs that broke manifest load ([a7ca968](https://github.com/uncoverthefuture-org/actions/commit/a7ca968113b5c5112ee98a2d94a496130502cd2b))
+
 ## [1.7.1](https://github.com/uncoverthefuture-org/actions/compare/v1.7.0...v1.7.1) (2026-10-12)
 
 
