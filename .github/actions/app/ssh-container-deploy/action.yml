@@ -309,21 +309,6 @@ inputs: # All parameters accepted by this action
     required: false
     default: "/var/www/html/.env"
 
-  # Docker Compose support
-  use_compose:
-    description: "When true, deploy using docker-compose.yaml instead of single container. Requires docker-compose.yaml in repository root."
-    required: false
-    default: "false"
-  compose_file:
-    description: "Path to docker-compose file relative to repository root (default: docker-compose.yaml)"
-    required: false
-    default: "docker-compose.yaml"
-  compose_env_file:
-    description: "Path to environment file for compose (default: .env)"
-    required: false
-    default: ".env"
-    default: "/var/www/html/.env"
-
   quadlet_enabled:
     description: "When 'false', skip generating Quadlet .container units for the app (no systemd persistence). Default: true."
     required: false
@@ -742,7 +727,7 @@ runs: # Composite action implementation
             BUNDLE_PATH="$HOME/uactions-scripts.tgz"
           fi
           if [ -z "$BUNDLE_PATH" ] || [ ! -f "$BUNDLE_PATH" ]; then
-            echo "::error::No uactions scripts bundle found on remote host (expected $HOME/uactions-scripts-<run>-<attempt>.tgz or uactions-scripts.tgz)";
+            echo "::error::No uactions scripts bundle found on remote host (expected $HOME/uactions-scripts-<run>-<attempt>.tgz or uactions-scripts.tgz)";
             exit 1
           fi
           ln -sf "$BUNDLE_PATH" "$HOME/uactions-scripts.tgz"
