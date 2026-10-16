@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.0](https://github.com/uncoverthefuture-org/actions/compare/v1.7.2...v1.8.0) (2026-10-16)
+
+
+### Features
+
+* add compose_file_name input and production tips ([275f271](https://github.com/uncoverthefuture-org/actions/commit/275f271913fd2b6f047702b5111a37e4c53025dc))
+* implement transparent compose mode with user guidance ([b2e6b37](https://github.com/uncoverthefuture-org/actions/commit/b2e6b376155fc340e670397de5d710b2d0ccd467))
+* transparent docker-compose mode ([6a3aec6](https://github.com/uncoverthefuture-org/actions/commit/6a3aec6ee7796dd3b82ad3219fea5afca1a596ae))
+
 ## [1.7.2](https://github.com/uncoverthefuture-org/actions/compare/v1.7.1...v1.7.2) (2026-10-14)
 
 
