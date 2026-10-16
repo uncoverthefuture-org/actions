@@ -447,7 +447,12 @@ fi
 if [[ "${REGISTRY_LOGIN:-true}" == "true" ]]; then
   podman_login_if_credentials "$IMAGE_REGISTRY" "${REGISTRY_USERNAME:-}" "${REGISTRY_TOKEN:-}"
 fi
-podman_pull_image "$IMAGE_REF"
+
+# Only pull the primary image if we are NOT in compose mode.
+# In compose mode, 'podman-compose pull' handles all required images.
+if [[ "${USE_COMPOSE:-false}" != "true" ]]; then
+  podman_pull_image "$IMAGE_REF"
+fi
 
 # --- Docker Compose deployment mode -------------------------------------------------
 USE_COMPOSE="${USE_COMPOSE:-false}"
@@ -474,6 +479,20 @@ if [[ "$USE_COMPOSE" == "true" ]]; then
   if [[ -n "${COMPOSE_YAML_B64:-}" ]]; then
     echo "$COMPOSE_YAML_B64" | base64 -d > docker-compose.yaml
     echo "✓ Decoded docker-compose.yaml"
+    if ! podman-compose config >/dev/null 2>&1; then
+      echo "::error::Decoded docker-compose.yaml is not a valid compose file" >&2
+      exit 1
+    fi
+  elif [[ -n "${COMPOSE_FILE_NAME:-}" && -f "${COMPOSE_FILE_NAME}" ]]; then
+    cp "${COMPOSE_FILE_NAME}" docker-compose.yaml
+    echo "✓ Using compose file: ${COMPOSE_FILE_NAME}"
+    if ! podman-compose config >/dev/null 2>&1; then
+      echo "::error::${COMPOSE_FILE_NAME} is not a valid compose file" >&2
+      exit 1
+    fi
+  else
+    echo "::error::No docker-compose.yaml found in repository root or provided via compose_yaml_b64" >&2
+    exit 1
   fi
   
   if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
