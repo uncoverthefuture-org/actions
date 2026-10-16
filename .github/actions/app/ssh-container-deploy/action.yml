@@ -157,7 +157,7 @@ inputs: # All parameters accepted by this action
   additional_packages:
     description: "Extra apt packages installed during host preparation (space separated, example: 'jq curl ca-certificates')."
     required: false
-    default: "jq curl ca-certificates"
+    default: "jq curl ca-certificates podman-compose"
   enable_podman_cleanup:
     description: "When true, run a safe Podman storage cleanup after successful deploys to prevent overlay bloat (age-based prune of stopped containers and unused images)."
     required: false
@@ -242,8 +242,12 @@ inputs: # All parameters accepted by this action
     description: "When true, deploy using docker-compose.yaml from repository instead of single container"
     required: false
     default: "false"
+  compose_file_name:
+    description: "Name of the compose file to use (example: docker-compose.prod.yml). Defaults to docker-compose.yaml"
+    required: false
+    default: "docker-compose.yaml"
   compose_yaml_b64:
-    description: "Base64-encoded docker-compose.yaml content to deploy"
+    description: "Base64-encoded docker-compose.yaml content to deploy (overrides compose_file_name)"
     required: false
 
   # Registry & image
