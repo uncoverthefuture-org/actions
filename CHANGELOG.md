@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.1](https://github.com/uncoverthefuture-org/actions/compare/v1.8.0...v1.8.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* add EOL Ubuntu repository recovery to podman install ([a280f4c](https://github.com/uncoverthefuture-org/actions/commit/a280f4c1e812131d4576601aee3fb65b6ee76b7b))
+* add EOL Ubuntu repository recovery to podman install ([beb6c93](https://github.com/uncoverthefuture-org/actions/commit/beb6c93ccb8d20f56985b1202c0bebe7ac927b29))
+
 ## [1.8.0](https://github.com/uncoverthefuture-org/actions/compare/v1.7.2...v1.8.0) (2026-10-16)
 
 
