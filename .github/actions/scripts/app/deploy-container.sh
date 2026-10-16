@@ -451,7 +451,7 @@ fi
 # Only pull the primary image if we are NOT in compose mode.
 # In compose mode, 'podman-compose pull' handles all required images.
 if [[ "${USE_COMPOSE:-false}" != "true" ]]; then
-  podman_pull_image "$IMAGE_REF"
+  if [[ "${USE_COMPOSE:-false}" != "true" ]]; then podman_pull_image "$IMAGE_REF"; fi
 fi
 
 # --- Docker Compose deployment mode -------------------------------------------------
