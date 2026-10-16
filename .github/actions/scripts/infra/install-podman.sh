@@ -13,9 +13,27 @@ fi
 
 if command -v apt-get >/dev/null 2>&1; then
   echo "📥 Updating apt cache ..."
-  # Allow noninteractive installs to continue when trusted repositories update
-  # their Release metadata (for example, changing the Label or Suite fields).
-  apt-get update -y --allow-releaseinfo-change
+  
+  # Attempt update; if it fails, check if we are on an EOL Ubuntu version and recover repositories
+  if ! apt-get update -y --allow-releaseinfo-change; then
+    echo "⚠️  apt-get update failed. Checking for EOL Ubuntu repositories..."
+    if grep -q "ubuntu" /etc/os-release 2>/dev/null; then
+      echo "🛠️  Detected Ubuntu; attempting to point sources to old-releases.ubuntu.com..."
+      sudo sed -i 's/http:\/\/.*\.ubuntu\.com\/ubuntu\//http:\/\/old-releases.ubuntu.com\/ubuntu\//g' /etc/apt/sources.list || true
+      sudo sed -i 's/http:\/\/security\.ubuntu\.com\/ubuntu\//http:\/\/old-releases.ubuntu.com\/ubuntu\//g' /etc/apt/sources.list || true
+      
+      echo "🔄 Retrying apt-get update with archive mirrors..."
+      if ! apt-get update -y --allow-releaseinfo-change; then
+        echo "❌ Error: Failed to update apt cache even with archive mirrors." >&2
+        exit 1
+      fi
+      echo "✅ Successfully recovered repositories via old-releases archive."
+    else
+      echo "❌ Error: apt-get update failed and OS is not recognized as Ubuntu." >&2
+      exit 1
+    fi
+  fi
+  
   echo "📦 Installing Podman and dependencies ..."
   apt-get install -y podman uidmap slirp4netns fuse-overlayfs ${ADDITIONAL_PACKAGES}
 else
