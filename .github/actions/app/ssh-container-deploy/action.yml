@@ -157,7 +157,7 @@ inputs: # All parameters accepted by this action
   additional_packages:
     description: "Extra apt packages installed during host preparation (space separated, example: 'jq curl ca-certificates')."
     required: false
-    default: "jq curl ca-certificates"
+    default: "jq curl ca-certificates podman-compose"
   enable_podman_cleanup:
     description: "When true, run a safe Podman storage cleanup after successful deploys to prevent overlay bloat (age-based prune of stopped containers and unused images)."
     required: false

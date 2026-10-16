@@ -449,18 +449,60 @@ if [[ "${REGISTRY_LOGIN:-true}" == "true" ]]; then
 fi
 podman_pull_image "$IMAGE_REF"
 
-# --- Stop/replace container ---------------------------------------------------------
-# Cleanly stop and remove the prior container instance so the new one can start
-# without conflicting names or port bindings.
-echo "================================================================" >&2
-echo "🛑 Stopping existing container (if any): $CONTAINER_NAME"
-podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-echo "🧹 Removing existing container (if any): $CONTAINER_NAME"
-podman rm   "$CONTAINER_NAME" >/dev/null 2>&1 || true
-if podman container exists "$CONTAINER_NAME" >/dev/null 2>&1; then
-  echo "::warning::Container '$CONTAINER_NAME' still exists after stop/rm; attempting force removal" >&2
-  podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+# --- Docker Compose deployment mode -------------------------------------------------
+USE_COMPOSE="${USE_COMPOSE:-false}"
+
+if [[ "$USE_COMPOSE" == "true" ]]; then
+  echo "================================================================"
+  echo "🐳 DOCKER COMPOSE DEPLOYMENT MODE ACTIVE"
+  echo "================================================================"
+  echo "NOTICE: The following are NOT automatically configured for Compose:"
+  echo "  1. Environment: Services must declare 'env_file: .env' in the compose file"
+  echo "     to receive the injected variables."
+  echo "  2. Traefik: You must manually add labels to your target service"
+  echo "     (e.g., traefik.enable=true, Host rule, etc.) and attach it"
+  echo "     to the 'traefik-network' (external: true)."
+  echo "  3. Persistence: This stack is NOT managed by Quadlet. Use 'restart: always'"
+  echo "     in your compose file for boot persistence."
+  echo "  4. Resources: Set mem_limit and cpus inside the 'deploy' section."
+  echo "================================================================"
+  
+  COMPOSE_DEPLOY_DIR="${COMPOSE_DEPLOY_DIR:-/opt/uactions/${APP_SLUG}}"
+  mkdir -p "$COMPOSE_DEPLOY_DIR"
+  cd "$COMPOSE_DEPLOY_DIR"
+  
+  if [[ -n "${COMPOSE_YAML_B64:-}" ]]; then
+    echo "$COMPOSE_YAML_B64" | base64 -d > docker-compose.yaml
+    echo "✓ Decoded docker-compose.yaml"
+  fi
+  
+  if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
+    cp "$ENV_FILE" .env
+    echo "✓ Using environment file: $ENV_FILE"
+  else
+    echo "::warning::No environment file found. Ensure env_b64 is provided."
+  fi
+  
+  export IMAGE_TAG="${IMAGE_TAG:-latest}"
+  export APP_RELEASE="${IMAGE_TAG:-latest}"
+  
+  echo ""
+  echo "Stopping existing services..."
+  podman-compose down || true
+  
+  echo "Pulling images..."
+  podman-compose pull
+  
+  echo "Starting services..."
+  podman-compose up -d
+  
+  echo ""
+  echo "✅ Docker Compose deployment complete!"
+  podman-compose ps
+  exit 0
 fi
+
+# --- Stop/replace container ---------------------------------------------------------
 
 # --- Run container -----------------------------------------------------------------
 echo "🚀 Starting container: $CONTAINER_NAME"
