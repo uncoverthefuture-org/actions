@@ -242,8 +242,12 @@ inputs: # All parameters accepted by this action
     description: "When true, deploy using docker-compose.yaml from repository instead of single container"
     required: false
     default: "false"
+  compose_file_name:
+    description: "Name of the compose file to use (example: docker-compose.prod.yml). Defaults to docker-compose.yaml"
+    required: false
+    default: "docker-compose.yaml"
   compose_yaml_b64:
-    description: "Base64-encoded docker-compose.yaml content to deploy"
+    description: "Base64-encoded docker-compose.yaml content to deploy (overrides compose_file_name)"
     required: false
 
   # Registry & image
