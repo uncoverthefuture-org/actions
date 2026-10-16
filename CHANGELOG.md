@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.0](https://github.com/uncoverthefuture-org/actions/compare/v1.8.1...v1.9.0) (2026-10-16)
+
+
+### Features
+
+* implement transparent compose mode and validations ([67a9c02](https://github.com/uncoverthefuture-org/actions/commit/67a9c023b3e8c7c8186a740e92bd4c3010368151))
+* transparent docker-compose mode ([aa0ffcc](https://github.com/uncoverthefuture-org/actions/commit/aa0ffcc0bb2c16e54e4ee19cdb68ac8d2753214a))
+
+
+### Bug Fixes
+
+* disable webmin and usermin by default ([64aa348](https://github.com/uncoverthefuture-org/actions/commit/64aa348cb79a293042506eb3d2053858b9331272))
+* disable webmin and usermin by default ([612a0d6](https://github.com/uncoverthefuture-org/actions/commit/612a0d6fa5d080d4e49edf546c377576b536dbbd))
+
 ## [1.8.1](https://github.com/uncoverthefuture-org/actions/compare/v1.8.0...v1.8.1) (2026-10-16)
 
 
