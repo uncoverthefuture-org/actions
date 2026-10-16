@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.1](https://github.com/uncoverthefuture-org/actions/compare/v1.9.0...v1.9.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* strictly skip single image pull in compose mode ([cbad76e](https://github.com/uncoverthefuture-org/actions/commit/cbad76ec291e520ff6c27f7ad8d7247725f768a3))
+* strictly skip single image pull in compose mode ([db93059](https://github.com/uncoverthefuture-org/actions/commit/db93059c6992bfbc60eb7cfc3ac676b07b12dcdf))
+
 ## [1.9.0](https://github.com/uncoverthefuture-org/actions/compare/v1.8.1...v1.9.0) (2026-10-16)
 
 
