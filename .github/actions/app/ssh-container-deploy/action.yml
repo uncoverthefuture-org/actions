@@ -181,7 +181,7 @@ inputs: # All parameters accepted by this action
   install_webmin:
     description: "Install Webmin during host prep/first-run (requires sudo)."
     required: false
-    default: "true"
+    default: "false"
   install_usermin:
     description: "Install Usermin alongside Webmin when enabled (requires sudo)."
     required: false
