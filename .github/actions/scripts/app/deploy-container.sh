@@ -495,6 +495,13 @@ if [[ "$USE_COMPOSE" == "true" ]]; then
     exit 1
   fi
   
+  if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
+    cp "$ENV_FILE" .env
+    echo "✓ Using environment file: $ENV_FILE"
+  else
+    echo "::warning::No environment file found. Ensure env_b64 is provided."
+  fi
+  
   export IMAGE_TAG="${IMAGE_TAG:-latest}"
   export APP_RELEASE="${IMAGE_TAG:-latest}"
   
