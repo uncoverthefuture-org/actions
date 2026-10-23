@@ -37,12 +37,17 @@ runs:
         EVENT_NAME: ${{ github.event_name }}
         # If workflow_run, use its head_branch. Otherwise standard GITHUB_REF_NAME
         BRANCH_NAME: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+        GIT_REF: ${{ github.ref }}
       run: |
         set -euo pipefail
         
         if [[ -n "$INPUT_VERSION" ]]; then
           echo "source=input" >> "$GITHUB_OUTPUT"
           echo "raw_version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+        elif [[ "$GIT_REF" == refs/tags/v* ]]; then
+          # Tag pushes carry the version directly in the ref (e.g. refs/tags/v1.2.3).
+          echo "source=tag" >> "$GITHUB_OUTPUT"
+          echo "raw_version=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
         elif [[ "$BRANCH_NAME" == "develop" ]]; then
           echo "source=skip" >> "$GITHUB_OUTPUT"
           echo "raw_version=" >> "$GITHUB_OUTPUT"

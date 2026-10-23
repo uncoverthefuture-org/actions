@@ -72,7 +72,7 @@ outputs:
     value: ${{ inputs.env_key }}
   image_tag:
     description: 'Docker image tag that was pushed'
-    value: ${{ inputs.image_tag }}
+    value: ${{ inputs.version != '' && inputs.version || inputs.image_tag }}
   deploy_enabled:
     description: 'Whether deployment is enabled (true/false)'
     value: ${{ inputs.deploy_enabled }}

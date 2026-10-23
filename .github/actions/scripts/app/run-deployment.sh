@@ -579,6 +579,11 @@ export REMOTE_ENV_FILE
 export ENV_FILE_PATH_BASE
 export TRAEFIK_ENABLED
 export TRAEFIK_NETWORK_NAME
+export USE_COMPOSE="${USE_COMPOSE:-false}"
+export COMPOSE_FILE_NAME="${COMPOSE_FILE_NAME:-docker-compose.yaml}"
+export COMPOSE_YAML_B64="${COMPOSE_YAML_B64:-}"
+export COMPOSE_DEPLOY_DIR="${COMPOSE_DEPLOY_DIR:-}"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-}"
 
 "$HOME/uactions/scripts/app/deploy-container.sh"
 
@@ -605,7 +610,9 @@ fi
 # Compute image ref for preservation during pruning
 IMAGE_REF_FOR_PRUNE="${IMAGE_REGISTRY:+$IMAGE_REGISTRY/}${IMAGE_NAME}:${IMAGE_TAG}"
 
-if [ "$PODMAN_PRUNE_ENABLED" = "true" ]; then
+if [ "${USE_COMPOSE:-false}" = "true" ]; then
+  echo "::notice::Compose mode: skipping Podman prune so compose services and images are left untouched." >&2
+elif [ "$PODMAN_PRUNE_ENABLED" = "true" ]; then
   if [ -f "$HOME/uactions/scripts/infra/prune-podman-storage.sh" ]; then
     echo "================================================================"
     echo "🧹 Running Podman storage cleanup"
