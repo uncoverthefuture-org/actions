@@ -31,7 +31,7 @@
     "doctl-container-deploy",
     "aws-ssm-container-deploy",
     "write-remote-env-file",
-    "extract-version"
+    "release-checkpoint"
   ],
   "version": [
     "compute-next",

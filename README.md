@@ -12,6 +12,17 @@ A lightweight, local container deployment system powered by Podman and Traefik. 
 - **Two Modes**: Local (Podman on localhost) or Remote (SSH to server)
 - **Lightweight** - Minimal resource usage, designed for local development and CI/CD
 
+## Release version checkpoint
+
+Use `subaction: release-checkpoint` to resolve and validate a deployment version
+from an explicit input, published release, tag push, or merged release PR.
+It replaces `extract-version` and rejects unrelated or ambiguous PR context.
+Configure `prod_branch` when releases target a branch other than
+main or master.
+
+See [Release Checkpoint](.github/actions/app/release-checkpoint/README.md) for
+inputs, tag verification, migration details, and workflow examples.
+
 ## Installation
 
 ### macOS (Recommended - via Homebrew)

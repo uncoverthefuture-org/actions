@@ -93,7 +93,7 @@ outputs:
     description: 'Previous version tag reported by compute-next - same as "last" (alias for clarity)'
     value: ${{ steps.vdisp.outputs.last }}
   version:
-    description: 'Extracted semantic version returned by extract-version.'
+    description: 'Extracted semantic version returned by release-checkpoint.'
     value: ${{ steps.appdisp.outputs.version }}
 
 # ============================================================================
