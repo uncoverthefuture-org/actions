@@ -124,7 +124,7 @@ runs:
             main|master|production|refs/heads/main|refs/heads/master) echo 'production' ;;
             stage|staging|refs/heads/stage|refs/heads/staging) echo 'staging' ;;
             dev|develop|development|refs/heads/dev|refs/heads/develop|refs/heads/development) echo 'development' ;;
-            refs/tags/*) echo 'production' ;;
+            v[0-9]*|refs/tags/*) echo 'production' ;;
             *) echo 'development' ;;
           esac
         }

@@ -95,25 +95,29 @@ DOMAIN_INPUT="${DOMAIN_INPUT:-}"
 DOMAIN_DEFAULT="${DOMAIN_DEFAULT:-}"
 ROUTER_NAME="${ROUTER_NAME:-app}"
 
-# Collect required fields and validate via shared helper (example: ensure
-# IMAGE_NAME, APP_SLUG, ENV_NAME are set before proceeding).
-# Example:
-#   declare -A cfg=([APP_SLUG]="demo" [ENV_NAME]="production");
-#   validate_required cfg APP_SLUG ENV_NAME
+# Compose mode does not require a single image reference; images come from
+# the compose file. Only the app/env identifiers are mandatory.
+USE_COMPOSE="${USE_COMPOSE:-false}"
 declare -A config=(
-  [IMAGE_NAME]="${IMAGE_NAME:-}"
   [APP_SLUG]="${APP_SLUG:-}"
   [ENV_NAME]="${ENV_NAME:-}"
 )
-
-# Validate required keys
-validate_required config IMAGE_NAME APP_SLUG ENV_NAME
+if [[ "$USE_COMPOSE" != "true" ]]; then
+  config[IMAGE_NAME]="${IMAGE_NAME:-}"
+  validate_required config IMAGE_NAME APP_SLUG ENV_NAME
+else
+  validate_required config APP_SLUG ENV_NAME
+fi
 echo "================================================================"
 echo "🔧 Preparing deploy"
 echo "================================================================"
 echo "  • App:        $APP_SLUG"
 echo "  • Env:        $ENV_NAME"
-echo "  • Image:      ${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+if [[ "$USE_COMPOSE" == "true" ]]; then
+  echo "  • Mode:       docker-compose"
+else
+  echo "  • Image:      ${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+fi
 
 # --- Compute names and paths --------------------------------------------------------
 # Derive final container name: honor explicit input but fall back to
@@ -210,6 +214,14 @@ AUTO_HOST_PORT_ASSIGNED=false
 
 
 # If host prep will run, let install-podman handle the privilege check and messaging
+PODMAN_PACKAGES="podman curl jq ca-certificates ${ADDITIONAL_PACKAGES:-}"
+if [[ "$USE_COMPOSE" == "true" ]]; then
+  case " $PODMAN_PACKAGES " in
+    *" podman-compose "*) ;;
+    *) PODMAN_PACKAGES="$PODMAN_PACKAGES podman-compose" ;;
+  esac
+fi
+
 echo "================================================================"
 echo "📛 Confirming podman installation..."
 echo "================================================================"
@@ -221,11 +233,15 @@ if command -v podman >/dev/null 2>&1; then
 else
   echo "❌ Podman is not installed on this host."
   echo "   This deployment requires Podman to be installed on the remote host."
+  if [ "${INSTALL_PODMAN:-true}" != "true" ]; then
+    echo "::error::Podman is missing and install_podman is disabled. Install Podman on the host or set install_podman=true." >&2
+    exit 1
+  fi
   if [[ "${SUDO_STATUS:-available}" == "unavailable" ]]; then
    echo "Detected: user=$(id -un); sudo(non-interactive)=${SUDO_STATUS}" >&2
     echo 'Install manually as root then re-run:' >&2
     echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
-    echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
+    echo "  sudo apt-get install -y $PODMAN_PACKAGES" >&2
     echo 'Or re-run this action with prepare_host: true and root privileges.' >&2
     exit 1
   else
@@ -237,17 +253,137 @@ else
       echo "   ✅ apt-get update completed"
     else
       echo "::error::apt-get update failed" >&2
-      return 1
+      exit 1
     fi
 
-    echo "   Running (sudo apt-get install -y podman curl jq ca-certificates)"
-    if sudo apt-get install -y podman curl jq ca-certificates; then
+    echo "   Running (sudo apt-get install -y $PODMAN_PACKAGES)"
+    if sudo apt-get install -y $PODMAN_PACKAGES; then
       echo "   ✅ Podman and dependencies installed"
     else
-      echo "::error::apt-get install podman curl jq ca-certificates failed" >&2
-      return 1
+      echo "::error::apt-get install $PODMAN_PACKAGES failed" >&2
+      exit 1
     fi
   fi
+fi
+
+if [[ "$USE_COMPOSE" == "true" ]] && ! command -v podman-compose >/dev/null 2>&1; then
+  echo "================================================================"
+  echo "📦 Installing podman-compose (required for compose mode)..."
+  echo "================================================================"
+  if [[ "${SUDO_STATUS:-available}" == "unavailable" ]]; then
+    echo "::error::podman-compose is required when use_compose=true but is missing, and passwordless sudo is unavailable. Install it manually with: sudo apt-get install -y podman-compose" >&2
+    exit 1
+  fi
+  if ! sudo apt-get update -y --allow-releaseinfo-change; then
+    echo "::error::apt-get update failed while installing podman-compose" >&2
+    exit 1
+  fi
+  if ! sudo apt-get install -y podman-compose; then
+    echo "::error::Failed to install podman-compose. Install it manually with: sudo apt-get install -y podman-compose" >&2
+    exit 1
+  fi
+  echo "   ✅ podman-compose installed"
+fi
+
+# --- Docker Compose deployment mode -------------------------------------------------
+# Compose is handled before any single-container setup (ports, labels, Quadlet,
+# podman pull). Nothing below this block should run in compose mode.
+if [[ "$USE_COMPOSE" == "true" ]]; then
+  echo "================================================================"
+  echo "🐳 DOCKER COMPOSE DEPLOYMENT MODE ACTIVE"
+  echo "================================================================"
+  echo "NOTICE: The following are NOT automatically configured for Compose:"
+  echo "  1. Environment: Services must declare 'env_file: .env' in the compose file"
+  echo "     to receive the injected variables."
+  echo "  2. Traefik: You must manually add labels to your target service"
+  echo "     (e.g., traefik.enable=true, Host rule, etc.) and attach it"
+  echo "     to the 'traefik-network' (external: true)."
+  echo "  3. Persistence: This stack is NOT managed by Quadlet. Use 'restart: always'"
+  echo "     in your compose file for boot persistence."
+  echo "  4. Resources: Set mem_limit and cpus inside the 'deploy' section."
+  echo "================================================================"
+
+  if ! command -v podman-compose >/dev/null 2>&1; then
+    echo "::error::podman-compose is required when use_compose=true but was not found on the host." >&2
+    exit 1
+  fi
+
+  # Authenticate before podman-compose pulls private images.
+  if [[ "${REGISTRY_LOGIN:-true}" == "true" ]]; then
+    podman_login_if_credentials "$IMAGE_REGISTRY" "${REGISTRY_USERNAME:-}" "${REGISTRY_TOKEN:-}"
+  fi
+
+  COMPOSE_FILE_NAME="${COMPOSE_FILE_NAME:-docker-compose.yaml}"
+  COMPOSE_DEPLOY_DIR="${COMPOSE_DEPLOY_DIR:-${REMOTE_ENV_DIR:-${ENV_DIR:-$HOME/deployments/${ENV_NAME}/${APP_SLUG}}}/compose}"
+  COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-${APP_SLUG}-${ENV_NAME}}"
+  export COMPOSE_PROJECT_NAME
+  mkdir -p "$COMPOSE_DEPLOY_DIR"
+  cd "$COMPOSE_DEPLOY_DIR"
+
+  if [[ -n "${COMPOSE_YAML_B64:-}" ]]; then
+    printf '%s' "$COMPOSE_YAML_B64" | base64 -d > docker-compose.yaml
+    echo "✓ Decoded compose payload to $COMPOSE_DEPLOY_DIR/docker-compose.yaml"
+  elif [[ -f "${COMPOSE_FILE_NAME}" ]]; then
+    cp "${COMPOSE_FILE_NAME}" docker-compose.yaml
+    echo "✓ Using compose file: ${COMPOSE_FILE_NAME}"
+  else
+    echo "::error::Compose mode requested but no compose file was provided (expected ${COMPOSE_FILE_NAME} or compose_yaml_b64)." >&2
+    exit 1
+  fi
+
+  if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
+    cp "$ENV_FILE" .env
+    echo "✓ Using environment file: $ENV_FILE"
+  else
+    echo "::warning::No environment file found. Ensure env_b64 is provided." >&2
+  fi
+
+  # Validate the compose file before touching running services. Copy .env
+  # first so variable interpolation matches what 'up' will use.
+  COMPOSE_CONFIG_OUTPUT=""
+  if ! COMPOSE_CONFIG_OUTPUT="$(podman-compose config 2>&1)"; then
+    if printf '%s' "$COMPOSE_CONFIG_OUTPUT" | grep -qi 'missing networks'; then
+      echo "::error::podman-compose rejected docker-compose.yaml because one or more referenced networks are not declared. Add the missing entries under the top-level 'networks:' block; the implicit network is usually declared as 'default:'." >&2
+      printf '%s\n' "$COMPOSE_CONFIG_OUTPUT" >&2
+      exit 1
+    fi
+    # Older podman-compose releases may not implement 'config'. Do not block a
+    # valid deployment on that alone; fall back to a best-effort text warning.
+    echo "::warning::podman-compose could not validate docker-compose.yaml; continuing (any real syntax error will surface during 'up')." >&2
+    if [[ "${TRAEFIK_ENABLED:-true}" == "true" ]] && \
+       grep -Eq 'published:[[:space:]]*.*(^|[^0-9])(80|443)([^0-9]|$)|^[[:space:]]*-[[:space:]]*["'"'"']?(80|443):' docker-compose.yaml; then
+      echo "::warning::Compose file publishes host ports that may include 80/443 while Traefik is enabled. Traefik already binds 80/443, so 'podman-compose up' will fail if those ports resolve to 80/443. Remove the host ports mapping from the service behind Traefik or set LISTEN_HTTP_PORT/LISTEN_HTTPS_PORT to unused ports." >&2
+    fi
+  elif [[ "${TRAEFIK_ENABLED:-true}" == "true" ]] && \
+       printf '%s' "$COMPOSE_CONFIG_OUTPUT" | grep -Eq 'published:[[:space:]]*["'"'"']?(80|443)["'"'"']?[[:space:]]*$'; then
+    echo "::error::Compose file publishes host port 80/443 while Traefik is enabled. Traefik already owns those ports, so 'podman-compose up' would fail with 'address already in use'. Remove the 'ports:' mapping from the service behind Traefik (keep it on traefik-network and let its labels route to the internal port) or set LISTEN_HTTP_PORT/LISTEN_HTTPS_PORT to unused ports." >&2
+    exit 1
+  fi
+
+  export IMAGE_TAG="${IMAGE_TAG:-latest}"
+  # Do not derive APP_RELEASE from the deployment version. Compose files often
+  # use APP_RELEASE for upstream image versions (for example Plane's v1.4.2),
+  # so respect an explicit value and otherwise let the compose default apply.
+  if [[ -n "${APP_RELEASE:-}" ]]; then
+    export APP_RELEASE
+  fi
+
+  echo ""
+  echo "Stopping existing services..."
+  podman-compose down || true
+
+  echo "Pulling images..."
+  if ! podman-compose pull; then
+    echo "::warning::podman-compose pull reported an error; continuing so local/build-based services can still start." >&2
+  fi
+
+  echo "Starting services..."
+  podman-compose up -d
+
+  echo ""
+  echo "✅ Docker Compose deployment complete!"
+  podman-compose ps || true
+  exit 0
 fi
 
 echo "================================================================"
@@ -332,8 +468,8 @@ if [[ "$TRAEFIK_ENABLED" == "true" && -n "$DOMAIN" ]]; then
     echo "🔖 Traefik labels will advertise container port $CONTAINER_PORT"
   fi
   echo "🌍 Resolved domain (effective): $DOMAIN"
+  TRAEFIK_ENABLE_ACME_EFF="${TRAEFIK_ENABLE_ACME:-true}"
   if [[ -x "$HOME/uactions/scripts/app/build-traefik-labels.sh" ]]; then
-    TRAEFIK_ENABLE_ACME_EFF="${TRAEFIK_ENABLE_ACME:-true}"
     mapfile -t BUILT_LABELS < <( \
       ROUTER_NAME="$ROUTER_NAME" \
       DOMAIN="$DOMAIN" \
@@ -448,78 +584,8 @@ if [[ "${REGISTRY_LOGIN:-true}" == "true" ]]; then
   podman_login_if_credentials "$IMAGE_REGISTRY" "${REGISTRY_USERNAME:-}" "${REGISTRY_TOKEN:-}"
 fi
 
-# Only pull the primary image if we are NOT in compose mode.
-# In compose mode, 'podman-compose pull' handles all required images.
-if [[ "${USE_COMPOSE:-false}" != "true" ]]; then
-  if [[ "${USE_COMPOSE:-false}" != "true" ]]; then podman_pull_image "$IMAGE_REF"; fi
-fi
-
-# --- Docker Compose deployment mode -------------------------------------------------
-USE_COMPOSE="${USE_COMPOSE:-false}"
-
-if [[ "$USE_COMPOSE" == "true" ]]; then
-  echo "================================================================"
-  echo "🐳 DOCKER COMPOSE DEPLOYMENT MODE ACTIVE"
-  echo "================================================================"
-  echo "NOTICE: The following are NOT automatically configured for Compose:"
-  echo "  1. Environment: Services must declare 'env_file: .env' in the compose file"
-  echo "     to receive the injected variables."
-  echo "  2. Traefik: You must manually add labels to your target service"
-  echo "     (e.g., traefik.enable=true, Host rule, etc.) and attach it"
-  echo "     to the 'traefik-network' (external: true)."
-  echo "  3. Persistence: This stack is NOT managed by Quadlet. Use 'restart: always'"
-  echo "     in your compose file for boot persistence."
-  echo "  4. Resources: Set mem_limit and cpus inside the 'deploy' section."
-  echo "================================================================"
-  
-  COMPOSE_DEPLOY_DIR="${COMPOSE_DEPLOY_DIR:-/opt/uactions/${APP_SLUG}}"
-  mkdir -p "$COMPOSE_DEPLOY_DIR"
-  cd "$COMPOSE_DEPLOY_DIR"
-  
-  if [[ -n "${COMPOSE_YAML_B64:-}" ]]; then
-    echo "$COMPOSE_YAML_B64" | base64 -d > docker-compose.yaml
-    echo "✓ Decoded docker-compose.yaml"
-    if ! podman-compose config >/dev/null 2>&1; then
-      echo "::error::Decoded docker-compose.yaml is not a valid compose file" >&2
-      exit 1
-    fi
-  elif [[ -n "${COMPOSE_FILE_NAME:-}" && -f "${COMPOSE_FILE_NAME}" ]]; then
-    cp "${COMPOSE_FILE_NAME}" docker-compose.yaml
-    echo "✓ Using compose file: ${COMPOSE_FILE_NAME}"
-    if ! podman-compose config >/dev/null 2>&1; then
-      echo "::error::${COMPOSE_FILE_NAME} is not a valid compose file" >&2
-      exit 1
-    fi
-  else
-    echo "::error::No docker-compose.yaml found in repository root or provided via compose_yaml_b64" >&2
-    exit 1
-  fi
-  
-  if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
-    cp "$ENV_FILE" .env
-    echo "✓ Using environment file: $ENV_FILE"
-  else
-    echo "::warning::No environment file found. Ensure env_b64 is provided."
-  fi
-  
-  export IMAGE_TAG="${IMAGE_TAG:-latest}"
-  export APP_RELEASE="${IMAGE_TAG:-latest}"
-  
-  echo ""
-  echo "Stopping existing services..."
-  podman-compose down || true
-  
-  echo "Pulling images..."
-  podman-compose pull
-  
-  echo "Starting services..."
-  podman-compose up -d
-  
-  echo ""
-  echo "✅ Docker Compose deployment complete!"
-  podman-compose ps
-  exit 0
-fi
+# Compose mode was handled earlier and exited; this path is single-container only.
+podman_pull_image "$IMAGE_REF"
 
 # --- Stop/replace container ---------------------------------------------------------
 

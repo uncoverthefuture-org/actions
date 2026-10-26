@@ -556,7 +556,31 @@ runs: # Composite action implementation
       run: |
         TAG="${{ inputs.version != '' && inputs.version || (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default) }}"
         echo "::notice::🚀 Starting Deployment to ${{ inputs.ssh_host }}"
-        echo "::notice::📦 Image: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:$TAG"
+        if [ "${{ inputs.use_compose }}" = "true" ]; then
+          echo "::notice::🐳 Compose mode: ${{ inputs.compose_file_name }}"
+        else
+          echo "::notice::📦 Image: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:$TAG"
+        fi
+
+    - name: Prepare compose payload
+      id: compose
+      if: ${{ inputs.use_compose == 'true' && inputs.compose_yaml_b64 == '' }}
+      shell: bash
+      env:
+        COMPOSE_FILE_NAME: ${{ inputs.compose_file_name }}
+      run: |
+        set -euo pipefail
+        if [ ! -f "$COMPOSE_FILE_NAME" ]; then
+          echo "::error::Compose file '$COMPOSE_FILE_NAME' was not found in the checked-out repository."
+          exit 1
+        fi
+        echo "📦 Encoding compose file for remote deployment: $COMPOSE_FILE_NAME"
+        b64="$(base64 -w0 "$COMPOSE_FILE_NAME" 2>/dev/null || base64 "$COMPOSE_FILE_NAME" | tr -d '\n')"
+        {
+          echo 'compose_b64<<__COMPOSE_EOF__'
+          echo "$b64"
+          echo '__COMPOSE_EOF__'
+        } >> "$GITHUB_OUTPUT"
 
     - name: Deploy container # Start/replace container with Traefik or port mapping
       if: ${{ steps.reach.outputs.reachable == 'true' }}
@@ -644,7 +668,12 @@ runs: # Composite action implementation
 
           # Docker Compose support
           export USE_COMPOSE='${{ inputs.use_compose }}'
-          export COMPOSE_YAML_B64='${{ inputs.compose_yaml_b64 }}'
+          export COMPOSE_FILE_NAME='${{ inputs.compose_file_name }}'
+          export COMPOSE_YAML_B64='${{ inputs.compose_yaml_b64 != '' && inputs.compose_yaml_b64 || steps.compose.outputs.compose_b64 }}'
+
+          # Host dependency installation
+          export INSTALL_PODMAN='${{ inputs.install_podman }}'
+          export ADDITIONAL_PACKAGES='${{ inputs.additional_packages }}'
 
           # Cleanup old script bundles (keep only the current one and the symlink target if different)
           echo "================================================================"

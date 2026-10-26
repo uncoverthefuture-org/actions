@@ -265,6 +265,7 @@ runs:
       with:
         subaction: ${{ inputs.subaction }}
         params_json: ${{ inputs.params_json }}
+        secrets_json: ${{ inputs.secrets_json }}
 
     - name: Version dispatch
       id: vdisp

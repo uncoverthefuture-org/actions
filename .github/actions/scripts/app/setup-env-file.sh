@@ -36,7 +36,7 @@ if [ -z "$ENV_NAME" ]; then
     main|master|production) ENV_NAME='production' ;;
     stage|staging) ENV_NAME='staging' ;;
     dev|develop|development) ENV_NAME='development' ;;
-    refs/tags/*) ENV_NAME='production' ;;
+    v[0-9]*|refs/tags/*) ENV_NAME='production' ;;
     *) ENV_NAME='development' ;;
   esac
 fi

@@ -150,6 +150,17 @@ inputs:
     description: "Explicit version/tag to deploy (example: v1.2.3)."
     required: false
 
+  # Docker Compose support
+  use_compose:
+    description: "When true, deploy using a compose file instead of a single container."
+    required: false
+  compose_file_name:
+    description: "Compose file in the checked-out repository to deploy (example: docker-compose.prod.yaml). Alias: compose_file."
+    required: false
+  compose_yaml_b64:
+    description: "Base64-encoded compose file content. Overrides compose_file_name."
+    required: false
+
   # Runtime
   app_slug:
     description: "Short identifier for the application, used in container names and logs (example: checkout)."
@@ -362,6 +373,9 @@ runs:
         image_name: ${{ inputs.image_name != '' && inputs.image_name || fromJSON(steps.params.outputs.json).image_name || steps.defaults.outputs.image_name }}
         image_tag: ${{ inputs.image_tag != '' && inputs.image_tag || fromJSON(steps.params.outputs.json).image_tag }}
         version: ${{ inputs.version != '' && inputs.version || fromJSON(steps.params.outputs.json).version }}
+        use_compose: ${{ inputs.use_compose != '' && inputs.use_compose || fromJSON(steps.params.outputs.json).use_compose || 'false' }}
+        compose_file_name: ${{ inputs.compose_file_name != '' && inputs.compose_file_name || fromJSON(steps.params.outputs.json).compose_file_name || fromJSON(steps.params.outputs.json).compose_file || 'docker-compose.yaml' }}
+        compose_yaml_b64: ${{ inputs.compose_yaml_b64 != '' && inputs.compose_yaml_b64 || fromJSON(steps.params.outputs.json).compose_yaml_b64 }}
         app_slug: ${{ inputs.app_slug != '' && inputs.app_slug || fromJSON(steps.params.outputs.json).app_slug || steps.defaults.outputs.app_slug }}
         container_name: ${{ inputs.container_name != '' && inputs.container_name || fromJSON(steps.params.outputs.json).container_name }}
         host_port: ${{ inputs.host_port != '' && inputs.host_port || fromJSON(steps.params.outputs.json).host_port }}
