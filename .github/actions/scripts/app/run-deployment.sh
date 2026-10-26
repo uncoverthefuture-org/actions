@@ -58,6 +58,7 @@ IMAGE_REGISTRY=$(normalize_string "$IMAGE_REGISTRY_RAW" "image registry")
 IMAGE_NAME_RAW="${IMAGE_NAME:-}"
 IMAGE_NAME=$(normalize_string "$IMAGE_NAME_RAW" "image name")
 IMAGE_TAG="${IMAGE_TAG:-}"
+USE_COMPOSE="${USE_COMPOSE:-false}"
 
 # --- Registry authentication --------------------------------------------------------
 REGISTRY_LOGIN="${REGISTRY_LOGIN:-false}"
@@ -126,6 +127,14 @@ CURRENT_GROUPS="${CURRENT_GROUPS:-$(id -Gn)}"
 #   SUDO_STATUS="$(detect_sudo_status "yes" "no")"
 SUDO_STATUS="$(detect_sudo_status)"
 
+PODMAN_PACKAGES="podman curl jq ca-certificates ${ADDITIONAL_PACKAGES:-}"
+if [ "$USE_COMPOSE" = "true" ]; then
+  case " $PODMAN_PACKAGES " in
+    *" podman-compose "*) ;;
+    *) PODMAN_PACKAGES="$PODMAN_PACKAGES podman-compose" ;;
+  esac
+fi
+
 echo "================================================================"
 echo "📛 Confirming podman installation..."
 echo "================================================================"
@@ -136,11 +145,15 @@ if command -v podman >/dev/null 2>&1; then
 else
   echo "❌ Podman is not installed on this host."
   echo "   This deployment requires Podman to be installed on the remote host."
+  if [ "${INSTALL_PODMAN:-true}" != "true" ]; then
+    echo "::error::Podman is missing and install_podman is disabled. Install Podman on the host or set install_podman=true." >&2
+    exit 1
+  fi
   if [[ "${SUDO_STATUS:-available}" == "unavailable" ]]; then
     echo "Detected: user=$(id -un); sudo(non-interactive)=${SUDO_STATUS}" >&2
     echo 'Install manually as root then re-run:' >&2
     echo '  sudo apt-get update -y --allow-releaseinfo-change' >&2
-    echo '  sudo apt-get install -y podman curl jq ca-certificates' >&2
+    echo "  sudo apt-get install -y $PODMAN_PACKAGES" >&2
     echo 'Or re-run this action with a user that can install packages non-interactively.' >&2
     exit 1
   else
@@ -155,14 +168,35 @@ else
       exit 1
     fi
 
-    echo "   Running (sudo apt-get install -y podman curl jq ca-certificates)"
-    if sudo apt-get install -y podman curl jq ca-certificates; then
+    echo "   Running (sudo apt-get install -y $PODMAN_PACKAGES)"
+    if sudo apt-get install -y $PODMAN_PACKAGES; then
       echo "   ✅ Podman and dependencies installed"
     else
-      echo "::error::apt-get install podman curl jq ca-certificates failed" >&2
+      echo "::error::apt-get install $PODMAN_PACKAGES failed" >&2
       exit 1
     fi
   fi
+fi
+
+# Compose mode needs podman-compose before deploy-container.sh checks for it.
+# Install it now if Podman was already present and the package is missing.
+if [ "$USE_COMPOSE" = "true" ] && ! command -v podman-compose >/dev/null 2>&1; then
+  echo "================================================================"
+  echo "📦 Installing podman-compose (required for compose mode)..."
+  echo "================================================================"
+  if [[ "${SUDO_STATUS:-available}" == "unavailable" ]]; then
+    echo "::error::podman-compose is required when use_compose=true but is missing, and passwordless sudo is unavailable. Install it manually with: sudo apt-get install -y podman-compose" >&2
+    exit 1
+  fi
+  if ! sudo apt-get update -y --allow-releaseinfo-change; then
+    echo "::error::apt-get update failed while installing podman-compose" >&2
+    exit 1
+  fi
+  if ! sudo apt-get install -y podman-compose; then
+    echo "::error::Failed to install podman-compose. Install it manually with: sudo apt-get install -y podman-compose" >&2
+    exit 1
+  fi
+  echo "   ✅ podman-compose installed"
 fi
 
 # --- Install Portainer (after Traefik ensure) ---------------------------------------
@@ -547,7 +581,11 @@ echo "🚀 Executing deployment script..."
 echo "================================================================"
 echo "  Script: $HOME/uactions/scripts/app/deploy-container.sh"
 echo "  App: $APP_SLUG"
-echo "  Image: $IMAGE_REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
+if [ "$USE_COMPOSE" = "true" ]; then
+  echo "  Mode: docker-compose (${COMPOSE_FILE_NAME:-docker-compose.yaml})"
+else
+  echo "  Image: $IMAGE_REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
+fi
 echo "  Traefik: $TRAEFIK_ENABLED"
 echo "  Env Directory: ${REMOTE_ENV_DIR:-'(not set)'}"
 echo "  Env File: ${REMOTE_ENV_FILE:-'(not set)'}"

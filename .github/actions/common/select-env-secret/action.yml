@@ -95,38 +95,63 @@ runs:
           prefix='ENV_B64_'
         fi
 
+        # Accept the short environment aliases used throughout the docs and
+        # examples (PROD/DEV) in addition to the full names (PRODUCTION/
+        # DEVELOPMENT). Without this, an env_name of "production" would only
+        # look up PRODUCTION_ENV_B64 and silently miss PROD_ENV_B64.
+        env_short="$env_upper"
+        case "$env_upper" in
+          PRODUCTION) env_short="PROD" ;;
+          PROD) env_short="PRODUCTION" ;;
+          DEVELOPMENT) env_short="DEV" ;;
+          DEV) env_short="DEVELOPMENT" ;;
+        esac
+
         secret_name="${prefix}${env_upper}${suffix}"
-        
+        alias_name="${prefix}${env_short}${suffix}"
+        candidate_names=("$secret_name")
+        if [ "$alias_name" != "$secret_name" ]; then
+          candidate_names+=("$alias_name")
+        fi
+
         echo "🔍 Looking up secret: ${secret_name}"
         echo "   Prefix: '${prefix}'"
         echo "   Environment: ${env_name} (upper: ${env_upper})"
         echo "   Suffix: '${suffix}'"
-        
-        # Try to get secret from JSON input first
+        echo "   Candidates: ${candidate_names[*]}"
+
+        # Try to get the secret from JSON input first, then from job-level env.
         secret_value=""
-        if [ -n "${SECRETS_JSON}" ]; then
+        matched_name=""
+        if [ -n "${SECRETS_JSON}" ] && command -v jq >/dev/null 2>&1; then
           echo "   Secrets JSON provided (length: ${#SECRETS_JSON} chars)"
-          # Use jq to extract the secret safely
-          # We escape the secret name to prevent injection/errors if it has weird chars (unlikely for env keys)
-          if command -v jq >/dev/null 2>&1; then
-             secret_value=$(echo "${SECRETS_JSON}" | jq -r --arg key "$secret_name" '.[$key] // empty')
-             if [ -n "${secret_value}" ]; then
-               echo "   ✓ Found secret in secrets_json"
-             fi
-          else
-             echo "::warning::jq not found, cannot parse secrets_json. Falling back to environment lookup."
-          fi
+          for candidate in "${candidate_names[@]}"; do
+            secret_value=$(echo "${SECRETS_JSON}" | jq -r --arg key "$candidate" '.[$key] // empty')
+            if [ -n "${secret_value}" ]; then
+              matched_name="$candidate"
+              echo "   ✓ Found secret in secrets_json as ${candidate}"
+              break
+            fi
+          done
+        elif [ -n "${SECRETS_JSON}" ]; then
+          echo "::warning::jq not found, cannot parse secrets_json. Falling back to environment lookup."
         else
           echo "   No secrets_json provided, will use environment lookup"
         fi
 
-        # Fallback to environment variable if not found in JSON
         if [ -z "${secret_value}" ]; then
-          echo "   Checking environment variable: ${secret_name}"
-          secret_value="$(printenv "${secret_name}" 2>/dev/null || true)"
-          if [ -n "${secret_value}" ]; then
-            echo "   ✓ Found secret in environment variable"
-          fi
+          for candidate in "${candidate_names[@]}"; do
+            echo "   Checking environment variable: ${candidate}"
+            secret_value="$(printenv "${candidate}" 2>/dev/null || true)"
+            if [ -n "${secret_value}" ]; then
+              matched_name="$candidate"
+              echo "   ✓ Found secret in environment variable as ${candidate}"
+              break
+            fi
+          done
+        fi
+        if [ -n "$matched_name" ]; then
+          secret_name="$matched_name"
         fi
 
         if [ -z "${secret_value}" ]; then

@@ -556,7 +556,11 @@ runs: # Composite action implementation
       run: |
         TAG="${{ inputs.version != '' && inputs.version || (inputs.image_tag != '' && inputs.image_tag || steps.dfl.outputs.image_tag_default) }}"
         echo "::notice::🚀 Starting Deployment to ${{ inputs.ssh_host }}"
-        echo "::notice::📦 Image: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:$TAG"
+        if [ "${{ inputs.use_compose }}" = "true" ]; then
+          echo "::notice::🐳 Compose mode: ${{ inputs.compose_file_name }}"
+        else
+          echo "::notice::📦 Image: ${{ inputs.image_name != '' && inputs.image_name || steps.dfl.outputs.image_name }}:$TAG"
+        fi
 
     - name: Prepare compose payload
       id: compose
@@ -666,6 +670,10 @@ runs: # Composite action implementation
           export USE_COMPOSE='${{ inputs.use_compose }}'
           export COMPOSE_FILE_NAME='${{ inputs.compose_file_name }}'
           export COMPOSE_YAML_B64='${{ inputs.compose_yaml_b64 != '' && inputs.compose_yaml_b64 || steps.compose.outputs.compose_b64 }}'
+
+          # Host dependency installation
+          export INSTALL_PODMAN='${{ inputs.install_podman }}'
+          export ADDITIONAL_PACKAGES='${{ inputs.additional_packages }}'
 
           # Cleanup old script bundles (keep only the current one and the symlink target if different)
           echo "================================================================"
