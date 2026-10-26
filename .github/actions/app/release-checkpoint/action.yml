@@ -1,0 +1,87 @@
+name: 'app: release-checkpoint'
+description: 'Resolve and validate the exact deployment version from an input, release, tag, or merged release PR.'
+
+inputs:
+  version:
+    description: 'Explicit version to deploy; an omitted v prefix is normalized.'
+    required: false
+  prod_branch:
+    description: 'Release PR target override; when omitted, accepts main or master.'
+    required: false
+  verify_tag:
+    description: 'Verify the exact tag exists on origin. Disable only for PR resolution before tag creation.'
+    default: 'true'
+
+outputs:
+  version:
+    description: 'Validated version, including its v prefix and any prerelease suffix.'
+    value: ${{ steps.checkpoint.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve and validate release
+      id: checkpoint
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        PROD_BRANCH: ${{ inputs.prod_branch }}
+        VERIFY_TAG: ${{ inputs.verify_tag }}
+      run: |
+        set -euo pipefail
+
+        fail() {
+          echo "Release checkpoint failed: $1" >&2
+          exit 1
+        }
+
+        VERSION="${INPUT_VERSION:-}"
+        if [ -z "$VERSION" ]; then
+          case "${GITHUB_EVENT_NAME:-}" in
+            release)
+              [ "$(jq -r '.action' "$GITHUB_EVENT_PATH")" = published ] || fail 'Release must be published'
+              VERSION=$(jq -r '.release.tag_name // empty' "$GITHUB_EVENT_PATH")
+              ;;
+            push)
+              [ "${GITHUB_REF_TYPE:-}" = tag ] || fail 'Branch pushes require an explicit version'
+              [ "$(jq -r '.deleted // false' "$GITHUB_EVENT_PATH")" = false ] || fail 'Deleted tags cannot be deployed'
+              VERSION="${GITHUB_REF_NAME:-}"
+              ;;
+            pull_request)
+              jq -e '.action == "closed" and .pull_request.merged == true' "$GITHUB_EVENT_PATH" >/dev/null || fail 'Release PR must be closed and merged'
+              BASE=$(jq -r '.pull_request.base.ref // empty' "$GITHUB_EVENT_PATH")
+              if [ -n "${PROD_BRANCH:-}" ]; then
+                [ "$BASE" = "$PROD_BRANCH" ] || fail 'Release PR must target prod_branch'
+              else
+                case "$BASE" in main|master) ;; *) fail 'Release PR must target main or master';; esac
+              fi
+              BRANCH=$(jq -r '.pull_request.head.ref // empty' "$GITHUB_EVENT_PATH")
+              case "$BRANCH" in release-please--*) ;; *) fail 'PR must use a Release Please branch';; esac
+              # Match whole version tokens, including malformed suffixes, so validation
+              # rejects invalid versions instead of silently truncating them.
+              VERSIONS=$(jq '[.pull_request.title // "" | match("(?<![\\w.+-])v?[0-9]+\\.[0-9]+\\.[0-9]+[0-9A-Za-z.+-]*(?![\\w.+-])"; "g") | .string]' "$GITHUB_EVENT_PATH")
+              [ "$(printf '%s' "$VERSIONS" | jq length)" = 1 ] || fail 'Release Please PR title must contain exactly one version'
+              VERSION=$(printf '%s' "$VERSIONS" | jq -r '.[0]')
+              ;;
+            *) fail 'Provide version explicitly for this event';;
+          esac
+        fi
+
+        # Container image tags cannot contain SemVer build metadata (+...).
+        NUMBER='(0|[1-9][0-9]*)'
+        IDENTIFIER='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+        PATTERN="^v?${NUMBER}\\.${NUMBER}\\.${NUMBER}(-${IDENTIFIER}(\\.${IDENTIFIER})*)?$"
+        [[ "$VERSION" =~ $PATTERN ]] || fail 'Expected vMAJOR.MINOR.PATCH with an optional SemVer prerelease'
+        case "$VERSION" in v*) ;; *) VERSION="v$VERSION";; esac
+
+        case "${VERIFY_TAG:-true}" in
+          true)
+            # Fetch the exact ref from origin; stale local tags must not pass validation.
+            git fetch --no-tags origin "refs/tags/$VERSION" || fail "Remote tag $VERSION does not exist or cannot be fetched"
+            git rev-parse 'FETCH_HEAD^{commit}' >/dev/null || fail 'Tag must reference a commit'
+            ;;
+          false) ;;
+          *) fail 'verify_tag must be true or false';;
+        esac
+        printf 'version=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
+        printf 'Validated deployment version: %s\n' "$VERSION"

@@ -34,6 +34,9 @@ description: 'App dispatch: route short calls to app actions'
 # All inputs are passed through to the selected subaction
 # ============================================================================
 inputs:
+  prod_branch:
+    description: 'Release checkpoint PR target override; when omitted, accepts main or master.'
+    required: false
   # ========================================================================
   # ROUTING
   # ========================================================================
@@ -265,8 +268,8 @@ inputs:
 
 outputs:
   version:
-    description: 'Extracted semantic version returned by extract-version.'
-    value: ${{ steps.extract-version.outputs.version }}
+    description: 'Extracted semantic version returned by release-checkpoint.'
+    value: ${{ steps.release-checkpoint.outputs.version }}
 
 runs:
   using: 'composite'
@@ -281,6 +284,7 @@ runs:
         params_json: ${{ inputs.params_json }}
 
     - name: Compute derived defaults
+      if: ${{ inputs.subaction != 'release-checkpoint' }}
       id: defaults
       uses: ./.github/actions/app/common/compute-defaults
 
@@ -288,9 +292,10 @@ runs:
       uses: ./.github/actions/common/validate-subaction
       with:
         subaction: ${{ inputs.subaction }}
-        allowed: ssh-container-deploy|doctl-container-deploy|aws-ssm-container-deploy|write-remote-env-file|extract-version
+        allowed: ssh-container-deploy|doctl-container-deploy|aws-ssm-container-deploy|write-remote-env-file|release-checkpoint
 
     - name: Debug - Show params JSON
+      if: ${{ inputs.subaction != 'release-checkpoint' }}
       shell: bash
       run: |
         echo "Debug: params_json output"
@@ -538,9 +543,11 @@ runs:
         install_usermin: ${{ fromJSON(steps.params.outputs.json).install_usermin }}
         debug: ${{ inputs.debug != '' && inputs.debug || fromJSON(steps.params.outputs.json).debug }}
     
-    - name: extract-version
-      if: ${{ inputs.subaction == 'extract-version' }}
-      id: extract-version
-      uses: ./.github/actions/app/extract-version
+    - name: release-checkpoint
+      if: ${{ inputs.subaction == 'release-checkpoint' }}
+      id: release-checkpoint
+      uses: ./.github/actions/app/release-checkpoint
       with:
-        version: ${{ fromJSON(steps.params.outputs.json).version }}
+        version: ${{ inputs.version || fromJSON(steps.params.outputs.json).version }}
+        prod_branch: ${{ inputs.prod_branch || fromJSON(steps.params.outputs.json).prod_branch }}
+        verify_tag: ${{ format('{0}', fromJSON(steps.params.outputs.json).verify_tag) == 'false' && 'false' || fromJSON(steps.params.outputs.json).verify_tag || 'true' }}

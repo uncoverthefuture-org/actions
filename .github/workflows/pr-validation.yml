@@ -26,3 +26,6 @@ jobs:
         run: |
           echo "Running bash tests for PR validation..."
           ./tests/pr-validation/verify-action-files.sh
+
+      - name: Test release checkpoint
+        run: ./tests/release-checkpoint/verify-release-checkpoint.sh
