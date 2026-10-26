@@ -439,6 +439,8 @@ if [[ -n "$TRAEFIK_DNS_SERVERS" ]]; then
   done
 fi
 
+mkdir -p "$HOME/.config/traefik/dynamic"
+RUN_ARGS+=(-v "$HOME/.config/traefik/dynamic":/etc/traefik/dynamic:ro)
 RUN_ARGS+=(-v "$HOME/.config/traefik/traefik.yml":/etc/traefik/traefik.yml:ro)
 RUN_ARGS+=(-v "$HOME/.local/share/traefik/acme.json":/letsencrypt/acme.json:Z)
 RUN_ARGS+=(-v "$HOST_SOCK":/var/run/docker.sock:Z)
@@ -610,6 +612,8 @@ if ! out=$("${RUN_ARGS[@]}" docker.io/traefik:"${TRAEFIK_VERSION}" 2>&1); then
       fi
       RUN_ARGS_ROOT+=(--network host)
       # Mount same config and ACME storage from user scope; readable by root
+      mkdir -p "$HOME/.config/traefik/dynamic"
+      RUN_ARGS_ROOT+=(-v "$HOME/.config/traefik/dynamic":/etc/traefik/dynamic:ro)
       RUN_ARGS_ROOT+=(-v "$HOME/.config/traefik/traefik.yml":/etc/traefik/traefik.yml:ro)
       RUN_ARGS_ROOT+=(-v "$HOME/.local/share/traefik/acme.json":/letsencrypt/acme.json:Z)
       RUN_ARGS_ROOT+=(-v "$ROOT_SOCK":/var/run/docker.sock:Z)

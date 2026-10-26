@@ -22,6 +22,18 @@ name: "SSH Container Deploy" # Action name as shown in logs/marketplace
 description: "Deploy a container via Podman over SSH with optional Traefik routing and/or port mapping." # High-level summary
 
 inputs: # All parameters accepted by this action
+  deployment_strategy:
+    description: 'recreate (default) or blue-green; blue-green enables managed snapshots and requires Traefik.'
+    default: 'recreate'
+  readiness_path:
+    description: 'HTTP path to verify through local Traefik after blue-green promotion.'
+    default: '/'
+  release_snapshots:
+    description: 'Opt into immutable single-container recreate releases with health-gated rollback.'
+    default: 'false'
+  rollback_version:
+    description: 'Restore a successfully activated image tag (e.g. v1.2.3) or previous; requires release_snapshots=true.'
+    required: false
   # SSH / Remote
   ssh_host:
     description: "SSH host (IP or DNS) of the remote server (example: deploy.example.com)"
@@ -394,6 +406,15 @@ outputs:
 runs: # Composite action implementation
   using: "composite"
   steps:
+    - name: Validate release options
+      id: release-options
+      uses: ./.github/actions/app/common/release-options
+      with:
+        deployment_strategy: ${{ inputs.deployment_strategy }}
+        readiness_path: ${{ inputs.readiness_path }}
+        release_snapshots: ${{ inputs.release_snapshots }}
+        rollback_version: ${{ inputs.rollback_version }}
+
     - name: Compute derived defaults # Derive slug, env, domain, tags, etc.
       id: dfl
       uses: ./.github/actions/app/common/compute-defaults
@@ -608,7 +629,7 @@ runs: # Composite action implementation
             DEPLOYMENT_ROOT="$HOME/deployments"
           fi
           case "$DEPLOYMENT_ROOT" in
-            "~/"*) DEPLOYMENT_ROOT="$HOME/${DEPLOYMENT_ROOT#~/}" ;;
+            "~/"*) DEPLOYMENT_ROOT="$HOME/${DEPLOYMENT_ROOT#\~/}" ;;
             "/home/runner/"*) DEPLOYMENT_ROOT="$HOME/${DEPLOYMENT_ROOT#/home/runner/}" ;;
           esac
           DEPLOYMENT_ROOT="${DEPLOYMENT_ROOT%/}"
@@ -682,6 +703,10 @@ runs: # Composite action implementation
           # Quadlet/systemd persistence toggle for app containers. When set to
           # 'false', deploy-container.sh will skip generating a Quadlet
           # .container unit so the app is not managed by systemd --user.
+          export DEPLOYMENT_STRATEGY='${{ steps.release-options.outputs.strategy }}'
+          export READINESS_PATH='${{ steps.release-options.outputs.readiness }}'
+          export RELEASE_SNAPSHOTS='${{ steps.release-options.outputs.enabled }}'
+          export ROLLBACK_VERSION='${{ steps.release-options.outputs.rollback }}'
           export QUADLET_ENABLED='${{ inputs.quadlet_enabled }}'
 
           # Propagate Traefik ensure hint to the remote orchestration layer. When
@@ -830,9 +855,8 @@ runs: # Composite action implementation
 
           "$HOME/uactions/scripts/app/start-container-deployment.sh"
 
-    # Resolve the assigned host port when Traefik is disabled.
-    # This reads the .host-port file created by compute-host-port.sh on the server,
-    # ensuring the output is accurate even when ports are dynamically assigned.
+    # Managed deployments report the port from committed release state so failed
+    # candidates cannot change it and rollback restores the selected version.
     - name: Resolve assigned host port
       id: resolve_port
       if: ${{ steps.reach.outputs.reachable == 'true' && inputs.enable_traefik != 'true' }}
@@ -843,19 +867,36 @@ runs: # Composite action implementation
         SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || inputs.podman_user }}
         SSH_PORT: ${{ inputs.ssh_port }}
       run: |
+        set -euo pipefail
         KEY_FILE=$(mktemp)
+        PORT_FILE=$(mktemp)
+        trap 'rm -f "$KEY_FILE" "$PORT_FILE"' EXIT
         echo "$SSH_KEY" > "$KEY_FILE"
         chmod 600 "$KEY_FILE"
         APP_SLUG='${{ inputs.app_slug != '' && inputs.app_slug || steps.dfl.outputs.app_slug }}'
         ENV_NAME='${{ inputs.env_name != '' && inputs.env_name || steps.dfl.outputs.env_name_default }}'
-        # Compute the same deployment directory as run-deployment.sh
-        DEPLOY_DIR="deployments/${ENV_NAME}/${APP_SLUG}"
-        PORT=$(ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 -i "$KEY_FILE" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cat \"\$HOME/$DEPLOY_DIR/.host-port\" 2>/dev/null || echo ''")
+        BASE_DIR='${{ inputs.env_file_path != '' && inputs.env_file_path || inputs.deployment_base_dir }}'
+        MANAGED='${{ steps.release-options.outputs.enabled }}'
+        printf -v REMOTE_COMMAND 'bash -s -- %q %q %q %q' "$BASE_DIR" "$ENV_NAME" "$APP_SLUG" "$MANAGED"
+        ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 -i "$KEY_FILE" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "$REMOTE_COMMAND" > "$PORT_FILE" <<'EOF_PORT'
+        set -euo pipefail
+        base="${1:-$HOME/deployments}"
+        case "$base" in
+          "~/"*) base="$HOME/${base#\~/}" ;;
+          /home/runner/*) base="$HOME/${base#/home/runner/}" ;;
+        esac
+        deployment="${base%/}/$2/$3"
+        if [[ "$4" == true ]]; then
+          jq -r '.host_port // empty' "$deployment/managed/state.json"
+        else
+          cat "$deployment/.host-port" 2>/dev/null || true
+        fi
+        EOF_PORT
+        PORT=$(cat "$PORT_FILE")
         if [ -n "$PORT" ]; then
           echo "✅ Resolved host port: $PORT"
           echo "host_port=$PORT" >> $GITHUB_OUTPUT
         fi
-        rm -f "$KEY_FILE"
 
     # # Respect summary_mode: full|light|off
     # # - full: run diagnostics + whoami probe

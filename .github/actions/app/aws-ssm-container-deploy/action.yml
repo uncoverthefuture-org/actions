@@ -30,6 +30,21 @@ name: 'AWS SSM Container Deploy'
 description: 'Deploy a container to an AWS EC2 instance using SSM Run Command and server-managed scripts.'
 
 inputs:
+  deployment_strategy:
+    description: 'recreate (default) or blue-green; blue-green enables managed snapshots and requires Traefik.'
+    default: 'recreate'
+  readiness_path:
+    description: 'HTTP path to verify through local Traefik after blue-green promotion.'
+    default: '/'
+  release_snapshots:
+    description: 'Opt into immutable single-container recreate releases with health-gated rollback.'
+    default: 'false'
+  rollback_version:
+    description: 'Restore a successfully activated image tag (e.g. v1.2.3) or previous; requires release_snapshots=true.'
+    required: false
+  quadlet_enabled:
+    description: 'Enable systemd user persistence; managed releases replay the saved launch command.'
+    default: 'true'
   # --------------------------------------------------------------------------
   # AWS identity & SSM target
   # --------------------------------------------------------------------------
@@ -244,6 +259,15 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Validate release options
+      id: release-options
+      uses: ./.github/actions/app/common/release-options
+      with:
+        deployment_strategy: ${{ inputs.deployment_strategy }}
+        readiness_path: ${{ inputs.readiness_path }}
+        release_snapshots: ${{ inputs.release_snapshots }}
+        rollback_version: ${{ inputs.rollback_version }}
+
     - name: Compute derived defaults
       id: dfl
       uses: ./.github/actions/app/common/compute-defaults
@@ -352,6 +376,11 @@ runs:
     - name: Deploy container via AWS SSM
       shell: bash
       env:
+        DEPLOYMENT_STRATEGY: ${{ steps.release-options.outputs.strategy }}
+        READINESS_PATH: ${{ steps.release-options.outputs.readiness }}
+        RELEASE_SNAPSHOTS: ${{ steps.release-options.outputs.enabled }}
+        ROLLBACK_VERSION: ${{ steps.release-options.outputs.rollback }}
+        QUADLET_ENABLED: ${{ inputs.quadlet_enabled }}
         AWS_REGION: ${{ inputs.aws_region }}
         SSM_TARGET: ${{ inputs.ssm_target }}
         S3_URI: ${{ steps.upload.outputs.s3_uri }}
@@ -411,68 +440,79 @@ runs:
           exit 1
         fi
 
-        cat > ssm-commands.json << 'EOF_CMDS'
+        # Quote runner values as Bash assignments before JSON encoding. Never
+        # interpolate secrets into shell source or expand remote $HOME locally.
+        command_file=$(mktemp)
+        trap 'rm -f "$command_file" ssm-commands.json' EXIT
+        chmod 600 "$command_file"
         {
-          "commands": [
-            "set -euo pipefail",
-            "export ENV_B64='${ENV_B64_VAL}'",
-            "export ENV_CONTENT='${ENV_CONTENT_VAL}'",
-            "export IMAGE_REGISTRY='${REGISTRY}'",
-            "export IMAGE_NAME='${IMAGE_NAME_VAL}'",
-            "export IMAGE_TAG='${IMAGE_TAG_VAL}'",
-            "export REGISTRY_LOGIN='${REGISTRY_LOGIN}'",
-            "export REGISTRY_USERNAME='${REGISTRY_USERNAME_VAL}'",
-            "export REGISTRY_TOKEN='${REGISTRY_TOKEN_VAL}'",
-            "export APP_SLUG='${APP_SLUG_VAL}'",
-            "export ENV_NAME='${ENV_NAME_VAL}'",
-            "export CONTAINER_NAME_IN='${CONTAINER_NAME_VAL}'",
-            "export ENV_FILE_PATH_BASE='${ENV_FILE_PATH_INPUT:-${DEPLOYMENT_BASE_DIR}}'",
-            "export HOST_PORT_IN='${HOST_PORT_VAL}'",
-            "export CONTAINER_PORT_IN='${CONTAINER_PORT_VAL}'",
-            "export EXTRA_RUN_ARGS='${EXTRA_RUN_ARGS_VAL}'",
-            "export RESTART_POLICY='${RESTART_POLICY_VAL}'",
-            "export MEMORY_LIMIT='${MEMORY_LIMIT_VAL}'",
-            "export TRAEFIK_ENABLED='${ENABLE_TRAEFIK_VAL}'",
-            "export TRAEFIK_ENABLE_ACME='${ENABLE_ACME_VAL}'",
-            "export TRAEFIK_EMAIL='${TRAEFIK_EMAIL_VAL}'",
-            "export TRAEFIK_RESET_ACME='${TRAEFIK_RESET_ACME_VAL}'",
-            "export TRAEFIK_NETWORK_NAME='${TRAEFIK_NETWORK_NAME_VAL}'",
-            "export DOMAIN_INPUT='${DOMAIN_INPUT_VAL}'",
-            "export DOMAIN_DEFAULT='${DOMAIN_DEFAULT_VAL}'",
-            "export ROUTER_NAME='${ROUTER_NAME_VAL}'",
-            "export DOMAIN_ALIASES='${DOMAIN_ALIASES_VAL}'",
-            "export INCLUDE_WWW_ALIAS='${INCLUDE_WWW_ALIAS_VAL}'",
-            "export DOMAIN_HOSTS='${DOMAIN_HOSTS_VAL}'",
-            "export ENABLE_DASHBOARD='${ENABLE_DASHBOARD_VAL}'",
-            "export DASHBOARD_PUBLISH_MODES='${DASHBOARD_PUBLISH_MODES_VAL}'",
-            "export DASHBOARD_HOST='${DASHBOARD_HOST_VAL}'",
-            "export DASHBOARD_PASSWORD='${DASHBOARD_PASSWORD_VAL}'",
-            "export DASHBOARD_USERS_B64='${DASHBOARD_USERS_B64_VAL}'",
-            "export UFW_ALLOW_PORTS_INPUT='${UFW_ALLOW_PORTS_VAL}'",
-            "export INSTALL_WEBMIN='${INSTALL_WEBMIN_VAL}'",
-            "export INSTALL_USERMIN='${INSTALL_USERMIN_VAL}'",
-            "export DEBUG='${DEBUG_VAL}'",
-            "echo '================================================================'",
-            "echo 'Installing server-managed scripts bundle on EC2 via S3'",
-            "echo '================================================================'",
-            "mkdir -p \"$HOME/uactions\"",
-            "aws s3 cp '${S3_URI}' \"$HOME/uactions-scripts.tgz\"",
-            "if ! tar -tzf \"$HOME/uactions-scripts.tgz\" >/dev/null 2>&1; then echo '::error::Invalid or empty tar archive at $HOME/uactions-scripts.tgz (tar -tzf failed)'; ls -lh \"$HOME/uactions-scripts.tgz\" || true; exit 1; fi",
-            "TMPDIR=\"$(mktemp -d)\"",
-            "tar -xzf \"$HOME/uactions-scripts.tgz\" -C \"$TMPDIR\"",
-            "rm -rf \"$HOME/uactions/scripts\"",
-            "mv \"$TMPDIR/scripts\" \"$HOME/uactions/scripts\"",
-            "rm -rf \"$TMPDIR\"",
-            "find \"$HOME/uactions/scripts\" -type f -name '*.sh' -exec chmod +x {} +",
-            "date -u +'%Y-%m-%d %H:%M:%S UTC' > \"$HOME/uactions/scripts/.deployed_at\"",
-            "echo '${GITHUB_SHA}' > \"$HOME/uactions/scripts/.version\"",
-            "if [ -z \"${TRAEFIK_ENABLED}\" ]; then TRAEFIK_ENABLED='true'; fi",
-            "if [ -z \"${TRAEFIK_ENABLE_ACME}\" ] && [ \"${TRAEFIK_ENABLED}\" = 'true' ]; then TRAEFIK_ENABLE_ACME='true'; fi",
-            "if [ -z \"${TRAEFIK_EMAIL}\" ]; then DOMAIN_FOR_EMAIL=\"${DOMAIN_DEFAULT:-${DOMAIN_INPUT:-}}\"; if [ -n \"${DOMAIN_FOR_EMAIL}\" ]; then lower_domain=$(printf '%s' \"${DOMAIN_FOR_EMAIL}\" | tr '[:upper:]' '[:lower:]'); IFS='.' read -r -a email_parts <<<\"${lower_domain#www.}\"; part_count=${#email_parts[@]}; if [ \"$part_count\" -ge 2 ]; then apex=\"${email_parts[part_count-2]}.${email_parts[part_count-1]}\"; else apex=\"${lower_domain#www.}\"; fi; TRAEFIK_EMAIL=\"traefik@${apex}\"; fi; fi",
-            "\"$HOME/uactions/scripts/app/start-container-deployment.sh\""
-          ]
-        }
-        EOF_CMDS
+          printf 'set -euo pipefail\n'
+          printf 'export ENV_B64=%q\n' "${ENV_B64_VAL}"
+          printf 'export ENV_CONTENT=%q\n' "${ENV_CONTENT_VAL}"
+          printf 'export IMAGE_REGISTRY=%q\n' "${REGISTRY}"
+          printf 'export IMAGE_NAME=%q\n' "${IMAGE_NAME_VAL}"
+          printf 'export IMAGE_TAG=%q\n' "${IMAGE_TAG_VAL}"
+          printf 'export REGISTRY_LOGIN=%q\n' "${REGISTRY_LOGIN}"
+          printf 'export REGISTRY_USERNAME=%q\n' "${REGISTRY_USERNAME_VAL}"
+          printf 'export REGISTRY_TOKEN=%q\n' "${REGISTRY_TOKEN_VAL}"
+          printf 'export APP_SLUG=%q\n' "${APP_SLUG_VAL}"
+          printf 'export ENV_NAME=%q\n' "${ENV_NAME_VAL}"
+          printf 'export CONTAINER_NAME_IN=%q\n' "${CONTAINER_NAME_VAL}"
+          printf 'export ENV_FILE_PATH_BASE=%q\n' "${ENV_FILE_PATH_INPUT:-${DEPLOYMENT_BASE_DIR}}"
+          printf 'export HOST_PORT_IN=%q\n' "${HOST_PORT_VAL}"
+          printf 'export CONTAINER_PORT_IN=%q\n' "${CONTAINER_PORT_VAL}"
+          printf 'export EXTRA_RUN_ARGS=%q\n' "${EXTRA_RUN_ARGS_VAL}"
+          printf 'export RESTART_POLICY=%q\n' "${RESTART_POLICY_VAL}"
+          printf 'export MEMORY_LIMIT=%q\n' "${MEMORY_LIMIT_VAL}"
+          printf 'export TRAEFIK_ENABLED=%q\n' "${ENABLE_TRAEFIK_VAL}"
+          printf 'export TRAEFIK_ENABLE_ACME=%q\n' "${ENABLE_ACME_VAL}"
+          printf 'export TRAEFIK_EMAIL=%q\n' "${TRAEFIK_EMAIL_VAL}"
+          printf 'export TRAEFIK_RESET_ACME=%q\n' "${TRAEFIK_RESET_ACME_VAL}"
+          printf 'export TRAEFIK_NETWORK_NAME=%q\n' "${TRAEFIK_NETWORK_NAME_VAL}"
+          printf 'export DOMAIN_INPUT=%q\n' "${DOMAIN_INPUT_VAL}"
+          printf 'export DOMAIN_DEFAULT=%q\n' "${DOMAIN_DEFAULT_VAL}"
+          printf 'export ROUTER_NAME=%q\n' "${ROUTER_NAME_VAL}"
+          printf 'export DOMAIN_ALIASES=%q\n' "${DOMAIN_ALIASES_VAL}"
+          printf 'export INCLUDE_WWW_ALIAS=%q\n' "${INCLUDE_WWW_ALIAS_VAL}"
+          printf 'export DOMAIN_HOSTS=%q\n' "${DOMAIN_HOSTS_VAL}"
+          printf 'export ENABLE_DASHBOARD=%q\n' "${ENABLE_DASHBOARD_VAL}"
+          printf 'export DASHBOARD_PUBLISH_MODES=%q\n' "${DASHBOARD_PUBLISH_MODES_VAL}"
+          printf 'export DASHBOARD_HOST=%q\n' "${DASHBOARD_HOST_VAL}"
+          printf 'export DASHBOARD_PASSWORD=%q\n' "${DASHBOARD_PASSWORD_VAL}"
+          printf 'export DASHBOARD_USERS_B64=%q\n' "${DASHBOARD_USERS_B64_VAL}"
+          printf 'export UFW_ALLOW_PORTS_INPUT=%q\n' "${UFW_ALLOW_PORTS_VAL}"
+          printf 'export INSTALL_WEBMIN=%q\n' "${INSTALL_WEBMIN_VAL}"
+          printf 'export INSTALL_USERMIN=%q\n' "${INSTALL_USERMIN_VAL}"
+          printf 'export DEBUG=%q\n' "${DEBUG_VAL}"
+          printf 'export DEPLOYMENT_STRATEGY=%q\n' "${DEPLOYMENT_STRATEGY}"
+          printf 'export READINESS_PATH=%q\n' "${READINESS_PATH}"
+          printf 'export RELEASE_SNAPSHOTS=%q\n' "${RELEASE_SNAPSHOTS}"
+          printf 'export ROLLBACK_VERSION=%q\n' "${ROLLBACK_VERSION}"
+          printf 'export QUADLET_ENABLED=%q\n' "${QUADLET_ENABLED}"
+          printf 'export S3_URI=%q\nexport GITHUB_SHA=%q\n' "$S3_URI" "$GITHUB_SHA"
+          cat <<'EOF_REMOTE'
+        echo '================================================================'
+        echo 'Installing server-managed scripts bundle on EC2 via S3'
+        echo '================================================================'
+        mkdir -p "$HOME/uactions"
+        aws s3 cp "$S3_URI" "$HOME/uactions-scripts.tgz"
+        if ! tar -tzf "$HOME/uactions-scripts.tgz" >/dev/null 2>&1; then echo '::error::Invalid or empty tar archive at $HOME/uactions-scripts.tgz (tar -tzf failed)'; ls -lh "$HOME/uactions-scripts.tgz" || true; exit 1; fi
+        TMPDIR="$(mktemp -d)"
+        tar -xzf "$HOME/uactions-scripts.tgz" -C "$TMPDIR"
+        rm -rf "$HOME/uactions/scripts"
+        mv "$TMPDIR/scripts" "$HOME/uactions/scripts"
+        rm -rf "$TMPDIR"
+        find "$HOME/uactions/scripts" -type f -name '*.sh' -exec chmod +x {} +
+        date -u +'%Y-%m-%d %H:%M:%S UTC' > "$HOME/uactions/scripts/.deployed_at"
+        echo "$GITHUB_SHA" > "$HOME/uactions/scripts/.version"
+        if [ -z "${TRAEFIK_ENABLED}" ]; then TRAEFIK_ENABLED='true'; fi
+        if [ -z "${TRAEFIK_ENABLE_ACME}" ] && [ "${TRAEFIK_ENABLED}" = 'true' ]; then TRAEFIK_ENABLE_ACME='true'; fi
+        if [ -z "${TRAEFIK_EMAIL}" ]; then DOMAIN_FOR_EMAIL="${DOMAIN_DEFAULT:-${DOMAIN_INPUT:-}}"; if [ -n "${DOMAIN_FOR_EMAIL}" ]; then lower_domain=$(printf '%s' "${DOMAIN_FOR_EMAIL}" | tr '[:upper:]' '[:lower:]'); IFS='.' read -r -a email_parts <<<"${lower_domain#www.}"; part_count=${#email_parts[@]}; if [ "$part_count" -ge 2 ]; then apex="${email_parts[part_count-2]}.${email_parts[part_count-1]}"; else apex="${lower_domain#www.}"; fi; TRAEFIK_EMAIL="traefik@${apex}"; fi; fi
+        "$HOME/uactions/scripts/app/start-container-deployment.sh"
+        EOF_REMOTE
+        } > "$command_file"
+        jq -n --rawfile script "$command_file" \
+          '{commands: [("bash -c " + ($script | @sh))], executionTimeout: ["3600"]}' > ssm-commands.json
 
         echo "Sending SSM command to target $SSM_TARGET in region $AWS_REGION"
         CMD_ID=$(aws ssm send-command \
@@ -484,7 +524,15 @@ runs:
           --output json | jq -r '.Command.CommandId')
 
         echo "Waiting for SSM command $CMD_ID to complete..."
-        aws ssm wait command-executed --region "$AWS_REGION" --command-id "$CMD_ID" --instance-id "$SSM_TARGET"
+        # The CLI waiter can expire before health checks and routing recovery.
+        # Poll within the remote command's execution deadline instead.
+        for ((attempt=0; attempt<720; attempt++)); do
+          STATUS=$(aws ssm list-command-invocations --region "$AWS_REGION" --command-id "$CMD_ID" --instance-id "$SSM_TARGET" --output json | jq -r '.CommandInvocations[0].Status // "Pending"')
+          case "$STATUS" in
+            Pending|InProgress|Delayed|Cancelling) sleep 5 ;;
+            *) break ;;
+          esac
+        done
 
         INVOC_JSON=$(aws ssm list-command-invocations --region "$AWS_REGION" --command-id "$CMD_ID" --instance-id "$SSM_TARGET" --details --output json)
         STATUS=$(printf '%s' "$INVOC_JSON" | jq -r '.CommandInvocations[0].Status')

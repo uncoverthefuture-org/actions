@@ -1,0 +1,56 @@
+name: Validate release options
+description: Validate shared single-container deployment strategy and rollback settings.
+inputs:
+  deployment_strategy:
+    description: 'recreate (default) or blue-green; blue-green enables managed snapshots and requires Traefik.'
+    default: 'recreate'
+  readiness_path:
+    description: 'HTTP path to verify through local Traefik after blue-green promotion.'
+    default: '/'
+  release_snapshots:
+    description: 'Opt into immutable single-container recreate releases with health-gated rollback.'
+    default: 'false'
+  rollback_version:
+    description: 'Restore a successfully activated image tag (e.g. v1.2.3) or previous; requires release_snapshots=true.'
+    required: false
+outputs:
+  strategy:
+    value: ${{ steps.validate.outputs.strategy }}
+    description: Validated deployment strategy.
+  readiness:
+    value: ${{ steps.validate.outputs.readiness }}
+    description: Validated readiness path.
+  enabled:
+    value: ${{ steps.validate.outputs.enabled }}
+    description: Whether managed snapshots are enabled.
+  rollback:
+    value: ${{ steps.validate.outputs.rollback }}
+    description: Validated rollback tag.
+runs:
+  using: composite
+  steps:
+    - name: Validate release options
+      id: validate
+      shell: bash
+      env:
+        DEPLOYMENT_STRATEGY: ${{ inputs.deployment_strategy }}
+        READINESS_PATH: ${{ inputs.readiness_path }}
+        RELEASE_SNAPSHOTS: ${{ inputs.release_snapshots }}
+        ROLLBACK_VERSION: ${{ inputs.rollback_version }}
+      run: |
+        set -euo pipefail
+        case "${DEPLOYMENT_STRATEGY:-recreate}" in
+          recreate) ;;
+          blue-green) RELEASE_SNAPSHOTS=true ;;
+          *) echo '::error::Unsupported deployment_strategy'; exit 1;;
+        esac
+        [[ "${READINESS_PATH:-/}" =~ ^/[a-zA-Z0-9/._~-]*$ ]] || { echo '::error::readiness_path must be a simple absolute URL path'; exit 1; }
+        case "$RELEASE_SNAPSHOTS" in true|false) ;; *) echo '::error::release_snapshots must be true or false'; exit 1;; esac
+        if [[ -n "$ROLLBACK_VERSION" ]]; then
+          [[ "$RELEASE_SNAPSHOTS" == true && "$ROLLBACK_VERSION" =~ ^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$ ]] || {
+            echo '::error::rollback_version requires managed snapshots and a valid image tag or previous'; exit 1;
+          }
+        fi
+        printf 'strategy=%s\n' "${DEPLOYMENT_STRATEGY:-recreate}" >> "$GITHUB_OUTPUT"
+        printf 'readiness=%s\n' "${READINESS_PATH:-/}" >> "$GITHUB_OUTPUT"
+        printf 'enabled=%s\nrollback=%s\n' "$RELEASE_SNAPSHOTS" "$ROLLBACK_VERSION" >> "$GITHUB_OUTPUT"

@@ -27,6 +27,21 @@ name: 'DOCTL Container Deploy'
 description: 'Deploy a container to a DigitalOcean Droplet using doctl compute ssh and server-managed scripts.'
 
 inputs:
+  deployment_strategy:
+    description: 'recreate (default) or blue-green; blue-green enables managed snapshots and requires Traefik.'
+    default: 'recreate'
+  readiness_path:
+    description: 'HTTP path to verify through local Traefik after blue-green promotion.'
+    default: '/'
+  release_snapshots:
+    description: 'Opt into immutable single-container recreate releases with health-gated rollback.'
+    default: 'false'
+  rollback_version:
+    description: 'Restore a successfully activated image tag (e.g. v1.2.3) or previous; requires release_snapshots=true.'
+    required: false
+  quadlet_enabled:
+    description: 'Enable systemd user persistence; managed releases replay the saved launch command.'
+    default: 'true'
   # --------------------------------------------------------------------------
   # DigitalOcean / doctl
   # --------------------------------------------------------------------------
@@ -244,6 +259,15 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Validate release options
+      id: release-options
+      uses: ./.github/actions/app/common/release-options
+      with:
+        deployment_strategy: ${{ inputs.deployment_strategy }}
+        readiness_path: ${{ inputs.readiness_path }}
+        release_snapshots: ${{ inputs.release_snapshots }}
+        rollback_version: ${{ inputs.rollback_version }}
+
     - name: Compute derived defaults
       id: dfl
       uses: ./.github/actions/app/common/compute-defaults
@@ -406,11 +430,17 @@ runs:
           DEPLOYMENT_ROOT="$HOME/deployments"
         fi
         case "$DEPLOYMENT_ROOT" in
-          "~/"*) DEPLOYMENT_ROOT="$HOME/${DEPLOYMENT_ROOT#~/}" ;;
+          "~/"*) DEPLOYMENT_ROOT="$HOME/${DEPLOYMENT_ROOT#\~/}" ;;
           "/home/runner/"*) DEPLOYMENT_ROOT="$HOME/${DEPLOYMENT_ROOT#/home/runner/}" ;;
         esac
         DEPLOYMENT_ROOT="${DEPLOYMENT_ROOT%/}"
         export REMOTE_DEPLOYMENT_DIR="${DEPLOYMENT_ROOT}/${ENV_NAME}/${APP_SLUG}"
+
+        export DEPLOYMENT_STRATEGY='${{ steps.release-options.outputs.strategy }}'
+        export READINESS_PATH='${{ steps.release-options.outputs.readiness }}'
+        export RELEASE_SNAPSHOTS='${{ steps.release-options.outputs.enabled }}'
+        export ROLLBACK_VERSION='${{ steps.release-options.outputs.rollback }}'
+        export QUADLET_ENABLED='${{ inputs.quadlet_enabled }}'
 
         # Ports & runtime
         export HOST_PORT_IN='${{ inputs.host_port != '' && inputs.host_port || inputs.default_host_port }}'

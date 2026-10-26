@@ -8,6 +8,8 @@
 # - Prints a concise summary and runs a Traefik probe if applicable
 set -euo pipefail
 
+# Snapshot operations handle credentials; do not trace configuration values.
+if [[ "${RELEASE_SNAPSHOTS:-false}" == true ]]; then export DEBUG=false; fi
 if [ "${DEBUG:-false}" = "true" ]; then set -x; fi
 
 SCRIPT_ROOT="$HOME/uactions/scripts"
