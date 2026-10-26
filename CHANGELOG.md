@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.2](https://github.com/uncoverthefuture-org/actions/compare/v1.9.1...v1.9.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **compose:** install compose deps early and validate deploy prerequisites ([d42e5af](https://github.com/uncoverthefuture-org/actions/commit/d42e5af26f9fa6d2a68fb8aff64ff11b23e2b4b0))
+* **compose:** route compose deployments before single-container steps ([4e3c051](https://github.com/uncoverthefuture-org/actions/commit/4e3c051608f801cebab923c07c26c1997f247849))
+* **compose:** skip single-image flow and unblock compose deployments ([8bd47ba](https://github.com/uncoverthefuture-org/actions/commit/8bd47ba4e83d883eb39f32b78a970499c4bb36ed))
+
 ## [1.9.1](https://github.com/uncoverthefuture-org/actions/compare/v1.9.0...v1.9.1) (2026-10-16)
 
 
