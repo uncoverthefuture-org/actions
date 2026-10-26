@@ -179,6 +179,13 @@ podman_run_with_preview() {
   cmd+=("${dns_args[@]}" "${network_args[@]}" "${volume_args[@]}" "${extra_args[@]}" "${label_args[@]}")
   cmd+=("$image_ref")
 
+  if [[ "${RELEASE_SNAPSHOTS:-false}" == true ]]; then
+    local release_root="${RELEASE_ROOT:?Managed releases require RELEASE_ROOT}"
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../app" && pwd)/release-manager.sh"
+    release_deploy "$release_root" "$env_file" "${cmd[@]}"
+    return $?
+  fi
+
   # Preview
   echo "podman run command (preview):"
   printf '  %q' "${cmd[@]}"; echo

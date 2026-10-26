@@ -49,6 +49,18 @@ source "${SCRIPT_DIR}/../util/traefik.sh"
 # shellcheck source=../util/podman.sh
 source "${SCRIPT_DIR}/../util/podman.sh"
 
+# Reject unsupported modes
+# before modifying containers or persistent services.
+if [[ "${RELEASE_SNAPSHOTS:-false}" == true ]]; then
+  case "${DEPLOYMENT_STRATEGY:-recreate}" in
+    recreate) ;;
+    blue-green) [[ "${TRAEFIK_ENABLED:-false}" == true ]] || { echo '::error::blue-green requires Traefik'; exit 1; } ;;
+    *) echo '::error::Unsupported deployment strategy'; exit 1;;
+  esac
+  [[ "${USE_COMPOSE:-false}" != true ]] || { echo '::error::Managed releases do not support Compose yet' >&2; exit 1; }
+  export RELEASE_ROOT="${RELEASE_ROOT:-${HOME}/deployments/${ENV_NAME}/${APP_SLUG}/managed}"
+fi
+
 # --- Resolve inputs -----------------------------------------------------------------
 SUDO_STATUS="${SUDO_STATUS:-available}"
 
@@ -400,7 +412,11 @@ fi
 # DEPLOY_DIR_HOST_PATH or set DEPLOY_DIR_VOLUME_ENABLED=false to skip.
 if [[ "${DEPLOY_DIR_VOLUME_ENABLED,,}" == "true" ]]; then
   DEPLOY_DIR_SOURCE="$DEPLOY_DIR_HOST_PATH"
-  if [[ -z "$DEPLOY_DIR_SOURCE" ]]; then
+  if [[ -z "$DEPLOY_DIR_SOURCE" && "${RELEASE_SNAPSHOTS:-false}" == true ]]; then
+    # Keep release secrets and image archives out of application data mounts.
+    DEPLOY_DIR_SOURCE="${REMOTE_DEPLOYMENT_DIR}/data"
+    mkdir -p "$DEPLOY_DIR_SOURCE"
+  elif [[ -z "$DEPLOY_DIR_SOURCE" ]]; then
     DEPLOY_DIR_SOURCE="${REMOTE_DEPLOYMENT_DIR:-${ENV_DIR}}"
   elif [[ "$DEPLOY_DIR_SOURCE" != /* ]]; then
     DEPLOY_DIR_SOURCE="${REMOTE_DEPLOYMENT_DIR:-${ENV_DIR}}/${DEPLOY_DIR_SOURCE}"
@@ -601,7 +617,9 @@ podman ps --filter name="$CONTAINER_NAME" --format 'table {{.ID}}\t{{.Status}}\t
 # Quadlet unit includes the same Traefik labels as the initial deployment.
 # Without these labels, containers restarted after reboot won't be discovered
 # by Traefik and will return 404 errors.
-if [[ -x "$HOME/uactions/scripts/app/install-app-quadlet.sh" ]]; then
+if [[ "${RELEASE_SNAPSHOTS:-false}" == true ]]; then
+  echo "Managed release persistence uses the saved launch definition"
+elif [[ -x "$HOME/uactions/scripts/app/install-app-quadlet.sh" ]]; then
   # Core container settings
   export IMAGE_REF
   export CONTAINER_NAME

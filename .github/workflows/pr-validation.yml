@@ -26,3 +26,8 @@ jobs:
         run: |
           echo "Running bash tests for PR validation..."
           ./tests/pr-validation/verify-action-files.sh
+
+      - name: Test managed release snapshots
+        run: |
+          bash tests/releases/verify-release-manager.sh
+          bash tests/releases/verify-transports.sh

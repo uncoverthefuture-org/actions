@@ -74,10 +74,15 @@ fi
 # -----------------------------------------------------------------------------
 
 case "$ENV_BASE_IN" in
-  "~/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#~/}" ;;
+  "~/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#\~/}" ;;
   "/home/runner/"*) ENV_ROOT="$HOME/${ENV_BASE_IN#/home/runner/}" ;;
   *) ENV_ROOT="$ENV_BASE_IN" ;;
 esac
+if [[ "${RELEASE_SNAPSHOTS:-false}" == true ]]; then
+  [[ "$APP_SLUG" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ && "$ENV_NAME" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || {
+    echo '::error::Managed releases require simple app/environment identifiers' >&2; exit 1;
+  }
+fi
 ENV_DIR="${ENV_ROOT}/${ENV_NAME}/${APP_SLUG}"
 # Canonical deployment directory used by other scripts for volume mounts.
 if [ -z "${REMOTE_DEPLOYMENT_DIR:-}" ]; then
@@ -132,6 +137,25 @@ fi
 # Purpose: guarantee an .env exists (when missing) and provide friendly
 # comments so operators understand the file's provenance and usage.
 # -----------------------------------------------------------------------------
+
+if [[ "${RELEASE_SNAPSHOTS:-false}" == true ]]; then
+  # Never rewrite the active release's environment file. Stage fresh settings
+  # privately; the launch snapshot makes its own immutable copy.
+  export RELEASE_ROOT="${ENV_DIR}/managed"
+  mkdir -p "$RELEASE_ROOT"
+  chmod 700 "$RELEASE_ROOT"
+  ENV_DIR=$(mktemp -d "$RELEASE_ROOT/config-XXXXXXXX")
+  chmod 700 "$ENV_DIR"
+  if [[ -z "$ENV_B64" && -z "$ENV_CONTENT" ]]; then
+    if [[ -f "$RELEASE_ROOT/state.json" ]]; then
+      previous=$(jq -er '.current' "$RELEASE_ROOT/state.json")
+      [[ "$previous" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,95}$ ]] || exit 1
+      cp "$RELEASE_ROOT/releases/$previous/.env" "$ENV_DIR/.env"
+    elif [[ -f "$REMOTE_DEPLOYMENT_DIR/.env" ]]; then
+      cp "$REMOTE_DEPLOYMENT_DIR/.env" "$ENV_DIR/.env"
+    fi
+  fi
+fi
 
 ENV_FILE="${ENV_DIR}/.env"
 if [ ! -f "$ENV_FILE" ]; then

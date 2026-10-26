@@ -156,6 +156,9 @@ entryPoints:
     address: ":8082"
 
 providers:
+  file:
+    directory: "/etc/traefik/dynamic"
+    watch: true
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false

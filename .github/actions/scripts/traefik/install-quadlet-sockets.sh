@@ -171,7 +171,7 @@ TRAEFIK_DATA_DIR="${HOME}/.local/share/traefik"
 TRAEFIK_ACME_FILE="${TRAEFIK_DATA_DIR}/acme.json"
 TRAEFIK_YML="${TRAEFIK_CONFIG_DIR}/traefik.yml"
 
-mkdir -p "$TRAEFIK_CONFIG_DIR" "$TRAEFIK_DATA_DIR"
+mkdir -p "$TRAEFIK_CONFIG_DIR" "$TRAEFIK_DATA_DIR" "$TRAEFIK_CONFIG_DIR/dynamic"
 
 # Create acme.json with correct permissions if missing
 if [[ ! -f "$TRAEFIK_ACME_FILE" ]]; then
@@ -229,6 +229,7 @@ fi
 
 cat >>"$CONTAINER_UNIT_PATH" <<EOF
 # Volumes: static config and ACME storage (user-scoped)
+Volume=%h/.config/traefik/dynamic:/etc/traefik/dynamic:ro
 Volume=%h/.config/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
 Volume=%h/.local/share/traefik/acme.json:/letsencrypt/acme.json:Z
 # Podman (Docker-compatible) socket for provider discovery (user-scoped)
@@ -248,6 +249,8 @@ Exec=--entrypoints.web.address=fd://web
 Exec=--entrypoints.websecure.address=fd://websecure
 
 # Providers (Docker over Podman socket)
+Exec=--providers.file.directory=/etc/traefik/dynamic
+Exec=--providers.file.watch=true
 Exec=--providers.docker.endpoint=unix:///var/run/docker.sock
 Exec=--providers.docker.exposedByDefault=false
 

@@ -48,6 +48,21 @@ source "${SCRIPT_DIR}/../util/normalize.sh"
 # shellcheck source=../util/sudo.sh
 source "${SCRIPT_DIR}/../util/sudo.sh"
 
+if [[ -n "${ROLLBACK_VERSION:-}" ]]; then
+  [[ "${RELEASE_SNAPSHOTS:-false}" == true ]] || { echo '::error::Rollback requires release_snapshots=true' >&2; exit 1; }
+  [[ "${APP_SLUG:-}" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ && "${ENV_NAME:-}" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || exit 1
+  source "$SCRIPT_DIR/release-manager.sh"
+  release_base="${ENV_FILE_PATH_BASE:-$HOME/deployments}"
+  case "$release_base" in
+    "~/"*) release_base="$HOME/${release_base#\~/}" ;;
+    /home/runner/*) release_base="$HOME/${release_base#/home/runner/}" ;;
+  esac
+  release_rollback "${RELEASE_ROOT:-$release_base/${ENV_NAME}/${APP_SLUG}/managed}" "$ROLLBACK_VERSION"
+  exit $?
+fi
+
+# Snapshot operations handle credentials; do not trace configuration values.
+if [[ "${RELEASE_SNAPSHOTS:-false}" == true ]]; then export DEBUG=false; fi
 if [ "${DEBUG:-false}" = "true" ]; then set -x; fi
 
 # --- Resolve inputs -----------------------------------------------------------------
@@ -605,7 +620,7 @@ fi
 # Compute image ref for preservation during pruning
 IMAGE_REF_FOR_PRUNE="${IMAGE_REGISTRY:+$IMAGE_REGISTRY/}${IMAGE_NAME}:${IMAGE_TAG}"
 
-if [ "$PODMAN_PRUNE_ENABLED" = "true" ]; then
+if [[ "$PODMAN_PRUNE_ENABLED" == true && "${RELEASE_SNAPSHOTS:-false}" != true ]]; then
   if [ -f "$HOME/uactions/scripts/infra/prune-podman-storage.sh" ]; then
     echo "================================================================"
     echo "🧹 Running Podman storage cleanup"

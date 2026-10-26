@@ -12,6 +12,29 @@ A lightweight, local container deployment system powered by Podman and Traefik. 
 - **Two Modes**: Local (Podman on localhost) or Remote (SSH to server)
 - **Lightweight** - Minimal resource usage, designed for local development and CI/CD
 
+## Deployment strategies
+
+The `ssh-container-deploy`, `doctl-container-deploy`, and
+`aws-ssm-container-deploy` actions support these `params_json` options:
+
+- `deployment_strategy: "recreate"` (default): replace the running container.
+  Add `release_snapshots: "true"` to preserve the image, environment file, and
+  launch settings for health-gated deployment and rollback.
+- `deployment_strategy: "blue-green"`: automatically enable snapshots, start a
+  candidate, and switch Traefik traffic after container health checks. Verify
+  `readiness_path` (default `/`) through Traefik, restoring the previous route
+  if verification fails. Keep the previous version running as standby.
+- `rollback_version: "v1.2.3"` or `"previous"`: restore a successfully activated
+  snapshot for the same server, deployment account, app, and environment.
+  Enable snapshots or select blue-green when requesting rollback.
+
+Managed releases require an image-defined `HEALTHCHECK`. Blue-green also requires
+Traefik on the shared Podman network with its dynamic file provider configured;
+existing proxies may need a maintenance update using the setup scripts first.
+Default persistence requires a systemd user manager; set `quadlet_enabled: "false"`
+for ephemeral deployments. Snapshots remain on the server; external volume data
+and database changes are not restored. Compose, rolling, and canary are unsupported.
+
 ## Installation
 
 ### macOS (Recommended - via Homebrew)

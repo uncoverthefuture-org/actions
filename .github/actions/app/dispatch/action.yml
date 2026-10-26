@@ -336,6 +336,11 @@ runs:
       if: ${{ inputs.subaction == 'ssh-container-deploy' }}
       uses: ./.github/actions/app/ssh-container-deploy
       with:
+        deployment_strategy: ${{ fromJSON(steps.params.outputs.json).deployment_strategy || 'recreate' }}
+        readiness_path: ${{ fromJSON(steps.params.outputs.json).readiness_path || '/' }}
+        release_snapshots: ${{ fromJSON(steps.params.outputs.json).release_snapshots || 'false' }}
+        quadlet_enabled: ${{ format('{0}', fromJSON(steps.params.outputs.json).quadlet_enabled) == 'false' && 'false' || fromJSON(steps.params.outputs.json).quadlet_enabled || 'true' }}
+        rollback_version: ${{ fromJSON(steps.params.outputs.json).rollback_version }}
         ssh_host: ${{ inputs.ssh_host != '' && inputs.ssh_host || fromJSON(steps.params.outputs.json).ssh_host }}
         ssh_user: ${{ inputs.ssh_user != '' && inputs.ssh_user || fromJSON(steps.params.outputs.json).ssh_user }}
         ssh_key: ${{ inputs.ssh_key != '' && inputs.ssh_key || fromJSON(steps.params.outputs.json).ssh_key }}
@@ -396,6 +401,11 @@ runs:
       if: ${{ inputs.subaction == 'doctl-container-deploy' }}
       uses: ./.github/actions/app/doctl-container-deploy
       with:
+        deployment_strategy: ${{ fromJSON(steps.params.outputs.json).deployment_strategy || 'recreate' }}
+        readiness_path: ${{ fromJSON(steps.params.outputs.json).readiness_path || '/' }}
+        release_snapshots: ${{ fromJSON(steps.params.outputs.json).release_snapshots || 'false' }}
+        quadlet_enabled: ${{ format('{0}', fromJSON(steps.params.outputs.json).quadlet_enabled) == 'false' && 'false' || fromJSON(steps.params.outputs.json).quadlet_enabled || 'true' }}
+        rollback_version: ${{ fromJSON(steps.params.outputs.json).rollback_version }}
         # DigitalOcean / doctl
         do_token: ${{ fromJSON(steps.params.outputs.json).do_token }}
 
@@ -471,6 +481,11 @@ runs:
       if: ${{ inputs.subaction == 'aws-ssm-container-deploy' }}
       uses: ./.github/actions/app/aws-ssm-container-deploy
       with:
+        deployment_strategy: ${{ fromJSON(steps.params.outputs.json).deployment_strategy || 'recreate' }}
+        readiness_path: ${{ fromJSON(steps.params.outputs.json).readiness_path || '/' }}
+        release_snapshots: ${{ fromJSON(steps.params.outputs.json).release_snapshots || 'false' }}
+        quadlet_enabled: ${{ format('{0}', fromJSON(steps.params.outputs.json).quadlet_enabled) == 'false' && 'false' || fromJSON(steps.params.outputs.json).quadlet_enabled || 'true' }}
+        rollback_version: ${{ fromJSON(steps.params.outputs.json).rollback_version }}
         # AWS identity & SSM target
         aws_region: ${{ fromJSON(steps.params.outputs.json).aws_region }}
         aws_role_to_assume: ${{ fromJSON(steps.params.outputs.json).aws_role_to_assume }}
