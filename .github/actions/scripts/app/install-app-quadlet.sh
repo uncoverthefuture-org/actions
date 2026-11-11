@@ -168,7 +168,7 @@ INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}"
   #
   # Example generated labels:
   #   Label=traefik.enable=true
-  #   Label=traefik.http.routers.myapp-prod.rule=Host("app.example.com")
+  #   Label="traefik.http.routers.myapp-prod.rule=Host(`app.example.com`)"
   #   Label=traefik.http.routers.myapp-prod.service=myapp-prod
   #   Label=traefik.http.services.myapp-prod.loadbalancer.server.port=3000
   # =========================================================================
@@ -218,19 +218,29 @@ INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}"
       fi
     done
 
-    # Build Host("a") || Host("b") expression
+    # Build Host(`a`) || Host(`b`) expression.
+    #
+    # Hostnames must be backtick-quoted: Quadlet's unit parser strips
+    # unescaped double quotes, so Host("a") reached the container as the
+    # invalid rule Host(a) and the router never registered. Backticks are
+    # valid Traefik string literals and survive Quadlet parsing untouched.
+    #
+    # The whole Label= value is additionally wrapped in double quotes
+    # because Quadlet splits unquoted Label values on whitespace, which
+    # truncated multi-host rules (Host(`a`) || Host(`b`)) after the first
+    # host.
     _host_rule=""
     for _idx in "${!_uniq_hosts[@]}"; do
       _hval="${_uniq_hosts[$_idx]}"
       if [[ $_idx -gt 0 ]]; then _host_rule+=" || "; fi
-      _host_rule+="Host(\"${_hval}\")"
+      _host_rule+="Host(\`${_hval}\`)"
     done
 
     # Emit the fundamental traefik.enable label - without this, Traefik ignores the container
     echo "Label=traefik.enable=true"
 
     # Router configuration
-    echo "Label=traefik.http.routers.${ROUTER_NAME}.rule=${_host_rule}"
+    echo "Label=\"traefik.http.routers.${ROUTER_NAME}.rule=${_host_rule}\""
     echo "Label=traefik.http.routers.${ROUTER_NAME}.service=${ROUTER_NAME}"
 
     # Service port configuration
@@ -243,7 +253,7 @@ INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}"
       echo "Label=traefik.http.routers.${ROUTER_NAME}.tls.certresolver=letsencrypt"
 
       # HTTP to HTTPS redirect router
-      echo "Label=traefik.http.routers.${ROUTER_NAME}-http.rule=${_host_rule}"
+      echo "Label=\"traefik.http.routers.${ROUTER_NAME}-http.rule=${_host_rule}\""
       echo "Label=traefik.http.routers.${ROUTER_NAME}-http.entrypoints=web"
       echo "Label=traefik.http.routers.${ROUTER_NAME}-http.service=${ROUTER_NAME}"
       echo "Label=traefik.http.middlewares.${ROUTER_NAME}-https-redirect.redirectscheme.scheme=https"
@@ -262,6 +272,12 @@ INCLUDE_WWW_ALIAS="${INCLUDE_WWW_ALIAS:-false}"
     echo "::warning::TRAEFIK_ENABLED=true but missing DOMAIN ('${DOMAIN}'), ROUTER_NAME ('${ROUTER_NAME}'), or CONTAINER_PORT ('${CONTAINER_PORT}'); Quadlet unit will NOT include Traefik labels. Container may return 404 after reboot." >&2
   fi
 
+  echo
+  echo "[Service]"
+  # Restart the container after crashes and OOM kills. Without this, a killed
+  # container leaves the unit in 'failed' state and Podman removes it on exit,
+  # taking the service down until manual intervention.
+  echo "Restart=always"
   echo
   echo "[Install]"
   echo "WantedBy=default.target"
